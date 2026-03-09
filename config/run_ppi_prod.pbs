@@ -1,0 +1,55 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N PPI_prod
+#PBS -l nodes=node05:ppn=32
+#PBS -l walltime=999:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/ppi_prod.o
+#PBS -e ${PBS_O_WORKDIR}/ppi_prod.e
+
+cd $PBS_O_WORKDIR
+
+# ============================================================
+# PPI 프로덕션 (20K 모델, ~24-36시간)
+#
+# 사용법:
+#   qsub config/run_ppi_prod.pbs                                    # beta-meander
+#   qsub -v CONFIG_FILE=config/ppi_prod_TH1.ini config/run_ppi_prod.pbs  # TH1
+#   qsub -v RUN_MODE=both config/run_ppi_prod.pbs                   # 둘 다
+# ============================================================
+
+CONFIG_FILE=${CONFIG_FILE:-config/ppi_prod_beta_meander.ini}
+RUN_MODE=${RUN_MODE:-single}
+
+echo "============================================"
+echo "  PPI Global Blind Docking [PROD: 20K models]"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "  Config: $CONFIG_FILE"
+echo "  Mode: $RUN_MODE"
+echo "============================================"
+
+if [ "$RUN_MODE" = "both" ]; then
+    echo ""
+    echo "[1/2] beta-meander (production)"
+    echo "--------------------------------------------"
+    python -m egfr_pipeline.pyrosetta_docking.pipeline_manager \
+        config/ppi_prod_beta_meander.ini \
+        input/PPI/prepared/EGFR_dimer_beta_meander.pdb
+
+    echo ""
+    echo "[2/2] TH1 domain (production)"
+    echo "--------------------------------------------"
+    python -m egfr_pipeline.pyrosetta_docking.pipeline_manager \
+        config/ppi_prod_TH1.ini \
+        input/PPI/prepared/EGFR_dimer_TH1.pdb
+else
+    python -m egfr_pipeline.pyrosetta_docking.pipeline_manager \
+        "$CONFIG_FILE"
+fi
+
+echo ""
+echo "============================================"
+echo "  Finished: $(date)"
+echo "============================================"

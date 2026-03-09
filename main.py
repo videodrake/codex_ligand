@@ -24,21 +24,24 @@ REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = REPO_ROOT / "config" / "example-project.yaml"
 
 MENU = """
-╔══════════════════════════════════════════════════════╗
-║    EGFR-MYO1D Docking Pipeline  (통합 실행 메뉴)     ║
-╠══════════════════════════════════════════════════════╣
-║                                                      ║
-║  [1] Vina Docking            (AutoDock Vina 실행)    ║
-║  [2] Vina Postprocess        (결과 파싱/클러스터링)  ║
-║  [3] PyRosetta PPI Docking   (PPI 글로벌 도킹)      ║
-║  [4] MD Analysis             (GROMACS 분석)          ║
-║  [5] Generate Report         (종합 보고서 생성)      ║
-║  [6] Validate Outputs        (출력 검증)             ║
-║  [7] Full Pipeline           (1→2→5→6 자동 실행)     ║
-║                                                      ║
-║  [q] Quit                                            ║
-║                                                      ║
-╚══════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════╗
+║     EGFR-MYO1D Docking Pipeline  (통합 실행 메뉴)        ║
+╠══════════════════════════════════════════════════════════╣
+║                                                          ║
+║  [1] Vina Docking            (AutoDock Vina 실행)        ║
+║  [2] Vina Postprocess        (결과 파싱/클러스터링)      ║
+║  [3] PPI Docking             (PyRosetta PPI 도킹)        ║
+║      3a. PDB 준비 (dimer + MYO1D 합치기)                 ║
+║      3b. 도킹 실행                                       ║
+║      3c. 결과 원복 (chain 번호 정상화)                   ║
+║  [4] MD Analysis             (GROMACS 분석)              ║
+║  [5] Generate Report         (종합 보고서 생성)          ║
+║  [6] Validate Outputs        (출력 검증)                 ║
+║  [7] Full Pipeline           (1→2→5→6 자동 실행)         ║
+║                                                          ║
+║  [q] Quit                                                ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
 """
 
 
@@ -226,48 +229,206 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
 
 
 def run_pyrosetta(config_ini: str = None):
-    """Run PyRosetta PPI docking."""
+    """Run PyRosetta PPI docking (sub-menu)."""
     print("\n" + "=" * 50)
-    print("  [3] PyRosetta PPI Global Docking")
+    print("  [3] PPI Docking (PyRosetta)")
     print("=" * 50)
 
+    print("\n  [a] PDB 준비 — dimer + MYO1D 도메인 합치기")
+    print("  [b] 도킹 실행 — PyRosetta PPI global docking")
+    print("  [c] 결과 원복 — chain 번호 정상화 (도킹 후)")
+    print("  [d] PBS 스크립트 확인")
+
+    sel = input("\n선택 [a/b/c/d]: ").strip().lower()
+
+    if sel == "a":
+        _ppi_prepare()
+    elif sel == "b":
+        _ppi_run_docking(config_ini)
+    elif sel == "c":
+        _ppi_restore()
+    elif sel == "d":
+        _ppi_show_pbs()
+    else:
+        print("잘못된 입력입니다.")
+
+
+def _ppi_prepare():
+    """Prepare dimer + partner PDB for PPI docking."""
+    print("\n--- PDB 준비 (dimer + partner 합치기) ---")
+
+    # Dimer PDB
+    dimer_default = "smoke_test/input/original/3gt8_dimer_anp.pdb"
+    dimer_path = ask_input("EGFR dimer PDB 경로", dimer_default)
+
+    # Partner selection
+    partner_dir = REPO_ROOT / "input" / "PPI"
+    partners = sorted(partner_dir.glob("*.pdb"))
+    if partners:
+        print("\nMYO1D 도메인 파일:")
+        for i, p in enumerate(partners, 1):
+            print(f"  [{i}] {p.name}")
+        raw = input("\n선택: ").strip()
+        if raw.isdigit() and 1 <= int(raw) <= len(partners):
+            partner_path = str(partners[int(raw) - 1])
+        else:
+            partner_path = ask_input("Partner PDB 경로")
+    else:
+        partner_path = ask_input("Partner PDB 경로")
+
+    partner_name = Path(partner_path).stem.replace(" ", "_")
+    output_path = f"input/PPI/prepared/EGFR_dimer_{partner_name}.pdb"
+
+    from egfr_pipeline.ppi.prepare_dimer_pdb import prepare_dimer_partner
+    prepare_dimer_partner(
+        Path(dimer_path), Path(partner_path), Path(output_path),
+        partner_name=partner_name,
+    )
+
+
+def _ppi_run_docking(config_ini: str = None):
+    """Run PyRosetta PPI docking."""
+    print("\n--- PPI 도킹 실행 ---")
+
     if not config_ini:
-        inis = sorted(REPO_ROOT.glob("*.ini")) + sorted(REPO_ROOT.glob("config/*.ini"))
+        inis = sorted(REPO_ROOT.glob("config/ppi_*.ini"))
+        if not inis:
+            inis = sorted(REPO_ROOT.glob("config/*.ini"))
         if inis:
-            print("\n사용 가능한 PyRosetta config (.ini):")
+            print("\nPPI config 파일:")
             for i, p in enumerate(inis, 1):
                 print(f"  [{i}] {p.relative_to(REPO_ROOT)}")
-            print(f"  [{len(inis) + 1}] 직접 입력")
+            print(f"  [{len(inis) + 1}] 두 도메인 모두 (순차)")
+            print(f"  [{len(inis) + 2}] 직접 입력")
             raw = input("\n선택: ").strip()
             if raw.isdigit() and 1 <= int(raw) <= len(inis):
                 config_ini = str(inis[int(raw) - 1])
+            elif raw.isdigit() and int(raw) == len(inis) + 1:
+                config_ini = "__both__"
             else:
                 config_ini = ask_input("Config .ini 경로")
         else:
             config_ini = ask_input("Config .ini 경로")
 
-    # Select input PDB
-    pdbs = sorted((REPO_ROOT / "input_PDB").glob("*.pdb")) if (REPO_ROOT / "input_PDB").exists() else []
-    pdbs += sorted((REPO_ROOT / "input" / "receptors").glob("*.pdb"))
-    if pdbs:
-        print("\n입력 PDB 파일:")
-        for i, p in enumerate(pdbs, 1):
-            print(f"  [{i}] {p.relative_to(REPO_ROOT)}")
-        raw = input("\n선택: ").strip()
-        if raw.isdigit() and 1 <= int(raw) <= len(pdbs):
-            input_pdb = str(pdbs[int(raw) - 1])
-        else:
-            input_pdb = ask_input("PDB 파일 경로")
-    else:
-        input_pdb = ask_input("PDB 파일 경로")
+    print("\n실행 방식:")
+    print("  [1] PBS 제출 (qsub) — HPC 서버 권장")
+    print("  [2] 직접 실행 (foreground) — 테스트용")
 
-    print(f"\n실행: python pipeline_manager.py {config_ini} {input_pdb}")
-    from egfr_pipeline.pyrosetta_docking.pipeline_manager import main as pm_main
-    sys.argv = ["pipeline_manager", config_ini, input_pdb]
-    try:
-        pm_main()
-    finally:
-        sys.argv = sys.argv[:1]
+    run_mode = input("\n선택 [1/2]: ").strip()
+
+    if run_mode == "1":
+        _ppi_submit_pbs(config_ini)
+    elif run_mode == "2":
+        if config_ini == "__both__":
+            print("\n  ⚠ '두 도메인 모두'는 PBS 제출만 지원합니다.")
+            _ppi_submit_pbs(config_ini)
+            return
+        print(f"\n  Config: {config_ini}")
+        if ask_yes_no("실행하시겠습니까? (PyRosetta 필요)", default=False):
+            from egfr_pipeline.pyrosetta_docking.pipeline_manager import main as pm_main
+            sys.argv = ["pipeline_manager", config_ini]
+            try:
+                pm_main()
+            finally:
+                sys.argv = sys.argv[:1]
+
+
+def _ppi_submit_pbs(config_ini: str = None):
+    """Submit PPI docking job via qsub."""
+    import shutil
+    import subprocess as sp
+
+    # Determine test vs prod PBS
+    is_test = "test" in (config_ini or "")
+    is_both = config_ini == "__both__"
+
+    if is_both:
+        print("\n  실행 규모:")
+        print("  [1] 테스트 (1K 모델, ~3-4시간)")
+        print("  [2] 프로덕션 (20K 모델, ~24-36시간)")
+        scale = input("\n  선택 [1/2]: ").strip()
+        is_test = scale != "2"
+
+    pbs_path = REPO_ROOT / "config" / ("run_ppi_test.pbs" if is_test else "run_ppi_prod.pbs")
+    log_prefix = "ppi_test" if is_test else "ppi_prod"
+
+    if not shutil.which("qsub"):
+        print("\n  ⚠ qsub를 찾을 수 없습니다. PBS가 설치된 서버에서 실행하세요.")
+        print(f"  수동 실행: qsub {pbs_path}")
+        return
+
+    if is_both:
+        cmd = ["qsub", "-v", "RUN_MODE=both", str(pbs_path)]
+    else:
+        cmd = ["qsub", "-v", f"CONFIG_FILE={config_ini}", str(pbs_path)]
+
+    print(f"\n  PBS: {pbs_path.name}")
+    print(f"  실행: {' '.join(cmd)}")
+
+    if ask_yes_no("제출하시겠습니까?"):
+        result = sp.run(cmd, capture_output=True, text=True, cwd=str(REPO_ROOT))
+        if result.returncode == 0:
+            job_id = result.stdout.strip()
+            print(f"\n  제출 완료: {job_id}")
+            print(f"  로그: {log_prefix}.o / {log_prefix}.e")
+            print(f"  상태 확인: qstat {job_id}")
+        else:
+            print(f"\n  제출 실패:")
+            print(f"    {result.stderr.strip()}")
+
+
+def _ppi_restore():
+    """Restore chain numbering after docking."""
+    print("\n--- 결과 원복 (chain 번호 정상화) ---")
+
+    print("\n원복 대상:")
+    print("  [1] PDB 파일 (도킹 결과 구조)")
+    print("  [2] CSV 파일 (final_ranking.csv 등)")
+    sel = input("\n선택 [1/2]: ").strip()
+
+    # Find mapping files
+    mapping_dir = REPO_ROOT / "input" / "PPI" / "prepared"
+    mappings = sorted(mapping_dir.glob("*_mapping.csv"))
+    if mappings:
+        print("\nMapping 파일:")
+        for i, p in enumerate(mappings, 1):
+            print(f"  [{i}] {p.name}")
+        raw = input("\n선택: ").strip()
+        if raw.isdigit() and 1 <= int(raw) <= len(mappings):
+            mapping_path = str(mappings[int(raw) - 1])
+        else:
+            mapping_path = ask_input("Mapping CSV 경로")
+    else:
+        mapping_path = ask_input("Mapping CSV 경로")
+
+    input_path = ask_input("입력 파일 경로")
+    output_path = ask_input("출력 파일 경로")
+
+    from egfr_pipeline.ppi.prepare_dimer_pdb import restore_chains, restore_csv
+
+    if sel == "1":
+        restore_chains(Path(input_path), Path(mapping_path), Path(output_path))
+    elif sel == "2":
+        restore_csv(Path(input_path), Path(mapping_path), Path(output_path))
+
+
+def _ppi_show_pbs():
+    """Show PBS script usage."""
+    print("\n--- PBS 스크립트 사용법 ---")
+    print()
+    print("  [테스트] 1K 모델, ~3-4시간")
+    print("  qsub config/run_ppi_test.pbs                                         # beta-meander")
+    print("  qsub -v CONFIG_FILE=config/ppi_test_TH1.ini config/run_ppi_test.pbs  # TH1")
+    print("  qsub -v RUN_MODE=both config/run_ppi_test.pbs                        # 둘 다")
+    print()
+    print("  [프로덕션] 20K 모델, ~24-36시간")
+    print("  qsub config/run_ppi_prod.pbs                                         # beta-meander")
+    print("  qsub -v CONFIG_FILE=config/ppi_prod_TH1.ini config/run_ppi_prod.pbs  # TH1")
+    print("  qsub -v RUN_MODE=both config/run_ppi_prod.pbs                        # 둘 다")
+    print()
+    print("  # 로그 확인")
+    print("  tail -f ppi_test.o   # 테스트")
+    print("  tail -f ppi_prod.o   # 프로덕션")
 
 
 def run_md():
@@ -425,7 +586,7 @@ def interactive_menu():
     print(MENU)
 
     while True:
-        sel = input("선택 [1-7, q]: ").strip().lower()
+        sel = input("선택 [1-7, 3a/3b/3c, q]: ").strip().lower()
 
         if sel == "q":
             print("종료합니다.")
@@ -436,6 +597,12 @@ def interactive_menu():
             run_postprocess()
         elif sel == "3":
             run_pyrosetta()
+        elif sel == "3a":
+            _ppi_prepare()
+        elif sel == "3b":
+            _ppi_run_docking()
+        elif sel == "3c":
+            _ppi_restore()
         elif sel == "4":
             run_md()
         elif sel == "5":
