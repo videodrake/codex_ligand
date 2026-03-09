@@ -1,0 +1,84 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N PPI_v2
+#PBS -l nodes=node07:ppn=32
+#PBS -l walltime=999:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/pbs_v2.o
+#PBS -e ${PBS_O_WORKDIR}/pbs_v2.e
+
+cd $PBS_O_WORKDIR
+
+# Capture ALL output for debugging (even if job crashes)
+exec > pbs_debug.log 2>&1
+set -x
+
+echo ">>> Working Directory: $(pwd)"
+echo ">>> PBS Job ID: $PBS_JOBID"
+echo ">>> Node: $(hostname)"
+echo ">>> Date: $(date)"
+echo ">>> ulimit: $(ulimit -a 2>&1 | head -5)"
+
+# Config file selection
+# Default: config.ini | Override: qsub -v CONFIG_FILE=config_100k.ini run_v2_test.pbs
+CONFIG_FILE="${CONFIG_FILE:-config.ini}"
+
+# Log files
+LOG="pipeline_v2.log"
+rm -f "$LOG"
+
+echo ">>> Config: $CONFIG_FILE" | tee -a "$LOG"
+echo ">>> Logs: $LOG (progress) | worker_debug.log (debug)" | tee -a "$LOG"
+
+# Activate Environment (source conda.sh directly for non-interactive PBS shells)
+source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
+conda activate pyrosetta
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export PYTHONIOENCODING=utf-8
+
+echo ">>> Environment activated." | tee -a "$LOG"
+which python | tee -a "$LOG"
+python -c "import sys; print(sys.version)" | tee -a "$LOG"
+python -c "import pyrosetta; print('PyRosetta imported successfully')" | tee -a "$LOG"
+
+# Check Config
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: $CONFIG_FILE missing in $(pwd)!" | tee -a "$LOG"
+    exit 1
+fi
+
+echo ">>> Pipeline Started with $CONFIG_FILE..." | tee -a "$LOG"
+
+# Input PDB selection
+# Default: ALL PDBs in input_PDB/ | Override: qsub -v INPUT_PDB=input_PDB/EGFR_TH1.pdb run_v2_test.pbs
+# INPUT_PDB=ALL or unset: process all PDBs
+INPUT_PDB="${INPUT_PDB:-ALL}"
+
+if [ "$INPUT_PDB" = "ALL" ]; then
+    PDB_LIST=(input_PDB/*.pdb)
+else
+    PDB_LIST=("$INPUT_PDB")
+fi
+
+echo ">>> Input PDB(s): ${PDB_LIST[*]}" | tee -a "$LOG"
+
+for INPUT_PATH in "${PDB_LIST[@]}"
+do
+    if [ ! -e "$INPUT_PATH" ]; then
+        echo ">>> SKIP: $INPUT_PATH not found." | tee -a "$LOG"
+        continue
+    fi
+
+    echo ">>> Processing: $INPUT_PATH ($(date))" | tee -a "$LOG"
+
+    python pipeline_manager.py "$CONFIG_FILE" "$INPUT_PATH" >> "$LOG" 2>&1
+
+    if [ $? -ne 0 ]; then
+        echo ">>> FAILED: $INPUT_PATH. Check $LOG for details." | tee -a "$LOG"
+    else
+        echo ">>> Done: $INPUT_PATH ($(date))" | tee -a "$LOG"
+    fi
+done
+
+echo ">>> All Complete: $(date)" | tee -a "$LOG"
