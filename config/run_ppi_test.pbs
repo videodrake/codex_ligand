@@ -9,6 +9,10 @@
 
 cd $PBS_O_WORKDIR
 
+# Conda 환경 활성화
+source ~/.bashrc
+conda activate pyrosetta
+
 # ============================================================
 # PPI 테스트 (1K 모델, ~3-4시간)
 #

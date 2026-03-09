@@ -9,6 +9,10 @@
 
 cd $PBS_O_WORKDIR
 
+# Conda 환경 활성화
+source ~/.bashrc
+conda activate pyrosetta
+
 # ============================================================
 # PPI 프로덕션 (20K 모델, ~24-36시간)
 #
