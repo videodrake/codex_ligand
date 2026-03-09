@@ -1,0 +1,38 @@
+project_name: egfr_myo1d_vina
+output_root: ./output
+max_workers: 16
+mode: blind
+receptors:
+  - id: 3GT8_raw
+    source_type: raw_3GT8
+    pdb: input/3GT8_raw.pdb
+    pdbqt: input/3GT8_raw_receptor.pdbqt
+    chain: A
+  - id: 3GT8_cl38_48
+    source_type: md_cluster_38_48
+    pdb: input/3GT8_cl38_48.pdb
+    pdbqt: input/3GT8_cl38_48_receptor.pdbqt
+    chain: A
+  - id: 3GT8_cl85_100
+    source_type: md_cluster_85_100
+    pdb: input/3GT8_cl85_100.pdb
+    pdbqt: input/3GT8_cl85_100_receptor.pdbqt
+    chain: A
+ligands:
+  - id: ligand_a
+    pdbqt: input/ligand_a_ligand.pdbqt
+  - id: ligand_b
+    pdbqt: input/ligand_b_ligand.pdbqt
+vina:
+  mode: blind
+  exhaustiveness: 128
+  n_poses: 20
+  padding: 5.0
+  min_box: 70.0
+postprocess:
+  parse_results: false
+  extract_contacts: false
+  contact_cutoff: 4.0
+  cluster_pockets: false
+  pocket_cutoff: 4.0
+  summarize_pockets: false

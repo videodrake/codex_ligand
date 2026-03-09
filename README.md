@@ -1,5 +1,17 @@
 # PyRosetta PPI Global Blind Docking Pipeline
 
+## Vina Baseline Update
+
+- Current AutoDock Vina entry point: `run_docking.py`
+- Current Task Group scope in this repo update: Task Group 0 to Task Group 2 only
+- Current receptor set for project-level Vina config: `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100`
+- Default parallel worker target: `max_workers: 16`
+- Receptor execution remains sequential
+- Ligand execution is parallelized per receptor only
+- Pocket parsing, cross-receptor comparison, and report standardization are not expanded in this patch
+
+Project-level Vina example config is provided at `config/example-project.yaml`.
+
 PyRosetta 기반 **단백질-단백질 상호작용(PPI) Global Blind Docking** 자동화 파이프라인.
 2-chain PDB 구조를 입력받아 수천~수만 개의 도킹 모델을 생성하고, 다중 기준 필터링 및 L_RMSD 클러스터링을 거쳐 **후보 결합 사이트를 탐색**한다. 단일 최적 포즈 예측이 아닌, 단백질 표면 전체에서 가능한 결합 포켓을 발견하는 것이 목적이다.
 

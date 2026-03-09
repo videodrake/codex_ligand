@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import glob
 import json
 import os
@@ -23,6 +24,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -38,6 +40,11 @@ except ImportError:
 SCRIPT_DIR = Path(__file__).resolve().parent
 INPUT_DIR = SCRIPT_DIR / "input"
 OUTPUT_DIR = SCRIPT_DIR / "output"
+PROJECT_RECEPTOR_IDS = (
+    "3GT8_raw",
+    "3GT8_cl38_48",
+    "3GT8_cl85_100",
+)
 
 # ============================================================
 # Region 프리셋
@@ -77,6 +84,189 @@ def load_config(path: str) -> dict:
     else:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
+
+
+def is_project_config(config: dict) -> bool:
+    return isinstance(config.get("receptors"), list) and bool(config.get("receptors"))
+
+
+def validate_project_config(config: dict) -> None:
+    receptors = config.get("receptors")
+    ligands = config.get("ligands")
+    if not isinstance(receptors, list) or len(receptors) != 3:
+        raise ValueError("Project config must define exactly 3 receptors.")
+    if not isinstance(ligands, list) or not ligands:
+        raise ValueError("Project config must define at least 1 ligand.")
+
+    receptor_ids = [item.get("id") for item in receptors]
+    if set(receptor_ids) != set(PROJECT_RECEPTOR_IDS):
+        expected = ", ".join(PROJECT_RECEPTOR_IDS)
+        raise ValueError(f"Project config receptor ids must be exactly: {expected}")
+
+    for receptor in receptors:
+        if not receptor.get("pdbqt"):
+            raise ValueError(f"Missing receptor pdbqt path for {receptor.get('id')}")
+        pdbqt_path = Path(receptor["pdbqt"])
+        if not pdbqt_path.exists():
+            raise FileNotFoundError(f"Receptor pdbqt file not found: {pdbqt_path}")
+        pdb_path = receptor.get("pdb")
+        if pdb_path and not Path(pdb_path).exists():
+            raise FileNotFoundError(f"Receptor pdb file not found: {pdb_path}")
+
+    for ligand in ligands:
+        ligand_id = ligand.get("id")
+        ligand_path = ligand.get("pdbqt")
+        if not ligand_id or not ligand_path:
+            raise ValueError("Each ligand entry must include id and pdbqt.")
+        if not Path(ligand_path).exists():
+            raise FileNotFoundError(f"Ligand pdbqt file not found: {ligand_path}")
+
+
+def apply_config_to_args(args, config: dict):
+    vina_cfg = config.get("vina", {}) if isinstance(config.get("vina"), dict) else {}
+    postprocess_cfg = config.get("postprocess", {}) if isinstance(config.get("postprocess"), dict) else {}
+
+    if is_project_config(config):
+        validate_project_config(config)
+        args.project_name = config.get("project_name")
+        args.output_root = config.get("output_root")
+        args.max_workers = int(config.get("max_workers", getattr(args, "max_workers", 16)))
+        args.receptors = [entry["pdbqt"] for entry in config["receptors"]]
+        args.receptor_ids = {entry["pdbqt"]: entry["id"] for entry in config["receptors"]}
+        args.receptor_pdb_map = {
+            entry["pdbqt"]: entry.get("pdb") for entry in config["receptors"] if entry.get("pdb")
+        }
+        args.receptor_source_types = {
+            entry["pdbqt"]: entry.get("source_type") for entry in config["receptors"]
+        }
+        args.ligands = [entry["pdbqt"] for entry in config["ligands"]]
+        args.ligand_ids = {entry["pdbqt"]: entry["id"] for entry in config["ligands"]}
+    else:
+        if args.mode is None:
+            args.mode = config.get("mode")
+        if args.receptor is None:
+            args.receptor = config.get("receptor")
+        if args.receptor_pdb is None:
+            args.receptor_pdb = config.get("receptor_pdb")
+        if args.ligands is None:
+            args.ligands = config.get("ligands")
+        if args.center is None:
+            args.center = config.get("center")
+        if args.box_size is None:
+            args.box_size = config.get("box_size")
+        if args.region is None:
+            args.region = config.get("region")
+        if args.exclude_zone is None:
+            args.exclude_zone = config.get("exclude_zone")
+        if getattr(args, "n_pockets", None) is None:
+            args.n_pockets = config.get("n_pockets")
+
+    if args.mode is None:
+        args.mode = config.get("mode", vina_cfg.get("mode"))
+    if args.center is None:
+        args.center = config.get("center", vina_cfg.get("center"))
+    if args.box_size is None:
+        args.box_size = config.get("box_size", vina_cfg.get("box_size"))
+    if args.region is None:
+        args.region = config.get("region", vina_cfg.get("region"))
+    if args.exclude_zone is None:
+        args.exclude_zone = config.get("exclude_zone", config.get("exclude_zones"))
+    if getattr(args, "n_pockets", None) is None:
+        args.n_pockets = config.get("n_pockets", vina_cfg.get("n_pockets"))
+
+    args.max_per_pocket = config.get(
+        "max_per_pocket",
+        vina_cfg.get("max_per_pocket", getattr(args, "max_per_pocket", 3)),
+    )
+    args.cluster_radius = config.get(
+        "cluster_radius",
+        vina_cfg.get("cluster_radius", getattr(args, "cluster_radius", 5.0)),
+    )
+    args.exhaustiveness = config.get(
+        "exhaustiveness", vina_cfg.get("exhaustiveness", args.exhaustiveness)
+    )
+    args.n_poses = config.get("n_poses", vina_cfg.get("n_poses", args.n_poses))
+    args.padding = config.get("padding", vina_cfg.get("padding", args.padding))
+    args.min_box = config.get("min_box", vina_cfg.get("min_box", args.min_box))
+    args.max_workers = int(config.get("max_workers", getattr(args, "max_workers", 16)))
+    if getattr(args, "smiles", None) is None:
+        args.smiles = config.get("smiles")
+    args.parse_results = bool(postprocess_cfg.get("parse_results", getattr(args, "parse_results", False)))
+    args.extract_contacts = bool(postprocess_cfg.get("extract_contacts", getattr(args, "extract_contacts", False)))
+    args.contact_cutoff = float(postprocess_cfg.get("contact_cutoff", getattr(args, "contact_cutoff", 4.0)))
+    args.cluster_pockets = bool(postprocess_cfg.get("cluster_pockets", getattr(args, "cluster_pockets", False)))
+    args.pocket_cutoff = float(postprocess_cfg.get("pocket_cutoff", getattr(args, "pocket_cutoff", 4.0)))
+    args.summarize_pockets = bool(postprocess_cfg.get("summarize_pockets", getattr(args, "summarize_pockets", False)))
+    return args
+
+
+def resolve_receptor_id(args, receptor_path: Path) -> str:
+    receptor_map = getattr(args, "receptor_ids", {}) or {}
+    return receptor_map.get(str(receptor_path), receptor_path.stem.replace("_receptor", ""))
+
+
+def resolve_ligand_id(args, ligand_path: Path) -> str:
+    ligand_map = getattr(args, "ligand_ids", {}) or {}
+    return ligand_map.get(str(ligand_path), ligand_path.stem.replace("_ligand", ""))
+
+
+def resolve_receptor_pdb_override(args, receptor_path: Path) -> Optional[Path]:
+    receptor_pdb_map = getattr(args, "receptor_pdb_map", {}) or {}
+    pdb_path = receptor_pdb_map.get(str(receptor_path))
+    return Path(pdb_path) if pdb_path else None
+
+
+def build_receptor_output_dir(args, receptor_id: str) -> Optional[Path]:
+    output_root = getattr(args, "output_root", None)
+    if not output_root:
+        return None
+    base = Path(output_root)
+    project_name = getattr(args, "project_name", None)
+    if project_name:
+        base = base / project_name
+    return base / receptor_id
+
+
+def append_job_status(out_dir: Path, record: Dict[str, Any]) -> None:
+    status_path = out_dir / "job_status.tsv"
+    file_exists = status_path.exists()
+    with open(status_path, "a", encoding="utf-8") as handle:
+        if not file_exists:
+            handle.write("receptor_id\tligand_id\tstatus\toutput_file\terror\n")
+        handle.write(
+            f"{record['receptor_id']}\t{record['ligand_id']}\t{record['status']}\t"
+            f"{record['output_file']}\t{record.get('error', '')}\n"
+        )
+
+
+def execute_ligand_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        energies = run_docking(
+            job["receptor_path"],
+            job["ligand_path"],
+            job["output_file"],
+            job["center"],
+            job["box_size"],
+            job["exhaustiveness"],
+            job["n_poses"],
+        )
+        return {
+            "status": "ok",
+            "receptor_id": job["receptor_id"],
+            "ligand_id": job["ligand_id"],
+            "ligand_name": job["ligand_name"],
+            "output_file": str(job["output_file"]),
+            "energies": energies,
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "receptor_id": job["receptor_id"],
+            "ligand_id": job["ligand_id"],
+            "ligand_name": job["ligand_name"],
+            "output_file": str(job["output_file"]),
+            "error": str(exc),
+        }
 
 
 # ============================================================
@@ -1096,6 +1286,8 @@ def setup_output_dir(args) -> Path:
     config = {
         "mode": args.mode,
         "receptor": str(args.receptor),
+        "receptor_id": getattr(args, "receptor_id", None),
+        "receptor_source_type": getattr(args, "receptor_source_type", None),
         "receptor_pdb": str(args.receptor_pdb) if args.receptor_pdb else None,
         "ligands": [str(l) for l in args.ligands],
         "center": args.center,
@@ -1110,6 +1302,9 @@ def setup_output_dir(args) -> Path:
         "max_per_pocket": getattr(args, "max_per_pocket", 3),
         "cluster_radius": getattr(args, "cluster_radius", 5.0),
         "smiles": getattr(args, "smiles", None),
+        "project_name": getattr(args, "project_name", None),
+        "output_root": getattr(args, "output_root", None),
+        "max_workers": getattr(args, "max_workers", 16),
     }
     save_config(config, out_dir / "config.yaml")
 
@@ -1177,6 +1372,20 @@ Available regions: """ + ", ".join(REGION_PRESETS.keys()),
     # Config
     parser.add_argument("--config", type=str, default=None,
                         help="YAML/JSON config file (overrides other args)")
+    parser.add_argument("--max-workers", type=int, default=16,
+                        help="Maximum ligand workers per receptor (default: 16)")
+    parser.add_argument("--parse-results", action="store_true",
+                        help="Parse Vina outputs into vina_pose_table.csv after docking")
+    parser.add_argument("--extract-contacts", action="store_true",
+                        help="Extract receptor contact residues after pose parsing")
+    parser.add_argument("--contact-cutoff", type=float, default=4.0,
+                        help="Heavy-atom contact cutoff in Angstrom (default: 4.0)")
+    parser.add_argument("--cluster-pockets", action="store_true",
+                        help="Assign receptor-level pocket ids after pose parsing")
+    parser.add_argument("--pocket-cutoff", type=float, default=4.0,
+                        help="Pocket clustering cutoff in Angstrom (default: 4.0)")
+    parser.add_argument("--summarize-pockets", action="store_true",
+                        help="Generate vina_pocket_table.csv and vina_drug_pocket_map.csv")
 
     # Exclusion zone (수동)
     parser.add_argument("--exclude-zone", nargs=4, type=float, action="append",
@@ -1910,5 +2119,290 @@ def main():
         )
 
 
+def run_taskgroup12_main():
+    if len(sys.argv) == 1:
+        args = interactive_mode()
+    else:
+        args = parse_args()
+
+    if args.config:
+        config = load_config(args.config)
+        args = apply_config_to_args(args, config)
+
+    if args.mode is None:
+        print("[ERROR] --mode (blind/focused) is required")
+        sys.exit(1)
+
+    print("=" * 60)
+    print(f"  AutoDock Vina {args.mode.capitalize()} Docking Pipeline")
+    print(f"  exhaustiveness={args.exhaustiveness} | poses={args.n_poses} | max_workers={args.max_workers}")
+    print("=" * 60)
+
+    if hasattr(args, "smiles") and args.smiles:
+        print(f"\n[SMILES] Processing {len(args.smiles)} CLI SMILES entries...")
+        for i, smi in enumerate(args.smiles):
+            name = f"cli_smiles_{i}"
+            sdf_file = INPUT_DIR / f"{name}_ligand.sdf"
+            pdbqt_file = INPUT_DIR / f"{name}_ligand.pdbqt"
+            if not pdbqt_file.exists():
+                if not sdf_file.exists():
+                    smiles_to_sdf(smi, sdf_file, name)
+                if sdf_file.exists():
+                    prepare_ligand(sdf_file, pdbqt_file)
+        print()
+
+    preprocess_inputs(INPUT_DIR)
+    input_dir = INPUT_DIR
+
+    if hasattr(args, "receptors") and args.receptors:
+        all_receptors = [Path(r) for r in args.receptors]
+    elif args.receptor:
+        all_receptors = [Path(args.receptor)]
+    else:
+        all_receptors = auto_detect_receptor(input_dir)
+
+    if args.ligands:
+        args.ligands = [Path(l) for l in args.ligands]
+    else:
+        args.ligands = auto_detect_ligands(input_dir)
+
+    for lig in args.ligands:
+        if not lig.exists():
+            print(f"[ERROR] Ligand file not found: {lig}")
+            sys.exit(1)
+
+    if args.region:
+        preset = REGION_PRESETS[args.region]
+        args.center = preset["center"]
+        args.box_size = preset["box_size"]
+        print(f"[Region] {args.region}: {preset['description']}")
+
+    exclude_zones = getattr(args, "exclude_zone", None) or []
+    n_pockets_val = getattr(args, "n_pockets", None)
+    max_per_pocket = getattr(args, "max_per_pocket", 3)
+    c_radius = getattr(args, "cluster_radius", 5.0)
+
+    dock_n_poses = args.n_poses
+    if n_pockets_val:
+        min_needed = n_pockets_val * max_per_pocket * 5
+        dock_n_poses = max(args.n_poses, min_needed)
+
+    if len(all_receptors) > 1:
+        print(f"\n{'='*60}")
+        print(f"  Multi-receptor docking: {len(all_receptors)} x {len(args.ligands)} ligands")
+        print(f"{'='*60}")
+
+    for ri, receptor_path in enumerate(all_receptors):
+        if len(all_receptors) > 1:
+            print(f"\n{'#'*60}")
+            print(f"  Receptor [{ri+1}/{len(all_receptors)}]: {receptor_path.name}")
+            print(f"{'#'*60}")
+
+        args.receptor = receptor_path
+        receptor_id = resolve_receptor_id(args, receptor_path)
+        args.receptor_id = receptor_id
+        args.receptor_source_type = (getattr(args, "receptor_source_types", {}) or {}).get(str(receptor_path))
+
+        if not receptor_path.exists():
+            print(f"[ERROR] Receptor file not found: {receptor_path}")
+            continue
+
+        receptor_pdb = None
+        receptor_pdb_override = resolve_receptor_pdb_override(args, receptor_path)
+        if args.mode == "blind":
+            if receptor_pdb_override is not None:
+                receptor_pdb = receptor_pdb_override
+            elif args.receptor_pdb and len(all_receptors) == 1:
+                receptor_pdb = Path(args.receptor_pdb)
+            else:
+                receptor_pdb = auto_detect_receptor_pdb(receptor_path, input_dir)
+            if receptor_pdb is None:
+                print(f"[ERROR] Blind mode requires receptor PDB: {receptor_path.name}")
+                continue
+            center, box_size = calc_box_from_pdb(receptor_pdb, args.padding, args.min_box)
+            if "anp" in receptor_pdb.name.lower():
+                check_anp(receptor_pdb)
+        else:
+            if args.center is None:
+                print("[ERROR] Focused mode requires --center or --region")
+                sys.exit(1)
+            if args.box_size is None:
+                args.box_size = [30.0, 30.0, 30.0]
+            center = args.center
+            box_size = args.box_size
+            if receptor_pdb_override is not None:
+                receptor_pdb = receptor_pdb_override
+            elif args.receptor_pdb and len(all_receptors) == 1:
+                receptor_pdb = Path(args.receptor_pdb)
+            else:
+                stem = receptor_path.name.replace("_receptor.pdbqt", "")
+                pdb_cand = input_dir / f"{stem}.pdb"
+                if pdb_cand.exists():
+                    receptor_pdb = pdb_cand
+            if receptor_pdb and "anp" in receptor_pdb.name.lower():
+                check_anp(receptor_pdb)
+
+        if args.prepare_receptor and ri == 0:
+            if receptor_pdb is None:
+                receptor_pdb = auto_detect_receptor_pdb(receptor_path, input_dir)
+            if receptor_pdb is None:
+                print("[ERROR] --prepare-receptor requires receptor PDB")
+                continue
+            pdbqt_out = input_dir / (receptor_pdb.stem + "_receptor.pdbqt")
+            if not prepare_receptor(receptor_pdb, pdbqt_out):
+                print(f"[ERROR] Receptor preparation failed: {receptor_pdb}")
+                continue
+            args.receptor = pdbqt_out
+            receptor_path = pdbqt_out
+
+        args.receptor_pdb = str(receptor_pdb) if receptor_pdb else None
+        receptor_output_dir = build_receptor_output_dir(args, receptor_id)
+        args.output_dir = str(receptor_output_dir) if receptor_output_dir else None
+        args.label = receptor_id
+        out_dir = setup_output_dir(args)
+
+        ligand_jobs: List[Dict[str, Any]] = []
+        for lig_path in args.ligands:
+            lig_name = lig_path.name.replace("_ligand.pdbqt", "")
+            ligand_id = resolve_ligand_id(args, lig_path)
+            output_file = out_dir / f"{lig_name}_{args.mode}.pdbqt"
+            ligand_jobs.append({
+                "receptor_id": receptor_id,
+                "ligand_id": ligand_id,
+                "ligand_name": lig_name,
+                "receptor_path": receptor_path,
+                "ligand_path": lig_path,
+                "output_file": output_file,
+                "center": center,
+                "box_size": box_size,
+                "exhaustiveness": args.exhaustiveness,
+                "n_poses": dock_n_poses,
+            })
+
+        worker_count = min(args.max_workers, max(len(ligand_jobs), 1))
+        print(f"\n[Dispatch] receptor={receptor_id} ligands={len(ligand_jobs)} workers={worker_count}")
+
+        if len(ligand_jobs) == 1 or worker_count <= 1:
+            job_results = [execute_ligand_job(job) for job in ligand_jobs]
+        else:
+            job_results = []
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                future_map = {executor.submit(execute_ligand_job, job): job for job in ligand_jobs}
+                for future in as_completed(future_map):
+                    job_results.append(future.result())
+
+        all_results = {}
+        for result in job_results:
+            append_job_status(out_dir, result)
+            if result["status"] != "ok":
+                print(
+                    f"[ERROR] receptor={result['receptor_id']} ligand={result['ligand_id']} "
+                    f"output={result['output_file']} error={result['error']}"
+                )
+                continue
+
+            lig_name = result["ligand_name"]
+            output_file = Path(result["output_file"])
+            energies = result["energies"]
+            print(f"\n>>> receptor={result['receptor_id']} ligand={result['ligand_id']} output={output_file.name}")
+            all_results[lig_name] = energies
+            print_results(lig_name, args.mode, energies, center, box_size, display_n=args.n_poses)
+
+            if n_pockets_val:
+                print(f"\n[Pocket Discovery] {lig_name} pocket scan...")
+                poses = parse_poses(output_file)
+                pockets = discover_pockets(
+                    poses, cluster_radius=c_radius,
+                    max_per_pocket=max_per_pocket, n_pockets=n_pockets_val)
+
+                completed_pockets = [p for p in pockets if p["closed"]]
+                partial_pockets = [p for p in pockets if not p["closed"]]
+                save_pockets_info(pockets, poses, energies, lig_name, out_dir)
+
+                best_poses = []
+                for pocket in completed_pockets:
+                    best_idx = pocket["pose_indices"][0]
+                    best_poses.append(poses[best_idx])
+
+                if best_poses:
+                    pockets_file = out_dir / f"{lig_name}_{args.mode}_pockets.pdbqt"
+                    write_filtered_poses(best_poses, pockets_file)
+                    print(f"  Saved best pocket poses: {pockets_file.name} ({len(best_poses)})")
+
+                all_pocket_poses = []
+                for pocket in completed_pockets:
+                    for idx in pocket["pose_indices"]:
+                        all_pocket_poses.append(poses[idx])
+                if all_pocket_poses:
+                    all_file = out_dir / f"{lig_name}_{args.mode}_all_pockets.pdbqt"
+                    write_filtered_poses(all_pocket_poses, all_file)
+                    print(f"  Saved all completed pocket poses: {all_file.name} ({len(all_pocket_poses)})")
+
+                if partial_pockets:
+                    partial_poses = []
+                    for pocket in partial_pockets:
+                        best_idx = pocket["pose_indices"][0]
+                        partial_poses.append(poses[best_idx])
+                    partial_file = out_dir / f"{lig_name}_{args.mode}_partial_pockets.pdbqt"
+                    write_filtered_poses(partial_poses, partial_file)
+                    print(f"  Saved partial pocket poses: {partial_file.name} ({len(partial_poses)})")
+
+            elif exclude_zones:
+                print(f"\n[Filter] {lig_name} exclusion filtering...")
+                poses = parse_poses(output_file)
+                filtered = filter_poses_by_exclusion(poses, exclude_zones)
+                if filtered:
+                    filtered_file = out_dir / f"{lig_name}_{args.mode}_filtered.pdbqt"
+                    write_filtered_poses(filtered, filtered_file)
+                    print(f"  Saved filtered poses: {filtered_file.name} ({len(filtered)})")
+
+        if all_results:
+            print_summary(all_results, out_dir)
+        else:
+            print(f"[WARNING] No successful docking results for receptor={receptor_id}")
+
+        style_pml = find_style_pml(INPUT_DIR, receptor_path)
+        ligand_outputs = {name: out_dir / f"{name}_{args.mode}.pdbqt" for name in all_results}
+        if ligand_outputs:
+            r_pdb = receptor_pdb if receptor_pdb else receptor_path
+            generate_pymol_script(
+                out_dir, r_pdb, receptor_path,
+                ligand_outputs, args.mode, style_pml,
+            )
+
+    if args.config and args.parse_results:
+        from parse_vina_results import build_pose_table_from_config
+
+        pose_table = build_pose_table_from_config(args.config)
+        print(f"[Parse] Wrote pose table: {pose_table}")
+
+        if args.extract_contacts:
+            from extract_contacts import enrich_pose_table_with_contacts
+
+            pose_table = enrich_pose_table_with_contacts(
+                args.config,
+                str(pose_table),
+                args.contact_cutoff,
+            )
+            print(f"[Contacts] Updated pose table: {pose_table}")
+
+        if args.cluster_pockets:
+            from cluster_pockets import cluster_pose_table
+
+            pose_table = cluster_pose_table(
+                args.config,
+                str(pose_table),
+                args.pocket_cutoff,
+            )
+            print(f"[Cluster] Updated pose table with pocket ids: {pose_table}")
+
+        if args.summarize_pockets:
+            from summarize_pockets import summarize_from_config
+
+            pocket_csv, drug_csv = summarize_from_config(args.config, str(pose_table))
+            print(f"[Summary] Wrote pocket table: {pocket_csv}")
+            print(f"[Summary] Wrote drug pocket map: {drug_csv}")
+
+
 if __name__ == "__main__":
-    main()
+    run_taskgroup12_main()

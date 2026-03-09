@@ -1,0 +1,10 @@
+MODEL 1
+REMARK VINA RESULT:      -8.1      0.0      0.0
+ATOM      1  C1  LIG X   1      22.700  20.900  20.500  0.00  0.00    +0.000 C
+ATOM      2  C2  LIG X   1      22.900  21.100  20.700  0.00  0.00    +0.000 C
+ENDMDL
+MODEL 2
+REMARK VINA RESULT:      -6.5      2.0      2.5
+ATOM      1  C1  LIG X   1      35.000  35.000  35.000  0.00  0.00    +0.000 C
+ATOM      2  C2  LIG X   1      35.300  35.100  35.200  0.00  0.00    +0.000 C
+ENDMDL
