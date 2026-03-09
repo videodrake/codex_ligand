@@ -1,0 +1,5 @@
+Rank,Parent,dG_separated,dSASA,sc_value,packstat,L_RMSD,Binding_Residues_A,Binding_Residues_B,File_PDB,File_CSV
+1,C01_M01,-18.45,1250.3,0.72,0.68,12.3,"A:LEU819,A:ALA822,A:VAL843,A:HIS850,A:MET971","B:ARG120,B:LYS125",mock1.pdb,mock1_Energies.csv
+2,C01_M02,-16.20,1100.5,0.68,0.65,13.1,"A:LEU819,A:VAL843,A:HIS850,A:GLU848","B:ARG120,B:ASP130",mock2.pdb,mock2_Energies.csv
+3,C02_M01,-14.80,980.2,0.65,0.62,25.7,"A:PRO699,A:ASN700,A:ALA701,A:LEU819","B:THR200,B:SER205",mock3.pdb,mock3_Energies.csv
+4,C03_M01,-12.10,850.1,0.61,0.58,35.2,"A:MET971,A:HIS850,A:GLU848,A:LYS960","B:VAL300,B:LEU305",mock4.pdb,mock4_Energies.csv

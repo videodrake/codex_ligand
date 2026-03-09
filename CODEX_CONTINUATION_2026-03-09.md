@@ -11,10 +11,12 @@ Implemented scope:
 - Task Group 2: receptor-sequential / ligand-parallel dispatch with configurable `max_workers`
 - Task Group 3: pose parsing and receptor contact extraction
 - Task Group 4: receptor-level pocket clustering and pocket summarization
+- Task Group 5: cross-receptor pocket comparison (`compare_pockets.py`)
+- Task Group 6: PPI output standardization (`extract_ppi_residues.py`)
+- Task Group 7: reporting and manual review exports (`generate_report.py`)
+- Task Group 8: validation, regression checks, and handoff readiness (`validate_outputs.py`)
 
-Not implemented yet:
-- Task Group 5: cross-receptor pocket comparison
-- report generation beyond existing README notes
+All planned Task Groups (0-8) are complete. Remaining:
 - production Vina runtime validation on the real Ubuntu server
 
 ## Files Added Or Updated
@@ -29,6 +31,20 @@ Task Group 1-4 modules added:
 - `extract_contacts.py`
 - `cluster_pockets.py`
 - `summarize_pockets.py`
+
+Task Group 5 module added:
+- `compare_pockets.py`
+
+Task Group 6 module added:
+- `extract_ppi_residues.py`
+- Mock PyRosetta data: `smoke_test/mock_pyrosetta/3GT8_raw/`
+
+Task Group 7 module added:
+- `generate_report.py`
+
+Task Group 8 module added:
+- `validate_outputs.py`
+- `smoke_test/config_real_pdbs.yaml` (validation config with real PDB paths)
 
 Local smoke-test assets added:
 - `smoke_test/config.yaml`
@@ -113,6 +129,36 @@ Notes:
 - `alternative_pockets`
 - `is_multimodal_binding`
 
+### `vina_pocket_comparison.csv` (Task Group 5)
+- `receptor_a`, `pocket_a`, `receptor_b`, `pocket_b`
+- `centroid_dist` — pocket centroid distance in Angstrom
+- `residue_jaccard` — Jaccard similarity of union_contact_residues (normalized)
+- `residue_overlap_coeff` — overlap coefficient (lenient when pocket sizes differ)
+- `shared_residues`, `n_shared_residues`
+- `residues_only_a`, `residues_only_b`
+- `n_residues_a`, `n_residues_b`
+- `shared_ligands`, `n_shared_ligands`, `n_ligands_a`, `n_ligands_b`
+- `affinity_a`, `affinity_b`, `n_pose_a`, `n_pose_b`
+- `same_patch_candidate` — auxiliary flag (centroid < 8 A AND jaccard >= 0.3 OR overlap >= 0.5)
+
+### `ppi_pyrosetta_residues.csv` (Task Group 6)
+- `receptor_id`, `source` (= "pyrosetta_ppi")
+- `residue_id` — normalized (chain stripped, CHARMM names converted)
+- `residue_num`
+- `frequency_final_ranking` — how many final models contact this residue
+- `frequency_cluster_summary` — how many cluster representatives contact it
+- `n_models_final_ranking`
+- `occupancy` — frequency / n_models
+- `mean_interface_delta_e`, `best_interface_delta_e` — from InterfaceEnergies CSVs if available
+
+### `ppi_pyrosetta_summary.csv` (Task Group 6)
+- `receptor_id`, `source`, `n_final_models`, `n_clusters`, `n_interface_residues`
+- `top_residues`, `best_dg`, `mean_dg`, `best_dsasa`
+
+### `ppi_afm_residues.csv` (Task Group 6, stub)
+- `receptor_id`, `source` (= "alphafold_multimer")
+- `residue_id`, `residue_num`, `min_ca_distance`
+
 ## Current Rules
 
 - Receptors are limited to exactly three IDs in project config:
@@ -136,19 +182,20 @@ Notes:
 
 ## Recommended Next Work Item
 
-Before Task Group 5:
-- wire the real input files into a project config
-- establish the SDF -> PDBQT preparation path on Ubuntu
-- verify pose parsing, contacts, clustering, and summary outputs on a small real sample
-- verify residue numbering consistency across the three receptor PDBs
+All Task Groups (0-8) are complete. Deployment steps:
 
-After that, begin Task Group 5:
-- `compare_pockets.py`
-- raw cross-receptor metrics only first
-- no premature report layer
+1. Wire real input files into project config on Ubuntu
+2. Establish SDF -> PDBQT preparation path (obabel or mk_prepare_ligand)
+3. Install/expose Vina runtime
+4. Run full end-to-end with real data: Vina docking → TG3-7 postprocess → TG8 validation
+5. Point ppi.pyrosetta_result_dirs at actual PyRosetta output directories
+6. Point ppi.afm_models at actual AlphaFold-Multimer model PDBs (when available)
+7. Run `python validate_outputs.py --config <config> --repo-root .` to verify everything
+
+Residue numbering note: residue numbers are consistent across receptors (699-1007 overlap), chain IDs differ (A/B vs X), CHARMM names (HSD→HIS) normalized in compare_pockets.py and extract_ppi_residues.py. validate_outputs.py detects and warns about chain ID differences.
 
 ## Resume Prompt
 
 Use this prompt in the next Codex environment:
 
-`Read README.md and CODEX_CONTINUATION_2026-03-09.md first, then continue from Task Group 4 completion state. Do not redo Tasks 1-4. First wire the real receptor/ligand inputs from smoke_test/input/original or their moved Ubuntu equivalents into a project config, set up the actual Vina/SDF->PDBQT execution path on Ubuntu, run a small functional validation, and only then proceed toward Task Group 5.`
+`Read README.md and CODEX_CONTINUATION_2026-03-09.md first. All Task Groups 0-8 are complete. Deploy on Ubuntu: wire real inputs, set up Vina runtime, run end-to-end, then validate with validate_outputs.py.`

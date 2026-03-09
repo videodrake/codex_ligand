@@ -3,12 +3,15 @@
 ## Vina Baseline Update
 
 - Current AutoDock Vina entry point: `run_docking.py`
-- Current Task Group scope in this repo update: Task Group 0 to Task Group 2 only
+- Current Task Group scope in this repo update: Task Group 0 through Task Group 8 (all complete)
 - Current receptor set for project-level Vina config: `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100`
 - Default parallel worker target: `max_workers: 16`
 - Receptor execution remains sequential
 - Ligand execution is parallelized per receptor only
-- Pocket parsing, cross-receptor comparison, and report standardization are not expanded in this patch
+- Cross-receptor pocket comparison available via `compare_pockets.py` (Task Group 5)
+- PPI residue standardization via `extract_ppi_residues.py` (Task Group 6): PyRosetta + AlphaFold-Multimer
+- Project report generation via `generate_report.py` (Task Group 7): combined evidence summary
+- Output validation via `validate_outputs.py` (Task Group 8): schema regression, ID consistency, residue numbering, handoff readiness
 
 Project-level Vina example config is provided at `config/example-project.yaml`.
 

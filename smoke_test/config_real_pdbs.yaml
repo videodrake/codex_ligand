@@ -5,17 +5,17 @@ mode: blind
 receptors:
   - id: 3GT8_raw
     source_type: raw_3GT8
-    pdb: smoke_test/input/3GT8_raw.pdb
+    pdb: smoke_test/input/original/3gt8_dimer_anp.pdb
     pdbqt: smoke_test/input/3GT8_raw_receptor.pdbqt
     chain: A
   - id: 3GT8_cl38_48
     source_type: md_cluster_38_48
-    pdb: smoke_test/input/3GT8_cl38_48.pdb
+    pdb: smoke_test/input/original/-10_38-48.pdb
     pdbqt: smoke_test/input/3GT8_cl38_48_receptor.pdbqt
     chain: A
   - id: 3GT8_cl85_100
     source_type: md_cluster_85_100
-    pdb: smoke_test/input/3GT8_cl85_100.pdb
+    pdb: smoke_test/input/original/-10_85-100.pdb
     pdbqt: smoke_test/input/3GT8_cl85_100_receptor.pdbqt
     chain: A
 ligands:
@@ -34,10 +34,3 @@ postprocess:
   comparison_centroid_cutoff: 15.0
   extract_ppi_residues: false
   generate_report: false
-ppi:
-  pyrosetta_result_dirs: {}
-  afm_models: {}
-  afm_settings:
-    receptor_chain: A
-    partner_chain: B
-    contact_cutoff: 8.0

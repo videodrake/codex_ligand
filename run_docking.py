@@ -197,6 +197,11 @@ def apply_config_to_args(args, config: dict):
     args.cluster_pockets = bool(postprocess_cfg.get("cluster_pockets", getattr(args, "cluster_pockets", False)))
     args.pocket_cutoff = float(postprocess_cfg.get("pocket_cutoff", getattr(args, "pocket_cutoff", 4.0)))
     args.summarize_pockets = bool(postprocess_cfg.get("summarize_pockets", getattr(args, "summarize_pockets", False)))
+    args.compare_pockets = bool(postprocess_cfg.get("compare_pockets", getattr(args, "compare_pockets", False)))
+    args.comparison_centroid_cutoff = float(postprocess_cfg.get("comparison_centroid_cutoff", getattr(args, "comparison_centroid_cutoff", 15.0)))
+    args.extract_ppi_residues = bool(postprocess_cfg.get("extract_ppi_residues", getattr(args, "extract_ppi_residues", False)))
+    args.generate_report = bool(postprocess_cfg.get("generate_report", getattr(args, "generate_report", False)))
+    args.validate_outputs = bool(postprocess_cfg.get("validate_outputs", getattr(args, "validate_outputs", False)))
     return args
 
 
@@ -2402,6 +2407,44 @@ def run_taskgroup12_main():
             pocket_csv, drug_csv = summarize_from_config(args.config, str(pose_table))
             print(f"[Summary] Wrote pocket table: {pocket_csv}")
             print(f"[Summary] Wrote drug pocket map: {drug_csv}")
+
+        if args.compare_pockets:
+            from compare_pockets import compare_from_config
+
+            comparison_csv = compare_from_config(
+                args.config,
+                centroid_cutoff=args.comparison_centroid_cutoff,
+            )
+            print(f"[Compare] Wrote pocket comparison: {comparison_csv}")
+
+        if args.extract_ppi_residues:
+            from extract_ppi_residues import extract_pyrosetta_batch, extract_afm_batch
+
+            try:
+                r, s = extract_pyrosetta_batch(args.config)
+                print(f"[PPI] PyRosetta residues: {r}")
+                print(f"[PPI] PyRosetta summary: {s}")
+            except Exception as e:
+                print(f"[PPI] PyRosetta extraction skipped: {e}")
+            try:
+                r, s = extract_afm_batch(args.config)
+                print(f"[PPI] AFM residues: {r}")
+                print(f"[PPI] AFM summary: {s}")
+            except Exception as e:
+                print(f"[PPI] AFM extraction skipped: {e}")
+
+        if args.generate_report:
+            from generate_report import generate_report
+
+            report_path, combined_csv = generate_report(args.config)
+            print(f"[Report] Project report: {report_path}")
+            print(f"[Report] Combined residue evidence: {combined_csv}")
+
+        if args.validate_outputs:
+            from validate_outputs import run_validation
+
+            vresult = run_validation(args.config)
+            print(vresult.summary())
 
 
 if __name__ == "__main__":

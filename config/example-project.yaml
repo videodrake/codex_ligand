@@ -36,3 +36,20 @@ postprocess:
   cluster_pockets: false
   pocket_cutoff: 4.0
   summarize_pockets: false
+  compare_pockets: false
+  comparison_centroid_cutoff: 15.0
+  extract_ppi_residues: false
+  generate_report: false
+ppi:
+  pyrosetta_result_dirs:
+    # 3GT8_raw: /path/to/3GT8_raw/pyrosetta_results
+    # 3GT8_cl38_48: /path/to/cl38_48/pyrosetta_results
+    # 3GT8_cl85_100: /path/to/cl85_100/pyrosetta_results
+  afm_models:
+    # 3GT8_raw: /path/to/afm_model_3GT8_raw.pdb
+    # 3GT8_cl38_48: /path/to/afm_model_cl38_48.pdb
+    # 3GT8_cl85_100: /path/to/afm_model_cl85_100.pdb
+  afm_settings:
+    receptor_chain: A
+    partner_chain: B
+    contact_cutoff: 8.0
