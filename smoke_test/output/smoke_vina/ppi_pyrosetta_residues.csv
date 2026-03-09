@@ -1,0 +1,11 @@
+receptor_id,source,residue_id,residue_num,frequency_final_ranking,frequency_cluster_summary,n_models_final_ranking,occupancy,mean_interface_delta_e,best_interface_delta_e
+3GT8_raw,pyrosetta_ppi,PRO699,699,1,1,4,0.25,,
+3GT8_raw,pyrosetta_ppi,ASN700,700,1,1,4,0.25,,
+3GT8_raw,pyrosetta_ppi,ALA701,701,1,1,4,0.25,,
+3GT8_raw,pyrosetta_ppi,LEU819,819,3,2,4,0.75,,
+3GT8_raw,pyrosetta_ppi,ALA822,822,1,1,4,0.25,,
+3GT8_raw,pyrosetta_ppi,VAL843,843,2,1,4,0.5,,
+3GT8_raw,pyrosetta_ppi,GLU848,848,2,1,4,0.5,,
+3GT8_raw,pyrosetta_ppi,HIS850,850,3,2,4,0.75,,
+3GT8_raw,pyrosetta_ppi,LYS960,960,1,1,4,0.25,,
+3GT8_raw,pyrosetta_ppi,MET971,971,2,2,4,0.5,,

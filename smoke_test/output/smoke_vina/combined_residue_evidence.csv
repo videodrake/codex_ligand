@@ -1,0 +1,16 @@
+receptor_id,residue_id,vina_pockets,n_vina_pockets,ppi_occupancy,ppi_frequency,ppi_delta_e,evidence_sources
+3GT8_cl38_48,HIS972,P001,1,,,,vina
+3GT8_cl38_48,MET971,P001,1,,,,vina
+3GT8_cl85_100,HIS972,P001,1,,,,vina
+3GT8_cl85_100,MET971,P001,1,,,,vina
+3GT8_raw,ALA701,,0,0.25,1,,ppi
+3GT8_raw,ALA822,,0,0.25,1,,ppi
+3GT8_raw,ASN700,,0,0.25,1,,ppi
+3GT8_raw,GLU848,,0,0.5,2,,ppi
+3GT8_raw,HIS850,,0,0.75,3,,ppi
+3GT8_raw,HIS972,P001,1,,,,vina
+3GT8_raw,LEU819,,0,0.75,3,,ppi
+3GT8_raw,LYS960,,0,0.25,1,,ppi
+3GT8_raw,MET971,P001,1,0.5,2,,vina+ppi
+3GT8_raw,PRO699,,0,0.25,1,,ppi
+3GT8_raw,VAL843,,0,0.5,2,,ppi
