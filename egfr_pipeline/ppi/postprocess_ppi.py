@@ -136,8 +136,10 @@ def _update_config_ppi_dir(
     from egfr_pipeline.config import load_config, save_config
 
     config = load_config(config_path)
-    ppi = config.setdefault("ppi", {})
-    dirs = ppi.setdefault("pyrosetta_result_dirs", {})
+    ppi = config.get("ppi") or {}
+    config["ppi"] = ppi
+    dirs = ppi.get("pyrosetta_result_dirs") or {}
+    ppi["pyrosetta_result_dirs"] = dirs
 
     existing = dirs.get(receptor_id, [])
     # Migrate legacy string format to list

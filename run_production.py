@@ -299,9 +299,8 @@ def phase2_ppi():
         print(f"  Config: {config_ini}")
         print(f"  Input:  {pdb_path}")
 
-        from egfr_pipeline.pyrosetta_docking.pipeline_manager import main as ppi_main
-        sys.argv = ["pipeline_manager", config_ini, str(pdb_path)]
-        ppi_main()
+        from egfr_pipeline.pyrosetta_docking.pipeline_manager import PipelineManager
+        PipelineManager(config_ini, str(pdb_path)).execute()
 
 
 def phase3_ppi_postprocess():
