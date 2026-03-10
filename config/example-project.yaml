@@ -30,8 +30,8 @@ ligands:
     pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
 vina:
   mode: blind
-  exhaustiveness: 128
-  n_poses: 20
+  exhaustiveness: 256
+  n_poses: 50
   padding: 5.0
   min_box: 70.0
 postprocess:
