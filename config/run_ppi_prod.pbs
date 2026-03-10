@@ -40,14 +40,14 @@ if [ "$RUN_MODE" = "both" ]; then
     echo "--------------------------------------------"
     python -m egfr_pipeline.pyrosetta_docking.pipeline_manager \
         config/ppi_prod_beta_meander.ini \
-        input/PPI/prepared/EGFR_dimer_beta_meander.pdb
+        input/PPI/prepared/EGFR_dimer_beta_meander_wt.pdb
 
     echo ""
     echo "[2/2] TH1 domain (production)"
     echo "--------------------------------------------"
     python -m egfr_pipeline.pyrosetta_docking.pipeline_manager \
         config/ppi_prod_TH1.ini \
-        input/PPI/prepared/EGFR_dimer_TH1.pdb
+        input/PPI/prepared/EGFR_dimer_TH1_wt.pdb
 else
     python -m egfr_pipeline.pyrosetta_docking.pipeline_manager \
         "$CONFIG_FILE"
