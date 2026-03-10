@@ -6,17 +6,19 @@
 
 ## 0. 환경 준비
 
+기존 conda 환경 `pyrosetta`를 사용한다:
+
 ```bash
 cd ~/codex_ligand
-python -m venv .venv
-source .venv/bin/activate
-pip install pyyaml numpy pandas scipy matplotlib
+conda activate pyrosetta
+pip install pyyaml numpy pandas scipy matplotlib   # 없으면 설치
 ```
 
 추가 (선택):
 - **Vina 도킹**: `pip install vina rdkit` + AutoDock Vina 바이너리
-- **PyRosetta PPI**: `conda install pyrosetta` (HPC 서버)
 - **MD 분석**: `pip install MDAnalysis`
+
+> PyRosetta는 `pyrosetta` 환경에 이미 설치되어 있다.
 
 ---
 
@@ -239,13 +241,13 @@ python main.py full -c config/my-project.yaml
 
 ```bash
 # 전체 테스트 (54개, ~1초)
-.venv/bin/pytest tests/ -v
+pytest tests/ -v
 
 # 특정 테스트만
-.venv/bin/pytest tests/ -k afm          # AFM 통합 테스트
-.venv/bin/pytest tests/ -k bootstrap     # Bootstrap 테스트
-.venv/bin/pytest tests/ -k e2e           # End-to-end 테스트
-.venv/bin/pytest tests/ -k schema        # 스키마 일치
+pytest tests/ -k afm          # AFM 통합 테스트
+pytest tests/ -k bootstrap     # Bootstrap 테스트
+pytest tests/ -k e2e           # End-to-end 테스트
+pytest tests/ -k schema        # 스키마 일치
 ```
 
 ---
