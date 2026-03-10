@@ -1900,6 +1900,7 @@ def main():
         print()
 
     # ── Receptor / Ligand 감지 ──
+    input_dir = INPUT_DIR
     # Project config 모드: config에서 경로 직접 지정 → auto-detect 불필요
     if hasattr(args, "receptors") and args.receptors:
         all_receptors = [Path(r) for r in args.receptors]

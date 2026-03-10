@@ -248,7 +248,7 @@ def step6_validate(config_path: str):
     """출력 검증."""
     from egfr_pipeline.validate import run_validation
     result = run_validation(config_path, repo_root=str(REPO_ROOT))
-    result.print_summary()
+    print(result.summary())
     return result
 
 

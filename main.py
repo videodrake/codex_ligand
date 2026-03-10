@@ -507,7 +507,7 @@ def run_validate(config_path: str = None):
 
     repo_root = ask_input("Repository root", str(REPO_ROOT))
     result = run_validation(config_path, repo_root=repo_root)
-    result.print_summary()
+    print(result.summary())
     return result
 
 
@@ -646,7 +646,7 @@ def run_full(config_path: str = None):
     print("━" * 40)
     from egfr_pipeline.validate import run_validation
     result = run_validation(config_path, repo_root=str(REPO_ROOT))
-    result.print_summary()
+    print(result.summary())
 
 
 # ---------------------------------------------------------------------------
