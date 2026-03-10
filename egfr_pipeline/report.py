@@ -208,12 +208,15 @@ def format_ppi_section(
 def format_combined_residue_table(
     pocket_rows: List[dict],
     pyrosetta_residues: List[dict],
+    afm_residues: Optional[List[dict]] = None,
 ) -> List[dict]:
-    """Build a combined residue evidence table: Vina pocket residues + PPI occupancy.
+    """Build a combined residue evidence table: Vina pocket residues + PPI + AFM.
 
     This allows direct comparison of which residues are highlighted by
-    both Vina docking and PPI analysis.
+    Vina docking, PyRosetta PPI analysis, and AlphaFold-Multimer.
     """
+    afm_residues = afm_residues or []
+
     # Collect Vina pocket residues per receptor
     vina_residues: Dict[str, Dict[str, dict]] = defaultdict(dict)
     for pocket in pocket_rows:
@@ -244,16 +247,28 @@ def format_combined_residue_table(
     for r in pyrosetta_residues:
         ppi_by_receptor[r["receptor_id"]][r["residue_id"]] = r
 
+    # Index AFM data
+    afm_by_receptor: Dict[str, Dict[str, dict]] = defaultdict(dict)
+    for r in afm_residues:
+        afm_by_receptor[r["receptor_id"]][r["residue_id"]] = r
+
     # Build combined rows
-    all_receptors = sorted(set(list(vina_residues.keys()) + list(ppi_by_receptor.keys())))
+    all_receptors = sorted(set(
+        list(vina_residues.keys()) +
+        list(ppi_by_receptor.keys()) +
+        list(afm_by_receptor.keys())
+    ))
     combined = []
     for rec in all_receptors:
-        all_res = sorted(
-            set(list(vina_residues.get(rec, {}).keys()) + list(ppi_by_receptor.get(rec, {}).keys()))
-        )
+        all_res = sorted(set(
+            list(vina_residues.get(rec, {}).keys()) +
+            list(ppi_by_receptor.get(rec, {}).keys()) +
+            list(afm_by_receptor.get(rec, {}).keys())
+        ))
         for res in all_res:
             v = vina_residues.get(rec, {}).get(res, {})
             p = ppi_by_receptor.get(rec, {}).get(res, {})
+            a = afm_by_receptor.get(rec, {}).get(res, {})
             combined.append({
                 "receptor_id": rec,
                 "residue_id": res,
@@ -266,6 +281,7 @@ def format_combined_residue_table(
                     s for s in [
                         "vina" if v else "",
                         "ppi" if p else "",
+                        "afm" if a else "",
                     ] if s
                 ),
             })
@@ -466,7 +482,7 @@ def generate_report(
     report_path.write_text(report_text, encoding="utf-8")
 
     # --- Combined residue evidence table ---
-    combined = format_combined_residue_table(pocket_rows, pyrosetta_residues)
+    combined = format_combined_residue_table(pocket_rows, pyrosetta_residues, afm_residues)
     combined_csv = out_root / "combined_residue_evidence.csv"
     if combined:
         with open(combined_csv, "w", newline="", encoding="utf-8") as f:

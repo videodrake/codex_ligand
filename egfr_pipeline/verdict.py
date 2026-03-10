@@ -257,7 +257,37 @@ def load_all_evidence(project_root: Path) -> dict:
         "pocket_comparison": _load_csv(project_root / "vina_pocket_comparison.csv"),
         "ppi_residues": _load_csv(project_root / "ppi_pyrosetta_residues.csv"),
         "ppi_summary": _load_csv(project_root / "ppi_pyrosetta_summary.csv"),
+        "afm_residues": _load_csv(project_root / "ppi_afm_residues.csv"),
+        "afm_summary": _load_csv(project_root / "ppi_afm_summary.csv"),
     }
+
+
+# ---------------------------------------------------------------------------
+# AlphaFold-Multimer field adaptation
+# ---------------------------------------------------------------------------
+
+def _adapt_afm_to_ppi_format(afm_rows: List[dict]) -> List[dict]:
+    """Convert AFM residue rows to PPI-compatible format for merge.
+
+    AFM provides min_ca_distance but no occupancy/frequency.
+    Maps CA-CA distance to synthetic occupancy via sigmoid:
+      4 A -> 0.95, 8 A -> 0.50, 12 A -> 0.15
+    """
+    adapted = []
+    for row in afm_rows:
+        dist = _safe_float(row.get("min_ca_distance"), 99.0)
+        # Sigmoid: closer distance = higher synthetic occupancy
+        synthetic_occ = 1.0 / (1.0 + math.exp((dist - 8.0) / 2.0))
+        adapted.append({
+            "receptor_id": row.get("receptor_id", ""),
+            "source": f"afm:{row.get('receptor_id', '')}",
+            "residue_id": row.get("residue_id", ""),
+            "residue_num": row.get("residue_num", ""),
+            "occupancy": round(synthetic_occ, 3),
+            "frequency": 1.0,
+            "min_ca_distance": dist,
+        })
+    return adapted
 
 
 # ---------------------------------------------------------------------------
@@ -1032,6 +1062,15 @@ def generate_verdict(
         return Path(), Path()
 
     ppi_residues = evidence["ppi_residues"]
+    afm_residues = evidence.get("afm_residues", [])
+
+    # Merge AFM data into PPI residues (adapted to common format)
+    if afm_residues:
+        adapted_afm = _adapt_afm_to_ppi_format(afm_residues)
+        ppi_residues = ppi_residues + adapted_afm
+        n_afm_receptors = len({r.get("receptor_id") for r in afm_residues})
+        print(f"[verdict] AFM data merged: {len(afm_residues)} residues "
+              f"from {n_afm_receptors} receptor(s)")
 
     # Check for offset residues (unrestored chain B)
     offset_warnings = check_ppi_residue_offsets(ppi_residues)

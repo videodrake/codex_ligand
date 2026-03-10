@@ -207,6 +207,10 @@ EXPECTED_SCHEMAS = {
         "n_models_final_ranking", "occupancy",
         "mean_interface_delta_e", "best_interface_delta_e",
     ],
+    "ppi_afm_residues.csv": [
+        "receptor_id", "source", "residue_id", "residue_num",
+        "min_ca_distance",
+    ],
     "combined_residue_evidence.csv": [
         "receptor_id", "residue_id", "vina_pockets", "n_vina_pockets",
         "ppi_occupancy", "ppi_frequency", "ppi_delta_e", "evidence_sources",

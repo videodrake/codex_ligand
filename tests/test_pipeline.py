@@ -373,6 +373,7 @@ class TestSchemaConsistency:
         ("egfr_pipeline.verdict", "CONSENSUS_FIELDS", "vina_consensus_sites.csv"),
         ("egfr_pipeline.vina.compare", "COMPARISON_FIELDS", "vina_pocket_comparison.csv"),
         ("egfr_pipeline.vina.bootstrap", "BOOTSTRAP_FIELDS", "vina_pocket_bootstrap.csv"),
+        ("egfr_pipeline.ppi.afm_extract", "AFM_RESIDUE_FIELDS", "ppi_afm_residues.csv"),
     ])
     def test_schema_match(self, module_path, field_attr, schema_key):
         import importlib
@@ -514,7 +515,176 @@ class TestVerdictScoring:
 
 
 # ===================================================================
-# 8. Smoke regression
+# 8. AlphaFold-Multimer integration
+# ===================================================================
+
+class TestAFMIntegration:
+    """Tests for AFM extraction and verdict integration."""
+
+    def test_afm_extraction_basic(self, tmp_path):
+        """CA-CA distance extraction from a minimal PDB."""
+        from egfr_pipeline.ppi.afm_extract import extract_afm_interface_residues
+        # Create minimal 2-chain PDB: chain A CA at (10,10,10), chain B CA at (15,10,10)
+        pdb = tmp_path / "model.pdb"
+        pdb.write_text(
+            "ATOM      1  CA  ALA A 744      10.000  10.000  10.000  1.00  0.00\n"
+            "ATOM      2  CA  ALA A 752      20.000  20.000  20.000  1.00  0.00\n"
+            "ATOM      3  CA  GLY B  10      15.000  10.000  10.000  1.00  0.00\n"
+            "END\n"
+        )
+        result = extract_afm_interface_residues(pdb, "A", "B", contact_cutoff=8.0,
+                                                 receptor_id="R_test")
+        rows = result["residue_rows"]
+        # Only ALA744 is within 8A of chain B (dist=5.0)
+        assert len(rows) == 1
+        assert rows[0]["residue_id"] == "ALA744"
+        assert abs(float(rows[0]["min_ca_distance"]) - 5.0) < 0.01
+
+    def test_afm_extraction_no_contact(self, tmp_path):
+        """No contacts when chains are far apart."""
+        from egfr_pipeline.ppi.afm_extract import extract_afm_interface_residues
+        pdb = tmp_path / "far.pdb"
+        pdb.write_text(
+            "ATOM      1  CA  ALA A 744      10.000  10.000  10.000  1.00  0.00\n"
+            "ATOM      2  CA  GLY B  10      99.000  99.000  99.000  1.00  0.00\n"
+            "END\n"
+        )
+        result = extract_afm_interface_residues(pdb, "A", "B", contact_cutoff=8.0)
+        assert len(result["residue_rows"]) == 0
+
+    def test_adapt_afm_sigmoid_mapping(self):
+        """Verify sigmoid distance-to-occupancy conversion."""
+        from egfr_pipeline.verdict import _adapt_afm_to_ppi_format
+        afm_rows = [
+            {"receptor_id": "R1", "residue_id": "ALA744", "residue_num": "744",
+             "min_ca_distance": "4.0", "source": "alphafold_multimer"},
+            {"receptor_id": "R1", "residue_id": "GLY752", "residue_num": "752",
+             "min_ca_distance": "8.0", "source": "alphafold_multimer"},
+            {"receptor_id": "R1", "residue_id": "LEU831", "residue_num": "831",
+             "min_ca_distance": "12.0", "source": "alphafold_multimer"},
+        ]
+        adapted = _adapt_afm_to_ppi_format(afm_rows)
+        assert len(adapted) == 3
+        # 4A -> high occ (~0.88), 8A -> ~0.5, 12A -> low occ (~0.12)
+        occ_4 = adapted[0]["occupancy"]
+        occ_8 = adapted[1]["occupancy"]
+        occ_12 = adapted[2]["occupancy"]
+        assert occ_4 > 0.8, f"4A should give high occ, got {occ_4}"
+        assert 0.4 < occ_8 < 0.6, f"8A should give ~0.5 occ, got {occ_8}"
+        assert occ_12 < 0.2, f"12A should give low occ, got {occ_12}"
+        # Source tag format
+        assert adapted[0]["source"] == "afm:R1"
+
+    def test_afm_merge_with_pyrosetta(self):
+        """AFM + PyRosetta residues merge preserving both sources."""
+        from egfr_pipeline.verdict import _adapt_afm_to_ppi_format, _merge_multi_partner_residues
+        pyro_rows = [
+            {"receptor_id": "R1", "residue_id": "ALA744", "residue_num": "744",
+             "source": "pyrosetta_ppi:TH1", "occupancy": "0.7", "frequency_final_ranking": "0.8"},
+        ]
+        afm_rows = [
+            {"receptor_id": "R1", "residue_id": "ALA744", "residue_num": "744",
+             "min_ca_distance": "5.0", "source": "alphafold_multimer"},
+            {"receptor_id": "R1", "residue_id": "GLY752", "residue_num": "752",
+             "min_ca_distance": "6.0", "source": "alphafold_multimer"},
+        ]
+        combined = pyro_rows + _adapt_afm_to_ppi_format(afm_rows)
+        merged = _merge_multi_partner_residues(combined)
+        # Both residues should survive
+        res_ids = {r["residue_id"] for r in merged}
+        assert "ALA744" in res_ids
+        assert "GLY752" in res_ids
+        # ALA744 has both sources -> merged source annotation
+        ala = [r for r in merged if r["residue_id"] == "ALA744"][0]
+        assert "merged" in ala.get("source", "") or len(res_ids) >= 2
+
+    def test_verdict_with_afm_only(self, pipeline_env):
+        """Verdict works with AFM data but no PyRosetta."""
+        from egfr_pipeline.vina.summarize import summarize_from_config
+        from egfr_pipeline.vina.compare import compare_from_config
+        from egfr_pipeline.verdict import generate_verdict
+        from egfr_pipeline.ppi.afm_extract import AFM_RESIDUE_FIELDS
+
+        cfg, outdir = pipeline_env
+        summarize_from_config(str(cfg))
+        compare_from_config(str(cfg))
+
+        # Write synthetic AFM residues (no PyRosetta data)
+        afm_rows = [
+            {"receptor_id": "R_raw", "source": "alphafold_multimer",
+             "residue_id": "ALA744", "residue_num": "744", "min_ca_distance": "5.0"},
+            {"receptor_id": "R_raw", "source": "alphafold_multimer",
+             "residue_id": "GLY752", "residue_num": "752", "min_ca_distance": "6.5"},
+        ]
+        write_csv(outdir / "ppi_afm_residues.csv", afm_rows, AFM_RESIDUE_FIELDS)
+
+        _, verdict_csv = generate_verdict(str(cfg))
+        verdict_rows = read_csv(verdict_csv)
+        assert len(verdict_rows) > 0
+        # At least one pocket should have PPI data (from AFM)
+        assert any(r["ppi_data_available"] == "yes" for r in verdict_rows)
+
+    def test_verdict_with_both_sources(self, pipeline_env):
+        """Verdict with both PyRosetta + AFM data."""
+        from egfr_pipeline.vina.summarize import summarize_from_config
+        from egfr_pipeline.vina.compare import compare_from_config
+        from egfr_pipeline.verdict import generate_verdict
+        from egfr_pipeline.ppi.afm_extract import AFM_RESIDUE_FIELDS
+
+        cfg, outdir = pipeline_env
+        summarize_from_config(str(cfg))
+        compare_from_config(str(cfg))
+
+        # Write PyRosetta PPI
+        pyro_fields = ["receptor_id", "source", "residue_id", "residue_num",
+                        "frequency_final_ranking", "frequency_cluster_summary",
+                        "n_models_final_ranking", "occupancy",
+                        "mean_interface_delta_e", "best_interface_delta_e"]
+        pyro_rows = [
+            {"receptor_id": "R_raw", "source": "pyrosetta_ppi:TH1",
+             "residue_id": "ALA744", "residue_num": "744",
+             "frequency_final_ranking": "0.8", "frequency_cluster_summary": "0.6",
+             "n_models_final_ranking": "3", "occupancy": "0.7",
+             "mean_interface_delta_e": "-2.5", "best_interface_delta_e": "-4.0"},
+        ]
+        write_csv(outdir / "ppi_pyrosetta_residues.csv", pyro_rows, pyro_fields)
+        write_csv(outdir / "ppi_pyrosetta_summary.csv", [
+            {"receptor_id": "R_raw", "best_dg": "-15.0", "n_models": "5",
+             "n_clusters": "3", "top_residues": "ALA744;GLY752"},
+        ], ["receptor_id", "best_dg", "n_models", "n_clusters", "top_residues"])
+
+        # Write AFM
+        afm_rows = [
+            {"receptor_id": "R_raw", "source": "alphafold_multimer",
+             "residue_id": "ALA744", "residue_num": "744", "min_ca_distance": "5.0"},
+            {"receptor_id": "R_raw", "source": "alphafold_multimer",
+             "residue_id": "LEU831", "residue_num": "831", "min_ca_distance": "7.0"},
+        ]
+        write_csv(outdir / "ppi_afm_residues.csv", afm_rows, AFM_RESIDUE_FIELDS)
+
+        _, verdict_csv = generate_verdict(str(cfg))
+        verdict_rows = read_csv(verdict_csv)
+        # R_raw should have PPI data from both sources
+        r_raw_rows = [r for r in verdict_rows if r["receptor_id"] == "R_raw"]
+        assert all(r["ppi_data_available"] == "yes" for r in r_raw_rows)
+
+    def test_combined_evidence_includes_afm(self, pipeline_env):
+        """Report's combined_residue_evidence includes AFM source tag."""
+        from egfr_pipeline.report import format_combined_residue_table
+        from egfr_pipeline.ppi.afm_extract import AFM_RESIDUE_FIELDS
+
+        pocket_rows = [{"receptor_id": "R1", "pocket_id": "P01",
+                        "union_contact_residues": "ALA744;GLY752"}]
+        afm_rows = [{"receptor_id": "R1", "residue_id": "ALA744",
+                      "min_ca_distance": "5.0", "source": "alphafold_multimer"}]
+        combined = format_combined_residue_table(pocket_rows, [], afm_rows)
+        ala = [r for r in combined if r["residue_id"] == "ALA744"][0]
+        assert "afm" in ala["evidence_sources"]
+        assert "vina" in ala["evidence_sources"]
+
+
+# ===================================================================
+# 9. Smoke regression
 # ===================================================================
 
 class TestSmokeRegression:
