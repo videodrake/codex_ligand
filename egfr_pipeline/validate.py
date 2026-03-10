@@ -275,30 +275,113 @@ def parse_pdb_residue_set(pdb_path: Path) -> Dict[str, Set[int]]:
     return dict(chain_residues)
 
 
+def parse_pdb_residue_identity(pdb_path: Path) -> Dict[str, Dict[int, str]]:
+    """Extract {chain: {resnum: resname}} from PDB (CA atoms only for speed).
+
+    Returns the 3-letter residue name for each residue number, enabling
+    identity verification across PDBs (same number = same amino acid?).
+    """
+    chain_res: Dict[str, Dict[int, str]] = defaultdict(dict)
+    if not pdb_path.exists():
+        return {}
+    with open(pdb_path, encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if not line.startswith("ATOM"):
+                continue
+            atom_name = line[12:16].strip()
+            if atom_name != "CA":
+                continue
+            chain = line[21].strip() or "?"
+            resname = line[17:20].strip()
+            try:
+                resnum = int(line[22:26])
+            except ValueError:
+                continue
+            chain_res[chain][resnum] = resname
+    return dict(chain_res)
+
+
+def _detect_offset(
+    seq_a: Dict[int, str], seq_b: Dict[int, str],
+) -> Optional[int]:
+    """Detect a systematic residue number offset between two PDB sequences.
+
+    Tries offsets from -500 to +500. Returns the offset that maximizes
+    the number of matching (resnum, resname) pairs, or None if no
+    significant offset is found.
+    """
+    if not seq_a or not seq_b:
+        return None
+
+    # First check offset=0 (ideal case)
+    direct_match = sum(1 for r in seq_a if r in seq_b and seq_a[r] == seq_b[r])
+    min_len = min(len(seq_a), len(seq_b))
+    if min_len == 0:
+        return None
+    if direct_match / min_len > 0.8:
+        return 0
+
+    # Try candidate offsets based on start-residue difference
+    sorted_a = sorted(seq_a.keys())
+    sorted_b = sorted(seq_b.keys())
+    candidate_offsets = set()
+    # Try difference of first/last residues
+    for sa in sorted_a[:3] + sorted_a[-3:]:
+        for sb in sorted_b[:3] + sorted_b[-3:]:
+            candidate_offsets.add(sb - sa)
+    # Also try common small offsets
+    for o in range(-500, 501, 1):
+        candidate_offsets.add(o)
+
+    best_offset = 0
+    best_matches = direct_match
+
+    for offset in candidate_offsets:
+        if offset == 0:
+            continue
+        matches = sum(
+            1 for r in seq_a
+            if (r + offset) in seq_b and seq_a[r] == seq_b[r + offset]
+        )
+        if matches > best_matches:
+            best_matches = matches
+            best_offset = offset
+
+    if best_matches / min_len > 0.5 and best_offset != 0:
+        return best_offset
+    return 0 if direct_match / min_len > 0.3 else None
+
+
 def check_residue_numbering(config: dict, result: ValidationResult):
-    """8.3: Compare residue numbering across receptor PDBs."""
+    """8.3: Compare residue numbering and identity across receptor PDBs.
+
+    Three-level check:
+      1. Number overlap (do the same residue numbers appear?)
+      2. Identity match (same number = same amino acid?)
+      3. Offset detection (systematic shift in numbering?)
+    """
     receptors = config.get("receptors", [])
-    pdb_data: Dict[str, Dict[str, Set[int]]] = {}
+    pdb_nums: Dict[str, Dict[str, Set[int]]] = {}
+    pdb_ids: Dict[str, Dict[str, Dict[int, str]]] = {}
 
     for rec in receptors:
         pdb_path = Path(rec.get("pdb", ""))
         if not pdb_path.exists():
             result.warn(f"Receptor PDB not found for {rec['id']}: {pdb_path}")
             continue
-        pdb_data[rec["id"]] = parse_pdb_residue_set(pdb_path)
+        pdb_nums[rec["id"]] = parse_pdb_residue_set(pdb_path)
+        pdb_ids[rec["id"]] = parse_pdb_residue_identity(pdb_path)
 
-    if len(pdb_data) < 2:
+    if len(pdb_nums) < 2:
         result.warn("Need at least 2 receptor PDBs for numbering comparison")
         return
 
-    # Compare all pairs
-    receptor_ids = sorted(pdb_data.keys())
+    receptor_ids = sorted(pdb_nums.keys())
     for i, rec_a in enumerate(receptor_ids):
         for rec_b in receptor_ids[i+1:]:
-            chains_a = pdb_data[rec_a]
-            chains_b = pdb_data[rec_b]
+            chains_a = pdb_nums[rec_a]
+            chains_b = pdb_nums[rec_b]
 
-            # Find the primary chain in each (largest residue count)
             main_chain_a = max(chains_a, key=lambda c: len(chains_a[c])) if chains_a else None
             main_chain_b = max(chains_b, key=lambda c: len(chains_b[c])) if chains_b else None
 
@@ -315,9 +398,10 @@ def check_residue_numbering(config: dict, result: ValidationResult):
             if main_chain_a != main_chain_b:
                 result.warn(
                     f"{rec_a}(chain {main_chain_a}) vs {rec_b}(chain {main_chain_b}): "
-                    f"different chain IDs -- cross-receptor residue comparison requires chain-stripping"
+                    f"different chain IDs — chain-stripping applied for comparison"
                 )
 
+            # Level 1: Number overlap
             if overlap:
                 overlap_pct = len(overlap) / max(len(res_a), len(res_b)) * 100
                 result.ok(
@@ -327,13 +411,134 @@ def check_residue_numbering(config: dict, result: ValidationResult):
                 )
                 if overlap_pct < 50:
                     result.warn(
-                        f"{rec_a} vs {rec_b}: low overlap ({overlap_pct:.0f}%) -- "
+                        f"{rec_a} vs {rec_b}: low overlap ({overlap_pct:.0f}%) — "
                         f"residue-level comparison may be unreliable"
                     )
             else:
                 result.fail(
-                    f"{rec_a} vs {rec_b}: NO overlapping residue numbers -- "
+                    f"{rec_a} vs {rec_b}: NO overlapping residue numbers — "
                     f"cross-receptor comparison is unsafe"
+                )
+
+            # Level 2: Identity match (same resnum = same resname?)
+            id_a = pdb_ids.get(rec_a, {}).get(main_chain_a, {})
+            id_b = pdb_ids.get(rec_b, {}).get(main_chain_b, {})
+
+            if id_a and id_b and overlap:
+                mismatches = []
+                matched = 0
+                for resnum in sorted(overlap):
+                    name_a = id_a.get(resnum)
+                    name_b = id_b.get(resnum)
+                    if name_a and name_b:
+                        if name_a == name_b:
+                            matched += 1
+                        else:
+                            # Allow CHARMM name variants (HSD/HSE/HSP → HIS)
+                            norm_a = "HIS" if name_a in ("HSD", "HSE", "HSP") else name_a
+                            norm_b = "HIS" if name_b in ("HSD", "HSE", "HSP") else name_b
+                            if norm_a == norm_b:
+                                matched += 1
+                            else:
+                                mismatches.append((resnum, name_a, name_b))
+
+                if mismatches:
+                    # Separate known mutations from unexpected mismatches
+                    known = [(r, a, b) for r, a, b in mismatches if r in KNOWN_MUTATIONS]
+                    unknown = [(r, a, b) for r, a, b in mismatches if r not in KNOWN_MUTATIONS]
+
+                    if known:
+                        kn_str = ", ".join(f"{r}:{a}≠{b}(known mutation)" for r, a, b in known)
+                        result.warn(
+                            f"{rec_a} vs {rec_b}: {len(known)} known mutation difference(s): {kn_str}"
+                        )
+                    if unknown:
+                        n_mm = len(unknown)
+                        examples = unknown[:5]
+                        ex_str = ", ".join(f"{r}:{a}≠{b}" for r, a, b in examples)
+                        if n_mm > 5:
+                            ex_str += f" ...+{n_mm - 5} more"
+                        result.fail(
+                            f"{rec_a} vs {rec_b}: {n_mm} UNEXPECTED identity mismatches! "
+                            f"Same number, different amino acid: {ex_str}"
+                        )
+                elif matched > 0:
+                    result.ok(
+                        f"{rec_a} vs {rec_b}: {matched}/{len(overlap)} "
+                        f"residue identities verified (same number = same amino acid)"
+                    )
+
+            # Level 3: Offset detection
+            if id_a and id_b:
+                offset = _detect_offset(id_a, id_b)
+                if offset is None:
+                    result.warn(
+                        f"{rec_a} vs {rec_b}: could not determine numbering relationship"
+                    )
+                elif offset != 0:
+                    # Verify the offset
+                    offset_matches = sum(
+                        1 for r in id_a
+                        if (r + offset) in id_b and id_a[r] == id_b.get(r + offset, "")
+                    )
+                    result.fail(
+                        f"{rec_a} vs {rec_b}: NUMBERING OFFSET DETECTED! "
+                        f"offset={offset:+d} ({offset_matches} residues match with shift). "
+                        f"e.g., {rec_a}:res{sorted(id_a.keys())[0]} = "
+                        f"{rec_b}:res{sorted(id_a.keys())[0] + offset}. "
+                        f"Cross-receptor residue comparison is INVALID without correction!"
+                    )
+
+
+# ---------------------------------------------------------------------------
+# 8.3b Known mutations check
+# ---------------------------------------------------------------------------
+
+# Known crystallization/engineering mutations that differ from wild-type.
+# Format: {resnum: (wt_resname, mutant_resname, receptor_id, description)}
+KNOWN_MUTATIONS = {
+    948: ("VAL", "ARG", "3GT8_raw",
+          "V924R (UniProt V924, PDB 948) — Jura et al. 2009 Cell. "
+          "Asymmetric dimer interface mutation for crystallization. "
+          "αI helix region; may affect PPI interface energies near C02 site."),
+}
+
+
+def check_known_mutations(config: dict, result: ValidationResult):
+    """8.3b: Flag known engineering mutations in receptor PDBs.
+
+    Checks if crystallization artifacts or engineering mutations are present
+    in receptor structures used for docking. These may distort binding
+    energies, especially for PPI docking near the mutation site.
+    """
+    for rec in config.get("receptors", []):
+        pdb_path = Path(rec.get("pdb", ""))
+        rec_id = rec["id"]
+        if not pdb_path.exists():
+            continue
+
+        identity = parse_pdb_residue_identity(pdb_path)
+        # Get primary chain
+        if not identity:
+            continue
+        main_chain = max(identity, key=lambda c: len(identity[c]))
+        seq = identity[main_chain]
+
+        for resnum, (wt, mut, affected_rec, desc) in KNOWN_MUTATIONS.items():
+            actual = seq.get(resnum)
+            if actual is None:
+                continue
+            # Normalize CHARMM names
+            actual_norm = "HIS" if actual in ("HSD", "HSE", "HSP") else actual
+
+            if actual_norm == mut and rec_id == affected_rec:
+                result.warn(
+                    f"{rec_id}: KNOWN MUTATION at residue {resnum}: "
+                    f"{actual}(mutant) present, wild-type={wt}. {desc}"
+                )
+            elif actual_norm == wt:
+                result.ok(
+                    f"{rec_id}: residue {resnum} is wild-type {wt} (correct)"
                 )
 
 
@@ -457,6 +662,10 @@ def run_validation(
     # 8.3
     print("[8.3] Residue numbering consistency...")
     check_residue_numbering(config, result)
+
+    # 8.3b
+    print("[8.3b] Known mutations check...")
+    check_known_mutations(config, result)
 
     # 8.4
     print("[8.4] Handoff readiness...")
