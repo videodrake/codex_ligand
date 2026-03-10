@@ -1,0 +1,2 @@
+consensus_site_id,n_receptors,receptor_list,pocket_list,centroid_x,centroid_y,centroid_z,best_affinity,total_n_ligand,total_n_pose,consensus_residues
+CS001,2,3GT8_cl38_48;3GT8_cl85_100,3GT8_cl38_48:P003;3GT8_cl85_100:P002;3GT8_cl85_100:P003,45.0,47.83,37.96,-8.44,4,9,ALA1000;ASP1003;GLN791;GLU1004;ILE740;LEU1001;LEU778;LEU792;LYS728;LYS739;LYS846;MET1002;MET793;PRO741;PRO794;VAL738;VAL742

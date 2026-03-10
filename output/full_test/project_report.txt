@@ -1,0 +1,140 @@
+
+======================================================================
+EGFR-MYO1D Docking Analysis Report
+======================================================================
+
+Generated: 2026-03-10 13:46
+Config: /work4/hwang/onepack/codex_ligand/config/full_test.yaml
+Project: full_test
+
+Data sources loaded:
+  Vina pocket table:     YES (11 pockets)
+  Vina drug-pocket map:  YES (9 entries)
+  Pocket comparison:     YES (3 pairs)
+  PyRosetta PPI:         NO
+  AlphaFold-Multimer:    NO
+
+
+======================================================================
+1. Receptor-Level Pocket Summary
+======================================================================
+
+
+--------------------------------------------------
+Receptor: 3GT8_cl38_48
+--------------------------------------------------
+
+  Pockets found: 5
+  Ligands docked: 3
+
+  Pocket    Poses  Ligs  Best aff  Mean aff  Spread  Aff SD Top residues
+  ------    -----  ----  --------  --------  ------  ------ ------------
+  P001          7     2    -8.777   -7.5733  1.3012  0.8275 X:ASN808;X:ILE809;X:PRO848;X:TYR801;X:TY
+  P002          4     2     -8.33   -8.0875  1.5438  0.2632 X:ASN816;X:ASP1008;X:ASP1009;X:GLN820;X:
+  P003          2     1    -8.145    -7.949  0.0565  0.2772 X:ASP1003;X:GLU1004;X:ILE740;X:LEU1001;X
+  P004          1     1    -6.917    -6.917     0.0     0.0 X:ARG832;X:ARG836;X:GLU762;X:GLY857;X:LE
+  P005          1     1    -6.636    -6.636     0.0     0.0 X:ALA702;X:ASN700;X:ASP761;X:GLU697;X:LE
+
+  Ligand -> Dominant Pocket:
+    173940          -> P002 (affinity -8.194, fraction 0.6) [multimodal]
+    97806           -> P001 (affinity -6.813, fraction 0.6) [multimodal]
+    VAX-C12_0       -> P001 (affinity -8.777, fraction 0.8) [multimodal]
+
+
+--------------------------------------------------
+Receptor: 3GT8_cl85_100
+--------------------------------------------------
+
+  Pockets found: 3
+  Ligands docked: 3
+
+  Pocket    Poses  Ligs  Best aff  Mean aff  Spread  Aff SD Top residues
+  ------    -----  ----  --------  --------  ------  ------ ------------
+  P001          8     2    -8.488    -7.857    1.15  0.7759 X:LEU718;X:LEU792;X:LEU844;X:LYS745;X:ME
+  P002          4     2    -8.443   -7.3618  1.7255  0.9316 X:GLN791;X:GLU1004;X:LEU1001;X:LEU792;X:
+  P003          3     1    -7.644   -7.6093  1.1178  0.0484 X:ILE740;X:LEU1001;X:LEU792;X:MET1002;X:
+
+  Ligand -> Dominant Pocket:
+    173940          -> P001 (affinity -8.488, fraction 1.0)
+    97806           -> P001 (affinity -7.261, fraction 0.6) [multimodal]
+    VAX-C12_0       -> P003 (affinity -7.644, fraction 0.6) [multimodal]
+
+
+--------------------------------------------------
+Receptor: 3GT8_raw
+--------------------------------------------------
+
+  Pockets found: 3
+  Ligands docked: 3
+
+  Pocket    Poses  Ligs  Best aff  Mean aff  Spread  Aff SD Top residues
+  ------    -----  ----  --------  --------  ------  ------ ------------
+  P001         12     3    -9.086   -7.9251  1.3899  0.6998 A:ARG776;B:GLU1004;A:ASP770;B:ALA1000;A:
+  P002          2     1    -8.554   -8.5055  0.6799  0.0686 A:GLN791;A:LEU792;A:MET1002;A:PRO741;A:P
+  P003          1     1     -8.53     -8.53     0.0     0.0 B:ALA722;B:ALA920;B:ARG841;B:ASP916;B:GL
+
+  Ligand -> Dominant Pocket:
+    173940          -> P001 (affinity -8.175, fraction 0.6) [multimodal]
+    97806           -> P001 (affinity -7.512, fraction 1.0)
+    VAX-C12_0       -> P001 (affinity -9.086, fraction 0.8) [multimodal]
+
+
+======================================================================
+2. Cross-Receptor Pocket Comparison
+======================================================================
+
+  Same-patch candidates: 2 pairs
+
+  Rec_A            Pkt_A  Rec_B            Pkt_B    Dist  Jaccard  Overlap  Shared  Ligs Candidate
+  ----             -----  ----             -----    ----  -------  -------  ------  ---- ---------
+  3GT8_cl38_48     P003   3GT8_cl85_100    P002     3.56   0.6667      1.0      10     0 True
+  3GT8_cl38_48     P003   3GT8_cl85_100    P003     4.32   0.6154      0.8       8     0 True
+
+  Residues shared across candidate pairs: ASP1003, GLN791, GLU1004, ILE740, LEU1001, LEU792, LYS846, MET1002, PRO741, PRO794
+
+
+======================================================================
+3. Auxiliary PPI Evidence
+======================================================================
+
+  ** These are AUXILIARY evidence sources, not pocket definitions. **
+  ** Use alongside Vina pocket data for cross-validation only. **
+
+  No PPI auxiliary data available.
+  Configure ppi.pyrosetta_result_dirs and/or ppi.afm_models in project config.
+
+
+======================================================================
+4. Automated Site Verdict
+======================================================================
+
+  Total pockets evaluated: 11
+  STRONG: 2  |  MODERATE: 5  |  WEAK: 4
+
+  Scoring mode: VINA-ONLY (no PPI data — Vina + Cross-receptor)
+
+  Receptor             Pocket  Verdict      Score  Vina   PPI Cross PPI?  Reasons
+  --------             ------  -------      -----  ----   --- ----- ----  -------
+  3GT8_cl85_100        P002    STRONG        61.5  41.5   0.0  20.0    -  affinity=-8.4; n_pose=4; n_ligand=2; membrane_face(1res); no_ppi_data; cross=2/3
+  3GT8_raw             P001    STRONG        60.0  60.0   0.0   0.0    -  affinity=-9.1; n_pose=12; n_ligand=3; no_ppi_data
+  3GT8_cl85_100        P001    MODERATE      49.1  49.1   0.0   0.0    -  affinity=-8.5; n_pose=8; n_ligand=2; membrane_face(8res); no_ppi_data
+  3GT8_cl38_48         P003    MODERATE      41.8  21.8   0.0  20.0    -  affinity=-8.1; no_ppi_data; cross=2/3
+  3GT8_cl38_48         P001    MODERATE      41.5  41.5   0.0   0.0    -  affinity=-8.8; n_pose=7; n_ligand=2; membrane_face(4res); no_ppi_data
+  3GT8_cl38_48         P002    MODERATE      41.5  41.5   0.0   0.0    -  affinity=-8.3; n_pose=4; n_ligand=2; no_ppi_data
+  3GT8_cl85_100        P003    MODERATE      39.6  19.6   0.0  20.0    -  affinity=-7.6; n_pose=3; membrane_face(3res); no_ppi_data; cross=2/3
+  3GT8_raw             P002    WEAK          21.8  21.8   0.0   0.0    -  affinity=-8.6; no_ppi_data
+  3GT8_raw             P003    WEAK          21.8  21.8   0.0   0.0    -  affinity=-8.5; membrane_face(2res); no_ppi_data
+  3GT8_cl38_48         P004    WEAK          10.9  10.9   0.0   0.0    -  affinity=-6.9; no_ppi_data
+  3GT8_cl38_48         P005    WEAK          10.9  10.9   0.0   0.0    -  affinity=-6.6; no_ppi_data
+
+
+======================================================================
+5. Key Observations
+======================================================================
+
+  Total receptor states analyzed: 3
+  Total pockets identified: 11
+  Cross-receptor same-patch candidates: 2
+
+  NOTE: This report presents raw evidence for human interpretation.
+  Biological significance should be assessed by the researcher.

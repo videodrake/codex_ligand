@@ -1,0 +1,430 @@
+============================================
+  Full Pipeline Test (16 cores)
+  Started: Tue Mar 10 13:45:49 KST 2026
+  Node: node05
+  Cores: 16
+============================================
+
+╔══════════════════════════════════════════════╗
+║  EGFR-MYO1D Full Pipeline Test               ║
+║  exhaustiveness=8, n_poses=5 (빠른 테스트)    ║
+╚══════════════════════════════════════════════╝
+
+============================================================
+  Step 0: 환경 점검
+============================================================
+  변환 도구: mk_prepare_ligand.py, obabel
+  수용체 PDB: 3개
+  리간드 SDF: 3개
+  [OK] 환경 점검 통과
+
+============================================================
+  Step 0.5: 테스트 Config 생성
+============================================================
+  테스트 config: /work4/hwang/onepack/codex_ligand/config/full_test.yaml
+  exhaustiveness=8, n_poses=5
+  bootstrap replicates=10
+
+  [OK] Step 0.5: 테스트 Config 생성 완료 (0.0초)
+
+============================================================
+  Step 1: PDBQT 변환 (PDB/SDF → PDBQT)
+============================================================
+  [Skip] 3GT8_cl38_48_receptor.pdbqt (이미 존재)
+  [Skip] 3GT8_cl85_100_receptor.pdbqt (이미 존재)
+  [Skip] 3GT8_raw_receptor.pdbqt (이미 존재)
+  [Skip] 173940_ligand.pdbqt (이미 존재)
+  [Skip] 97806_ligand.pdbqt (이미 존재)
+  [Skip] VAX-C12_0_ligand.pdbqt (이미 존재)
+
+  [OK] Step 1: PDBQT 변환 (PDB/SDF → PDBQT) 완료 (0.0초)
+
+============================================================
+  Step 2: Vina Blind Docking
+============================================================
+  Receptor 3개 × Ligand 3개 = 9 도킹 잡
+  병렬 실행: 3개 프로세스
+Computing Vina grid ... Computing Vina grid ... Computing Vina grid ... done.
+Performing docking (random seed: 1403109608) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+******************************done.
+******done.
+***************
+
+mode |   affinity | dist from best mode
+     | (kcal/mol) | rmsd l.b.| rmsd u.b.
+-----+------------+----------+----------
+   1       -8.554          0          0
+   2       -8.457      1.932      2.233
+   3       -8.175      12.97      16.17
+   4       -8.139      13.29      15.88
+   5       -8.044       13.4      15.13
+Computing Vina grid ... Performing docking (random seed: 211170270) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+*****Performing docking (random seed: 292177485) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+***********************************************************************************************
+*
+mode |   affinity | dist from best mode
+     | (kcal/mol) | rmsd l.b.| rmsd u.b.
+-----+------------+----------+----------
+   1       -8.194          0          0
+   2       -8.145      18.64      21.64
+   3       -8.109      1.471      2.083
+   4       -7.753      18.75      21.81
+   5       -7.717      3.285      8.032
+*
+Computing Vina grid ... 
+mode |   affinity | dist from best mode
+     | (kcal/mol) | rmsd l.b.| rmsd u.b.
+-----+------------+----------+----------
+   1       -8.488          0          0
+   2       -8.482      2.556      3.389
+   3       -8.469      1.264      2.599
+   4        -8.29      2.483      3.981
+   5       -8.243      2.054      3.342
+Computing Vina grid ... done.
+Performing docking (random seed: 206737160) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+***************************************************
+
+mode |   affinity | dist from best mode
+     | (kcal/mol) | rmsd l.b.| rmsd u.b.
+-----+------------+----------+----------
+   1       -7.512          0          0
+   2       -7.462      2.503      3.347
+   3       -7.358      4.576      5.957
+   4       -6.921      2.142       2.63
+   5       -6.854      2.806      3.425
+Computing Vina grid ... done.
+done.
+done.
+Performing docking (random seed: 953107003) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+*******Performing docking (random seed: 229501917) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+*******Performing docking (random seed: -421191336) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+************************************************************************************************************************
+*****
+*
+mode |   affinity | dist from best mode
+     | (kcal/mol) | rmsd l.b.| rmsd u.b.
+-----+------------+----------+----------
+   1       -7.261          0          0
+   2       -7.106      4.873      5.987
+   3       -6.586      13.93      14.86
+   4       -6.582      16.34      17.43
+   5       -6.517      2.516      2.995
+**Computing Vina grid ... *
+mode |   affinity | dist from best mode
+     | (kcal/mol) | rmsd l.b.| rmsd u.b.
+-----+------------+----------+----------
+   1       -6.917          0          0
+   2       -6.813      34.62      35.24
+   3       -6.793      33.91      35.48
+   4       -6.638      34.22      35.76
+   5       -6.636      15.46      16.66
+**Computing Vina grid ... ********
+done.
+done.
+Performing docking (random seed: 1192416611) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+***Performing docking (random seed: -1633210976) ... 
+0%   10   20   30   40   50   60   70   80   90   100%
+|----|----|----|----|----|----|----|----|----|----|
+**************************************************************************************************
+*
+[Box] 좌표 범위: [ 78.39  95.58 104.21]
+[Box] 중심: [47.3, 45.4, 39.0]
+[Box] 크기: [88.4, 105.6, 114.2]
+
+>>> [3GT8_cl38_48] 173940 blind docking 시작...
+
+============================================================
+  173940 Blind Docking Results
+  Center: [47.3, 45.4, 39.0]
+  Box: [88.4, 105.6, 114.2]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -8.19  -10.589   -0.744
+    2      -8.14  -10.222   -1.047
+    3      -8.11  -10.901   -0.323
+    4      -7.75   -9.914   -0.850
+    5      -7.72  -10.805    0.089
+
+>>> [3GT8_cl38_48] 97806 blind docking 시작...
+
+============================================================
+  97806 Blind Docking Results
+  Center: [47.3, 45.4, 39.0]
+  Box: [88.4, 105.6, 114.2]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -6.92   -8.534   -0.259
+    2      -6.81   -8.211   -0.455
+    3      -6.79   -8.220   -0.421
+    4      -6.64   -7.986   -0.463
+    5      -6.64   -8.123   -0.324
+
+>>> [3GT8_cl38_48] VAX-C12_0 blind docking 시작...
+
+============================================================
+  VAX-C12_0 Blind Docking Results
+  Center: [47.3, 45.4, 39.0]
+  Box: [88.4, 105.6, 114.2]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -8.78  -11.343   -0.911
+    2      -8.33  -10.537   -1.139
+    3      -8.19  -10.633   -0.867
+    4      -7.92   -9.957   -1.193
+    5      -7.88   -9.877   -1.212
+
+============================================================
+  [3GT8_cl38_48] Summary - Best Affinity per Ligand
+============================================================
+        173940            -8.19
+         97806            -6.92
+     VAX-C12_0            -8.78
+
+[완료] 3GT8_cl38_48 결과 저장: output/full_test/3GT8_cl38_48
+[Box] 좌표 범위: [ 76.36  96.99 110.69]
+[Box] 중심: [43.9, 48.0, 37.6]
+[Box] 크기: [86.4, 107.0, 120.7]
+
+>>> [3GT8_cl85_100] 173940 blind docking 시작...
+
+============================================================
+  173940 Blind Docking Results
+  Center: [43.9, 48.0, 37.6]
+  Box: [86.4, 107.0, 120.7]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -8.49  -10.969   -0.815
+    2      -8.48  -11.287   -0.488
+    3      -8.47  -11.424   -0.336
+    4      -8.29  -10.676   -0.851
+    5      -8.24  -10.812   -0.654
+
+>>> [3GT8_cl85_100] 97806 blind docking 시작...
+
+============================================================
+  97806 Blind Docking Results
+  Center: [43.9, 48.0, 37.6]
+  Box: [86.4, 107.0, 120.7]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -7.26   -8.959   -0.574
+    2      -7.11   -8.714   -0.628
+    3      -6.59   -8.117   -0.583
+    4      -6.58   -7.972   -0.722
+    5      -6.52   -8.189   -0.425
+
+>>> [3GT8_cl85_100] VAX-C12_0 blind docking 시작...
+
+============================================================
+  VAX-C12_0 Blind Docking Results
+  Center: [43.9, 48.0, 37.6]
+  Box: [86.4, 107.0, 120.7]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -8.44  -10.910   -1.198
+    2      -7.84  -11.107   -0.217
+    3      -7.64   -9.626   -1.450
+    4      -7.63   -9.763   -1.295
+    5      -7.55   -9.615   -1.345
+
+============================================================
+  [3GT8_cl85_100] Summary - Best Affinity per Ligand
+============================================================
+        173940            -8.49
+         97806            -7.26
+     VAX-C12_0            -8.44
+
+[완료] 3GT8_cl85_100 결과 저장: output/full_test/3GT8_cl85_100
+[Box] 좌표 범위: [73.283 46.242 92.362]
+[Box] 중심: [-16.0, -1.0, -69.8]
+[Box] 크기: [83.3, 70.0, 102.4]
+
+>>> [3GT8_raw] 173940 blind docking 시작...
+
+============================================================
+  173940 Blind Docking Results
+  Center: [-16.0, -1.0, -69.8]
+  Box: [83.3, 70.0, 102.4]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -8.55  -11.054   -0.667
+    2      -8.46  -10.633   -0.963
+    3      -8.18  -10.116   -1.115
+    4      -8.14  -10.356   -0.830
+    5      -8.04  -10.101   -0.961
+
+>>> [3GT8_raw] 97806 blind docking 시작...
+
+============================================================
+  97806 Blind Docking Results
+  Center: [-16.0, -1.0, -69.8]
+  Box: [83.3, 70.0, 102.4]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -7.51   -9.268   -0.675
+    2      -7.46   -9.297   -0.584
+    3      -7.36   -9.147   -0.607
+    4      -6.92   -8.420   -0.794
+    5      -6.85   -8.693   -0.439
+
+>>> [3GT8_raw] VAX-C12_0 blind docking 시작...
+
+============================================================
+  VAX-C12_0 Blind Docking Results
+  Center: [-16.0, -1.0, -69.8]
+  Box: [83.3, 70.0, 102.4]
+============================================================
+ Mode   Affinity  RMSD_lb  RMSD_ub
+    1      -9.09  -11.742    0.138
+    2      -8.57  -10.373   -0.564
+    3      -8.53   -9.517   -1.368
+    4      -8.51   -9.720   -1.138
+    5      -8.47   -9.645   -1.162
+
+============================================================
+  [3GT8_raw] Summary - Best Affinity per Ligand
+============================================================
+        173940            -8.55
+         97806            -7.51
+     VAX-C12_0            -9.09
+
+[완료] 3GT8_raw 결과 저장: output/full_test/3GT8_raw
+
+  [OK] 3GT8_raw 도킹 완료
+
+  [OK] 3GT8_cl85_100 도킹 완료
+
+  [OK] 3GT8_cl38_48 도킹 완료
+
+  [OK] Step 2: Vina Blind Docking 완료 (51.0초)
+
+============================================================
+  Step 3: Postprocess (전체)
+============================================================
+
+  --- parse ---
+  → output/full_test/vina_pose_table.csv
+
+  --- contacts ---
+  → output/full_test/vina_pose_table.csv
+
+  --- cluster ---
+  → output/full_test/vina_pose_table.csv
+
+  --- summarize ---
+  → output/full_test/vina_pocket_table.csv
+  → output/full_test/vina_drug_pocket_map.csv
+
+  --- compare ---
+  → output/full_test/vina_pocket_comparison.csv
+
+  --- bootstrap ---
+  → output/full_test/vina_pocket_bootstrap.csv
+
+  [OK] Step 3: Postprocess (전체) 완료 (1.4초)
+
+============================================================
+  Step 4: Site Verdict
+============================================================
+[verdict] 1 consensus sites identified → output/full_test/vina_consensus_sites.csv
+[verdict] Bootstrap data loaded: 11 pocket entries
+
+=================================================================
+  Site Verdict Summary
+  11 pockets across 3 receptors  (PPI data: 0/3 receptors)
+=================================================================
+  STRONG:   2
+  MODERATE: 5
+  WEAK:     4
+
+  Note: 3 receptor(s) scored without PPI data
+        (weights redistributed — no penalty)
+=================================================================
+  3GT8_cl85_100        P002   STRONG      61.5/100  affinity=-8.4; n_pose=4; n_ligand=2; membrane_face(1res); no_ppi_data; cross=2/3
+  3GT8_raw             P001   STRONG      60.0/100  affinity=-9.1; n_pose=12; n_ligand=3; no_ppi_data
+  3GT8_cl85_100        P001   MODERATE    49.1/100  affinity=-8.5; n_pose=8; n_ligand=2; membrane_face(8res); no_ppi_data
+  3GT8_cl38_48         P003   MODERATE    41.8/100  affinity=-8.1; no_ppi_data; cross=2/3
+  3GT8_cl38_48         P001   MODERATE    41.5/100  affinity=-8.8; n_pose=7; n_ligand=2; membrane_face(4res); no_ppi_data
+  ... and 6 more
+
+  → output/full_test/cross_method_agreement.csv
+  → output/full_test/valid_sites.csv
+
+  [OK] Step 4: Site Verdict 완료 (0.0초)
+
+============================================================
+  Step 5: Report 생성
+============================================================
+  → output/full_test/project_report.txt
+  → output/full_test/combined_residue_evidence.csv
+
+  [OK] Step 5: Report 생성 완료 (0.0초)
+
+============================================================
+  Step 6: Validate
+============================================================
+Running validation checks...
+  Config: /work4/hwang/onepack/codex_ligand/config/full_test.yaml
+  Project root: output/full_test
+  Repo root: /work4/hwang/onepack/codex_ligand
+
+[8.1] Output existence and consistency...
+[8.2] CSV schema regression checks...
+[8.3] Residue numbering consistency...
+[8.3b] Known mutations check...
+[8.4] Handoff readiness...
+
+============================================================
+VALIDATION SUMMARY
+============================================================
+  PASS:    48
+  WARN:    8
+  FAIL:    0
+
+WARNINGS:
+  [WARN] ppi_pyrosetta_residues.csv not found (optional)
+  [WARN] ppi_pyrosetta_summary.csv not found (optional)
+  [WARN] ppi_afm_residues.csv not found (optional)
+  [WARN] 3GT8_cl38_48(chain X) vs 3GT8_raw(chain A): different chain IDs — chain-stripping applied for comparison
+  [WARN] 3GT8_cl38_48 vs 3GT8_raw: 1 known mutation difference(s): 948:VAL≠ARG(known mutation)
+  [WARN] 3GT8_cl85_100(chain X) vs 3GT8_raw(chain A): different chain IDs — chain-stripping applied for comparison
+  [WARN] 3GT8_cl85_100 vs 3GT8_raw: 1 known mutation difference(s): 948:VAL≠ARG(known mutation)
+  [WARN] 3GT8_raw: KNOWN MUTATION at residue 948: ARG(mutant) present, wild-type=VAL. V924R (UniProt V924, PDB 948) — Jura et al. 2009 Cell. Asymmetric dimer interface mutation for crystallization. αI helix region; may affect PPI interface energies near C02 site.
+
+Exit code: 1
+
+  [OK] Step 6: Validate 완료 (0.0초)
+
+============================================================
+  테스트 완료
+============================================================
+  총 소요 시간: 0분 52초
+  출력 디렉토리: output/full_test/
+  config: /work4/hwang/onepack/codex_ligand/config/full_test.yaml
+
+  확인할 파일:
+    output/full_test/vina_pose_table.csv
+    output/full_test/vina_pocket_table.csv
+    output/full_test/valid_sites.csv
+    output/full_test/project_report.txt
+
+
+============================================
+  Finished: Tue Mar 10 13:46:41 KST 2026
+============================================
