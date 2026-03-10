@@ -273,8 +273,11 @@ def step3_postprocess(config_path: str):
     pp = config.get("postprocess", {})
     out = cluster_pose_table(
         config_path,
-        cutoff=pp.get("pocket_cutoff", 4.0),
-        merge_by_residue=pp.get("merge_by_residue", False),
+        cutoff=pp.get("pocket_cutoff", 8.0),
+        merge_by_residue=pp.get("merge_by_residue", True),
+        merge_jaccard=pp.get("merge_jaccard", 0.3),
+        merge_overlap=pp.get("merge_overlap", 0.5),
+        merge_centroid_fallback=pp.get("merge_centroid_fallback", 6.0),
     )
     print(f"  → {out}")
 

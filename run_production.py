@@ -358,8 +358,11 @@ def phase4_vina_postprocess():
     pp = config.get("postprocess") or {}
     out = cluster_pose_table(
         config_str,
-        cutoff=pp.get("pocket_cutoff", 4.0),
-        merge_by_residue=pp.get("merge_by_residue", False),
+        cutoff=pp.get("pocket_cutoff", 8.0),
+        merge_by_residue=pp.get("merge_by_residue", True),
+        merge_jaccard=pp.get("merge_jaccard", 0.3),
+        merge_overlap=pp.get("merge_overlap", 0.5),
+        merge_centroid_fallback=pp.get("merge_centroid_fallback", 6.0),
     )
     print(f"  → {out}")
 

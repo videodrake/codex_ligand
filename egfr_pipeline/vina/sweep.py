@@ -45,11 +45,12 @@ def _pocket_sizes(rows: List[dict]) -> Dict[str, Dict[str, int]]:
 def sweep(
     pose_table_path: str,
     cutoff_min: float = 2.0,
-    cutoff_max: float = 8.0,
+    cutoff_max: float = 12.0,
     cutoff_step: float = 0.5,
-    merge_by_residue: bool = False,
+    merge_by_residue: bool = True,
     merge_jaccard: float = 0.3,
     merge_overlap: float = 0.5,
+    merge_centroid_fallback: float = 6.0,
 ) -> List[dict]:
     """Run pocket clustering at each cutoff and collect statistics.
 
@@ -75,6 +76,7 @@ def sweep(
                 clustered,
                 jaccard_threshold=merge_jaccard,
                 overlap_threshold=merge_overlap,
+                centroid_fallback_cutoff=merge_centroid_fallback,
             )
 
         sizes_by_receptor = _pocket_sizes(clustered)
@@ -123,9 +125,10 @@ def sweep_from_config(
         raise FileNotFoundError(f"Pose table not found: {pose_table}")
 
     pp = config.get("postprocess", {})
-    merge = pp.get("merge_by_residue", False)
+    merge = pp.get("merge_by_residue", True)
     merge_j = pp.get("merge_jaccard", 0.3)
     merge_oc = pp.get("merge_overlap", 0.5)
+    merge_cf = pp.get("merge_centroid_fallback", 6.0)
 
     results = sweep(
         str(pose_table),
@@ -135,6 +138,7 @@ def sweep_from_config(
         merge_by_residue=merge,
         merge_jaccard=merge_j,
         merge_overlap=merge_oc,
+        merge_centroid_fallback=merge_cf,
     )
 
     out_csv = Path(output_path) if output_path else project_root / "vina_pocket_cutoff_sweep.csv"

@@ -31,7 +31,7 @@ from .common import TOP_LEVEL_DIR
 REPORT_WIDTH = 72
 BOLTZMANN_KT = 1.0
 SELECTION_POOL_MULTIPLIER = 3
-COM_THRESHOLD_MIN = 20.0
+COM_THRESHOLD_MIN = 30.0
 RMSD_ERROR_VALUE = 999.9
 UNSAT_FALLBACK_VALUE = 99
 
@@ -181,6 +181,8 @@ class PipelineManager:
 
             self.save_top_n = self.config.getint('Output', 'save_top_n')
             self.save_filter_max = self.config.getint('Output', 'save_filter_max', fallback=1000)
+            _archive_raw = self.config.getint('Output', 'archive_top_n', fallback=0)
+            self.archive_top_n = _archive_raw if _archive_raw > 0 else self.save_top_n * 3
 
             # --- Constraints (optional) ---
             excl_str = self.config.get('Constraints', 'excluded_residues_A', fallback='')
@@ -1417,6 +1419,8 @@ class PipelineManager:
               f"실제 가능: {total_possible}개")
             if total_possible > self.cluster_top_n * 1.5:
                 a(f"  --> 주의: 최대 클러스터 수({self.cluster_top_n})가 부족할 수 있습니다.")
+            if s.get('cluster_top_n_escalated'):
+                a(f"  클러스터 자동 확장   : {s['cluster_top_n_original']} -> {s['cluster_top_n_escalated_to']}")
         else:
             a(f"  발견 결합 사이트     : {s['num_clusters']}개 / {self.cluster_top_n} (최대)")
         cluster_sizes = s.get('cluster_sizes', [])
@@ -1925,7 +1929,13 @@ class PipelineManager:
             total_possible = s.get('total_possible_clusters', 0)
             a(f"  - 클러스터 최대값({self.cluster_top_n})에 도달 후 {potential_extra}개의 추가")
             a(f"    사이트가 감지되었습니다 (실제 가능: {total_possible}개).")
-            if s.get('cluster_top_n_auto'):
+            dropped_path = s.get('dropped_candidates_path', '')
+            n_dropped = s.get('n_dropped_candidates', 0)
+            if dropped_path:
+                a(f"    --> 드롭된 후보 {n_dropped}개의 메트릭: {os.path.basename(dropped_path)}")
+            if s.get('cluster_top_n_escalated'):
+                a(f"    --> 자동 확장 적용: {s['cluster_top_n_original']} -> {s['cluster_top_n_escalated_to']}")
+            elif s.get('cluster_top_n_auto'):
                 a("    auto 모드 결정값이지만, 수동으로 더 큰 값을 설정할 수 있습니다.")
             else:
                 a("    cluster_top_n을 늘리거나 auto로 설정하는 것을 고려하십시오.")
@@ -2952,7 +2962,7 @@ function sortTable(th) {
 
         centers = np.array([[c.get('center_x', 0), c.get('center_y', 0),
                              c.get('center_z', 0)] for c in cluster_candidates])
-        com_threshold = max(self.cluster_threshold * 5, COM_THRESHOLD_MIN)
+        com_threshold = max(self.cluster_threshold * 8, COM_THRESHOLD_MIN)
 
         leaders = []
         leader_centers = []
@@ -2960,6 +2970,12 @@ function sortTable(th) {
         cluster_populations = []
         com_skipped = 0
         potential_extra_clusters = 0
+        dropped_records = []
+
+        # Adaptive escalation state
+        escalation_applied = False
+        escalation_threshold = max(int(self.cluster_top_n * 0.2), 3)
+        original_cluster_top_n = self.cluster_top_n
 
         for idx, candidate in enumerate(cluster_candidates):
             if (idx + 1) % 500 == 0:
@@ -2975,6 +2991,23 @@ function sortTable(th) {
                     potential_leaders.append(lid)
 
             if not potential_leaders and len(leaders) >= self.cluster_top_n:
+                # Shadow archive: record metadata before dropping
+                nearest_dist = float('inf')
+                if leader_centers:
+                    dists = [np.sqrt(np.sum((cand_center - lc) ** 2)) for lc in leader_centers]
+                    nearest_dist = min(dists)
+                dropped_records.append({
+                    'id': candidate.get('id', idx + 1),
+                    'center_x': round(float(cand_center[0]), 2),
+                    'center_y': round(float(cand_center[1]), 2),
+                    'center_z': round(float(cand_center[2]), 2),
+                    'dG_separated': candidate.get('dG_separated', 0),
+                    'dSASA': candidate.get('dSASA', 0),
+                    'sc_value': candidate.get('sc_value', 0),
+                    'L_RMSD_to_nearest_leader': '',
+                    'dist_to_nearest_leader': round(nearest_dist, 2),
+                    'drop_reason': 'com_skip_cap_full',
+                })
                 com_skipped += 1
                 continue
 
@@ -3015,8 +3048,39 @@ function sortTable(th) {
                 cluster_members.append([(candidate, cand_pose)])
                 cluster_populations.append(1)
             else:
-                # max_clusters reached but candidate doesn't match any existing cluster
+                # Shadow archive: record with L_RMSD (pose already deserialized)
+                nearest_dist = float('inf')
+                min_lrmsd_any = float('inf')
+                if leader_centers:
+                    dists = [np.sqrt(np.sum((cand_center - lc) ** 2)) for lc in leader_centers]
+                    nearest_dist = min(dists)
+                for lid, (_, lp) in enumerate(leaders):
+                    lrmsd = self._compute_l_rmsd(cand_pose, lp)
+                    if lrmsd < min_lrmsd_any:
+                        min_lrmsd_any = lrmsd
+                dropped_records.append({
+                    'id': candidate.get('id', idx + 1),
+                    'center_x': round(float(cand_center[0]), 2),
+                    'center_y': round(float(cand_center[1]), 2),
+                    'center_z': round(float(cand_center[2]), 2),
+                    'dG_separated': candidate.get('dG_separated', 0),
+                    'dSASA': candidate.get('dSASA', 0),
+                    'sc_value': candidate.get('sc_value', 0),
+                    'L_RMSD_to_nearest_leader': round(min_lrmsd_any, 2),
+                    'dist_to_nearest_leader': round(nearest_dist, 2),
+                    'drop_reason': 'cap_full_no_match',
+                })
                 potential_extra_clusters += 1
+
+                # Adaptive escalation: expand cluster_top_n once if too many extras
+                if not escalation_applied and potential_extra_clusters >= escalation_threshold:
+                    new_top_n = int(self.cluster_top_n * 1.5)
+                    self.progress_logger.info(
+                        f"    > [Escalation] potential_extra={potential_extra_clusters} >= "
+                        f"threshold={escalation_threshold}. "
+                        f"Expanding cluster_top_n: {self.cluster_top_n} -> {new_top_n}")
+                    self.cluster_top_n = new_top_n
+                    escalation_applied = True
 
         final_representatives = []
         for members in cluster_members:
@@ -3075,12 +3139,26 @@ function sortTable(th) {
             self.progress_logger.critical("!!! CRITICAL: 0 cluster representatives.")
             return None
 
+        # Shadow archive: save dropped candidates metadata
+        if dropped_records:
+            dropped_csv_path = os.path.join(self.dir_cluster, "dropped_candidates.csv")
+            pd.DataFrame(dropped_records).to_csv(dropped_csv_path, index=False)
+            self.progress_logger.info(
+                f"    > [Shadow Archive] {len(dropped_records)} dropped candidates "
+                f"saved to {dropped_csv_path}")
+            self.stats['dropped_candidates_path'] = dropped_csv_path
+            self.stats['n_dropped_candidates'] = len(dropped_records)
+
         self.stats['num_clusters'] = len(leaders)
         self.stats['cluster_sizes'] = [len(m) for m in cluster_members]
         self.stats['cluster_populations'] = list(cluster_populations)
         self.stats['num_representatives'] = len(final_representatives)
         self.stats['potential_extra_clusters'] = potential_extra_clusters
         self.stats['total_possible_clusters'] = len(leaders) + potential_extra_clusters
+        self.stats['cluster_top_n_escalated'] = escalation_applied
+        if escalation_applied:
+            self.stats['cluster_top_n_original'] = original_cluster_top_n
+            self.stats['cluster_top_n_escalated_to'] = self.cluster_top_n
 
         del leaders, leader_centers, cluster_members
         gc.collect()
@@ -3281,6 +3359,38 @@ function sortTable(th) {
         ranking_df.to_csv(final_csv_path, index=False)
         ranking_df.to_csv(os.path.join(self.root_dir, "final_ranking.csv"), index=False)
         self.progress_logger.info(f"    > [Output] Final ranking: {final_csv_path}")
+
+        # Archive: extended metadata CSV (no PDB files) for broader coverage
+        if self.archive_top_n > self.save_top_n and len(selection_pool) > len(deduped):
+            archive_count = min(len(selection_pool), self.archive_top_n)
+            archive_rows = []
+            for rank_a, item in enumerate(selection_pool[:archive_count]):
+                dSASA_a = item.get('dSASA', 0)
+                dG_a = item.get('dG_separated', 0)
+                dG_density_a = (dG_a / dSASA_a * 100) if abs(dSASA_a) > 1e-6 else 0.0
+                archive_rows.append({
+                    'Archive_Rank': rank_a + 1,
+                    'Parent': item.get('Parent', ''),
+                    'Cluster_ID': item.get('Cluster_ID', ''),
+                    'dG_separated': dG_a,
+                    'dSASA': dSASA_a,
+                    'sc_value': item.get('sc_value', 0),
+                    'dG_density': round(dG_density_a, 4),
+                    'packstat': item.get('packstat', 0),
+                    'delta_unsatHbonds': item.get('delta_unsatHbonds', ''),
+                    'nres_int': item.get('nres_int', ''),
+                    'hbonds_int': item.get('hbonds_int', ''),
+                    'L_RMSD': item.get('L_RMSD', 0),
+                    'center_x': item.get('center_x', 0),
+                    'center_y': item.get('center_y', 0),
+                    'center_z': item.get('center_z', 0),
+                    'Binding_Residues_A': item.get('Binding_Residues_A', ''),
+                })
+            archive_csv_path = os.path.join(self.dir_final, "archive_ranking.csv")
+            pd.DataFrame(archive_rows).to_csv(archive_csv_path, index=False)
+            self.progress_logger.info(
+                f"    > [Archive] {len(archive_rows)} models in {archive_csv_path}")
+
         elapsed = time.time() - t_start_step6
         self.stage_times['Selection & Save'] = elapsed
         self.progress_logger.info(f"    [Time] Selection & Save: {elapsed:.1f} sec")

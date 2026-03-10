@@ -30,27 +30,30 @@ ligands:
     pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
 vina:
   mode: blind
-  exhaustiveness: 256
-  n_poses: 50
+  exhaustiveness: 384        # blind docking on ~300-res kinase: high thoroughness per pose
+  n_poses: 100               # 3 receptors × 3 ligands × 100 = 900 poses total
   padding: 5.0
   min_box: 70.0
 postprocess:
   parse_results: false
   extract_contacts: false
-  contact_cutoff: 4.0
+  contact_cutoff: 4.0        # atom-pair contact: 4Å = van der Waals + H-bond range
   cluster_pockets: false
-  pocket_cutoff: 4.0
-  merge_by_residue: false
-  merge_jaccard: 0.3
-  merge_overlap: 0.5
+  pocket_cutoff: 7.0         # iterative clustering radius: tighter than merge fallback
+  merge_by_residue: true
+  merge_jaccard: 0.25        # residue overlap merge: lower threshold catches sparse pockets
+  merge_overlap: 0.4         # overlap coefficient: slightly relaxed for partial contacts
+  merge_centroid_fallback: 8.0  # centroid fallback: covers full pocket diameter (~15Å)
+  cluster_max_iterations: 15    # more iterations for 900-pose convergence
+  min_pocket_size: 3         # ≥3 poses required to form a pocket (noise filtering)
   keep_chain: false
   summarize_pockets: false
   compare_pockets: false
-  comparison_centroid_cutoff: 15.0
+  comparison_centroid_cutoff: 12.0  # cross-receptor match: tighter to avoid false positives
   extract_ppi_residues: false
   generate_report: false
 bootstrap:
-  n_replicates: 100
+  n_replicates: 200          # 200 replicates for reliable stability statistics
   sample_fraction: 0.8
   seed: 42
 

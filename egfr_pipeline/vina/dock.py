@@ -195,7 +195,7 @@ def apply_config_to_args(args, config: dict):
     args.extract_contacts = bool(postprocess_cfg.get("extract_contacts", getattr(args, "extract_contacts", False)))
     args.contact_cutoff = float(postprocess_cfg.get("contact_cutoff", getattr(args, "contact_cutoff", 4.0)))
     args.cluster_pockets = bool(postprocess_cfg.get("cluster_pockets", getattr(args, "cluster_pockets", False)))
-    args.pocket_cutoff = float(postprocess_cfg.get("pocket_cutoff", getattr(args, "pocket_cutoff", 4.0)))
+    args.pocket_cutoff = float(postprocess_cfg.get("pocket_cutoff", getattr(args, "pocket_cutoff", 8.0)))
     args.summarize_pockets = bool(postprocess_cfg.get("summarize_pockets", getattr(args, "summarize_pockets", False)))
     args.compare_pockets = bool(postprocess_cfg.get("compare_pockets", getattr(args, "compare_pockets", False)))
     args.comparison_centroid_cutoff = float(postprocess_cfg.get("comparison_centroid_cutoff", getattr(args, "comparison_centroid_cutoff", 15.0)))
@@ -2394,7 +2394,7 @@ def run_taskgroup12_main():
             pose_table = cluster_pose_table(
                 args.config,
                 str(pose_table),
-                args.pocket_cutoff,
+                cutoff=args.pocket_cutoff,
             )
             print(f"[Cluster] Updated pose table with pocket ids: {pose_table}")
 

@@ -114,8 +114,10 @@ def make_config(tmpdir: Path, experimental: bool = True) -> Path:
         "postprocess": {
             "parse_results": False, "extract_contacts": False,
             "contact_cutoff": 4.0, "cluster_pockets": False,
-            "pocket_cutoff": 4.0, "merge_by_residue": False,
+            "pocket_cutoff": 8.0, "merge_by_residue": True,
             "merge_jaccard": 0.3, "merge_overlap": 0.5,
+            "merge_centroid_fallback": 6.0,
+            "cluster_max_iterations": 10, "min_pocket_size": 2,
             "keep_chain": False, "summarize_pockets": False,
             "compare_pockets": False, "comparison_centroid_cutoff": 15.0,
             "extract_ppi_residues": False, "generate_report": False,
@@ -157,6 +159,195 @@ def pipeline_env_no_exp(tmp_path):
     write_csv(outdir / "vina_pose_table.csv", make_poses(), POSE_FIELDS)
     cluster_pose_table(str(cfg))
     return cfg, outdir
+
+
+# ===================================================================
+# 0. Clustering algorithm
+# ===================================================================
+
+def _make_pose(receptor, ligand, rank, affinity, cx, cy, cz, contacts=""):
+    return {
+        "receptor_id": receptor, "ligand_id": ligand,
+        "pose_rank": rank, "affinity": affinity,
+        "rmsd_lb": 0, "rmsd_ub": 0,
+        "centroid_x": cx, "centroid_y": cy, "centroid_z": cz,
+        "raw_pose_file": "dummy.pdbqt", "pocket_id": "",
+        "contact_residues": contacts, "n_contact_residues": len(contacts.split(";")) if contacts else 0,
+    }
+
+
+class TestClustering:
+    """Tests for the iterative centroid-based clustering algorithm."""
+
+    def test_convergence_single_pocket(self):
+        """Poses spread ~6A within same pocket should converge to 1 pocket."""
+        from egfr_pipeline.vina.cluster import assign_pockets
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 2, -7.5, 13.0, 12.0, 11.0),  # ~4.7A
+            _make_pose("R1", "lig", 3, -7.0, 11.0, 14.0, 10.0),  # ~4.1A from first
+            _make_pose("R1", "lig", 4, -6.5, 15.0, 11.0, 12.0),  # ~5.7A from first
+            _make_pose("R1", "lig", 5, -6.0, 12.0, 10.0, 14.0),  # ~4.5A from first
+        ]
+        result = assign_pockets(rows, cutoff=8.0)
+        pockets = {r["pocket_id"] for r in result}
+        assert len(pockets) == 1, f"Expected 1 pocket, got {pockets}"
+
+    def test_separation_two_clusters(self):
+        """Two groups 30A apart should remain as 2 separate pockets."""
+        from egfr_pipeline.vina.cluster import assign_pockets
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 2, -7.5, 11.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 3, -7.0, 10.5, 11.0, 10.0),
+            _make_pose("R1", "lig", 4, -6.5, 40.0, 40.0, 40.0),
+            _make_pose("R1", "lig", 5, -6.0, 41.0, 40.0, 40.0),
+            _make_pose("R1", "lig", 6, -5.5, 40.5, 41.0, 40.0),
+        ]
+        result = assign_pockets(rows, cutoff=8.0, min_pocket_size=2)
+        pockets = {r["pocket_id"] for r in result}
+        assert len(pockets) == 2, f"Expected 2 pockets, got {pockets}"
+
+    def test_singleton_absorption(self):
+        """A single outlier pose should be absorbed into nearest large pocket."""
+        from egfr_pipeline.vina.cluster import assign_pockets
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 2, -7.5, 11.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 3, -7.0, 10.5, 11.0, 10.0),
+            # Singleton outlier
+            _make_pose("R1", "lig", 4, -6.0, 50.0, 50.0, 50.0),
+        ]
+        result = assign_pockets(rows, cutoff=8.0, min_pocket_size=2)
+        pockets = {r["pocket_id"] for r in result}
+        assert len(pockets) == 1, f"Singleton should be absorbed, got {pockets}"
+
+    def test_singleton_preservation_when_all_small(self):
+        """When all pockets are singletons, they should all be preserved."""
+        from egfr_pipeline.vina.cluster import assign_pockets
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 2, -7.0, 50.0, 50.0, 50.0),
+        ]
+        result = assign_pockets(rows, cutoff=8.0, min_pocket_size=2)
+        # Both are singletons, no large pocket exists -> both preserved
+        pockets = {r["pocket_id"] for r in result}
+        assert len(pockets) == 2, f"All-singleton case should preserve, got {pockets}"
+
+    def test_order_independence(self):
+        """Shuffling input order should not change clustering result."""
+        import random
+        from egfr_pipeline.vina.cluster import assign_pockets
+        base_rows = [
+            _make_pose("R1", "lig_a", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig_a", 2, -7.0, 11.0, 10.5, 10.0),
+            _make_pose("R1", "lig_b", 1, -7.5, 10.5, 10.0, 10.5),
+            _make_pose("R1", "lig_b", 2, -6.5, 40.0, 40.0, 40.0),
+            _make_pose("R1", "lig_b", 3, -6.0, 41.0, 40.5, 40.0),
+        ]
+
+        result1 = assign_pockets([dict(r) for r in base_rows], cutoff=8.0, min_pocket_size=2)
+        pocket_map_1 = {(r["receptor_id"], r["ligand_id"], r["pose_rank"]): r["pocket_id"]
+                        for r in result1}
+
+        # Shuffle and re-run
+        shuffled = [dict(r) for r in base_rows]
+        random.seed(42)
+        random.shuffle(shuffled)
+        result2 = assign_pockets(shuffled, cutoff=8.0, min_pocket_size=2)
+        pocket_map_2 = {(r["receptor_id"], r["ligand_id"], r["pose_rank"]): r["pocket_id"]
+                        for r in result2}
+
+        assert pocket_map_1 == pocket_map_2, "Clustering should be order-independent"
+
+    def test_iterative_refinement_corrects_drift(self):
+        """Poses that would be fragmented by single-pass should converge."""
+        from egfr_pipeline.vina.cluster import assign_pockets
+        # Chain of poses each ~5A apart: single-pass with 8A cutoff could drift
+        # the center far from the ends, but iterative should converge
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 2, -7.5, 14.0, 10.0, 10.0),  # 4A from #1
+            _make_pose("R1", "lig", 3, -7.0, 10.0, 14.0, 10.0),  # 4A from #1
+            _make_pose("R1", "lig", 4, -6.5, 14.0, 14.0, 10.0),  # ~5.7A from #1
+            _make_pose("R1", "lig", 5, -6.0, 12.0, 12.0, 14.0),  # ~5.3A from #1
+        ]
+        result = assign_pockets(rows, cutoff=8.0)
+        pockets = {r["pocket_id"] for r in result}
+        assert len(pockets) == 1, f"Should converge to 1 pocket, got {pockets}"
+
+    def test_multi_receptor_independence(self):
+        """Clustering is independent per receptor."""
+        from egfr_pipeline.vina.cluster import assign_pockets
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 2, -7.0, 11.0, 10.0, 10.0),
+            _make_pose("R2", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R2", "lig", 2, -7.0, 11.0, 10.0, 10.0),
+        ]
+        result = assign_pockets(rows, cutoff=8.0)
+        r1 = {r["pocket_id"] for r in result if r["receptor_id"] == "R1"}
+        r2 = {r["pocket_id"] for r in result if r["receptor_id"] == "R2"}
+        assert r1 == {"P001"}
+        assert r2 == {"P001"}
+
+    def test_merge_by_residue_overlap(self):
+        """Pockets with overlapping residues should be merged."""
+        from egfr_pipeline.vina.cluster import assign_pockets, merge_pockets_by_residue
+        # Two pockets far apart in space but overlapping residues
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0, "ALA744;GLY752;LEU831"),
+            _make_pose("R1", "lig", 2, -7.5, 11.0, 10.0, 10.0, "ALA744;GLY752"),
+            _make_pose("R1", "lig", 3, -7.0, 20.0, 20.0, 20.0, "ALA744;GLY752;ASP835"),
+            _make_pose("R1", "lig", 4, -6.5, 21.0, 20.0, 20.0, "ALA744;LEU831;ASP835"),
+        ]
+        result = assign_pockets(rows, cutoff=8.0, min_pocket_size=1)
+        # Should be 2 pockets (>8A apart)
+        pockets_before = {r["pocket_id"] for r in result}
+        assert len(pockets_before) == 2
+
+        # After residue merge: high overlap (ALA744,GLY752,LEU831 vs ALA744,GLY752,ASP835)
+        merged = merge_pockets_by_residue(result, jaccard_threshold=0.3, overlap_threshold=0.5)
+        pockets_after = {r["pocket_id"] for r in merged}
+        assert len(pockets_after) == 1, f"Should merge to 1 pocket, got {pockets_after}"
+
+    def test_merge_centroid_fallback(self):
+        """Pockets close in space but with no residue data should merge via centroid fallback."""
+        from egfr_pipeline.vina.cluster import assign_pockets, merge_pockets_by_residue
+        rows = [
+            _make_pose("R1", "lig_a", 1, -8.0, 10.0, 10.0, 10.0, ""),
+            _make_pose("R1", "lig_a", 2, -7.5, 11.0, 10.0, 10.0, ""),
+            _make_pose("R1", "lig_b", 1, -7.0, 14.0, 10.0, 10.0, ""),
+            _make_pose("R1", "lig_b", 2, -6.5, 15.0, 10.0, 10.0, ""),
+        ]
+        # cutoff=3 forces 2 pockets
+        result = assign_pockets(rows, cutoff=3.0, min_pocket_size=1)
+        pockets_before = {r["pocket_id"] for r in result}
+        assert len(pockets_before) == 2
+
+        # Centroid fallback: centroids are ~4A apart < 6.0 fallback
+        merged = merge_pockets_by_residue(
+            result, jaccard_threshold=0.3, overlap_threshold=0.5,
+            centroid_fallback_cutoff=6.0,
+        )
+        pockets_after = {r["pocket_id"] for r in merged}
+        assert len(pockets_after) == 1, f"Should merge via centroid fallback, got {pockets_after}"
+
+    def test_pocket_ids_contiguous(self):
+        """Pocket IDs should be P001, P002, ... without gaps."""
+        from egfr_pipeline.vina.cluster import assign_pockets
+        rows = [
+            _make_pose("R1", "lig", 1, -8.0, 10.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 2, -7.0, 11.0, 10.0, 10.0),
+            _make_pose("R1", "lig", 3, -6.0, 40.0, 40.0, 40.0),
+            _make_pose("R1", "lig", 4, -5.5, 41.0, 40.0, 40.0),
+            _make_pose("R1", "lig", 5, -5.0, 80.0, 80.0, 80.0),
+            _make_pose("R1", "lig", 6, -4.5, 81.0, 80.0, 80.0),
+        ]
+        result = assign_pockets(rows, cutoff=8.0, min_pocket_size=2)
+        pocket_ids = sorted({r["pocket_id"] for r in result})
+        expected = [f"P{i:03d}" for i in range(1, len(pocket_ids) + 1)]
+        assert pocket_ids == expected, f"Non-contiguous IDs: {pocket_ids}"
 
 
 # ===================================================================

@@ -36,9 +36,10 @@ def bootstrap_once(
     pocket_cutoff: float,
     rng: random.Random,
     sample_fraction: float = 0.8,
-    merge_by_residue: bool = False,
+    merge_by_residue: bool = True,
     merge_jaccard: float = 0.3,
     merge_overlap: float = 0.5,
+    merge_centroid_fallback: float = 6.0,
 ) -> List[dict]:
     """Single bootstrap replicate: subsample poses, re-cluster.
 
@@ -67,6 +68,7 @@ def bootstrap_once(
             clustered,
             jaccard_threshold=merge_jaccard,
             overlap_threshold=merge_overlap,
+            centroid_fallback_cutoff=merge_centroid_fallback,
         )
     return clustered
 
@@ -78,12 +80,13 @@ def bootstrap_once(
 def run_bootstrap_replicates(
     pose_table_path: str,
     n_replicates: int = 100,
-    pocket_cutoff: float = 4.0,
+    pocket_cutoff: float = 8.0,
     sample_fraction: float = 0.8,
     seed: int = 42,
-    merge_by_residue: bool = False,
+    merge_by_residue: bool = True,
     merge_jaccard: float = 0.3,
     merge_overlap: float = 0.5,
+    merge_centroid_fallback: float = 6.0,
 ) -> Tuple[List[dict], List[List[dict]]]:
     """Run N bootstrap replicates.
 
@@ -103,6 +106,7 @@ def run_bootstrap_replicates(
             ref_clustered,
             jaccard_threshold=merge_jaccard,
             overlap_threshold=merge_overlap,
+            centroid_fallback_cutoff=merge_centroid_fallback,
         )
     ref_pockets, _ = summarize_pose_rows(ref_clustered)
 
@@ -116,6 +120,7 @@ def run_bootstrap_replicates(
             merge_by_residue=merge_by_residue,
             merge_jaccard=merge_jaccard,
             merge_overlap=merge_overlap,
+            merge_centroid_fallback=merge_centroid_fallback,
         )
         rep_pockets, _ = summarize_pose_rows(rep_rows)
         replicate_summaries.append(rep_pockets)
@@ -136,7 +141,7 @@ def _pocket_centroid(pocket: dict) -> List[float]:
 def match_pockets_to_reference(
     reference_pockets: List[dict],
     replicate_pockets: List[dict],
-    centroid_cutoff: float = 4.0,
+    centroid_cutoff: float = 8.0,
 ) -> Dict[Tuple[str, str], Optional[dict]]:
     """Match replicate pockets to reference pockets by centroid proximity.
 
@@ -196,7 +201,7 @@ BOOTSTRAP_FIELDS = [
 def compute_bootstrap_stats(
     reference_pockets: List[dict],
     replicate_summaries: List[List[dict]],
-    centroid_cutoff: float = 4.0,
+    centroid_cutoff: float = 8.0,
 ) -> List[dict]:
     """Compute per-pocket stability statistics across bootstrap replicates."""
     n_rep = len(replicate_summaries)
@@ -287,11 +292,12 @@ def bootstrap_from_config(
 
     n = n_replicates or bs.get("n_replicates", 100)
     s = seed or bs.get("seed", 42)
-    cutoff = pp.get("pocket_cutoff", 4.0)
+    cutoff = pp.get("pocket_cutoff", 8.0)
     fraction = bs.get("sample_fraction", 0.8)
-    merge = pp.get("merge_by_residue", False)
+    merge = pp.get("merge_by_residue", True)
     merge_j = pp.get("merge_jaccard", 0.3)
     merge_oc = pp.get("merge_overlap", 0.5)
+    merge_cf = pp.get("merge_centroid_fallback", 6.0)
 
     ref_pockets, rep_summaries = run_bootstrap_replicates(
         str(pose_table),
@@ -302,6 +308,7 @@ def bootstrap_from_config(
         merge_by_residue=merge,
         merge_jaccard=merge_j,
         merge_overlap=merge_oc,
+        merge_centroid_fallback=merge_cf,
     )
 
     stats = compute_bootstrap_stats(ref_pockets, rep_summaries, centroid_cutoff=cutoff)

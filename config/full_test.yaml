@@ -27,11 +27,14 @@ postprocess:
   extract_ppi_residues: false
   generate_report: false
   keep_chain: false
-  merge_by_residue: false
+  merge_by_residue: true
   merge_jaccard: 0.3
   merge_overlap: 0.5
+  merge_centroid_fallback: 6.0
+  cluster_max_iterations: 10
+  min_pocket_size: 2
   parse_results: false
-  pocket_cutoff: 4.0
+  pocket_cutoff: 8.0
   summarize_pockets: false
 ppi:
   afm_models: null
