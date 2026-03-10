@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N PROD_all
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=999:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/production.o
+#PBS -e ${PBS_O_WORKDIR}/production.e
+
+cd $PBS_O_WORKDIR
+
+source ~/.bashrc
+conda activate pyrosetta
+
+echo "============================================"
+echo "  EGFR-MYO1D Production Pipeline"
+echo "  Vina(128) + PPI(20K×2) + Verdict + Report"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "============================================"
+
+python run_production.py
+
+echo ""
+echo "============================================"
+echo "  Finished: $(date)"
+echo "============================================"
