@@ -1980,7 +1980,12 @@ def main():
         # Receptor PDB 감지 (per-receptor)
         receptor_pdb = None
         if args.mode == "blind":
-            if args.receptor_pdb and len(all_receptors) == 1:
+            # 1) config의 receptor_pdb_map에서 찾기
+            pdb_map = getattr(args, "receptor_pdb_map", {}) or {}
+            mapped_pdb = pdb_map.get(str(receptor_path))
+            if mapped_pdb and Path(mapped_pdb).exists():
+                receptor_pdb = Path(mapped_pdb)
+            elif args.receptor_pdb and len(all_receptors) == 1:
                 receptor_pdb = Path(args.receptor_pdb)
             else:
                 receptor_pdb = auto_detect_receptor_pdb(receptor_path, input_dir)
