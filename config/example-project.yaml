@@ -1,6 +1,6 @@
 project_name: egfr_myo1d_vina
 output_root: ./output
-max_workers: 16
+max_workers: 32
 mode: blind
 receptors:
   - id: 3GT8_raw
