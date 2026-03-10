@@ -41,7 +41,8 @@ codex_ligand/
 │   │   ├── contacts.py               # 수용체 접촉 잔기 추출
 │   │   ├── cluster.py                # 포켓 클러스터링 (centroid greedy)
 │   │   ├── summarize.py              # 포켓/리간드 요약 테이블
-│   │   └── compare.py                # 교차 수용체 포켓 비교
+│   │   ├── compare.py                # 교차 수용체 포켓 비교
+│   │   └── sweep.py                  # 커트오프 감도 분석 (pocket_cutoff 스윕)
 │   │
 │   ├── ppi/                          # PPI 잔기 표준화
 │   │   ├── pyrosetta_extract.py      # PyRosetta 결과에서 인터페이스 잔기 추출
@@ -96,8 +97,9 @@ Vina Docking (dock.py)
 
 - **Blind / Focused** 도킹 모드 지원
 - 수용체 순차 / 리간드 병렬 (max_workers 설정)
-- 포켓 클러스터링: centroid 기반 greedy assignment
+- 포켓 클러스터링: centroid 기반 greedy assignment + 잔기 기반 병합 옵션
 - 교차 비교: Jaccard, overlap coefficient, centroid 거리, same_patch_candidate 판정
+- 커트오프 감도 분석: `python -m egfr_pipeline.vina.sweep` (pocket_cutoff 범위 스윕)
 
 ### 2. PyRosetta PPI 글로벌 도킹 (`egfr_pipeline/pyrosetta_docking/`)
 
@@ -158,6 +160,8 @@ vina:
 postprocess:
   contact_cutoff: 4.0
   pocket_cutoff: 4.0
+  merge_by_residue: false   # 잔기 기반 포켓 병합
+  keep_chain: false          # chain ID 보존 여부
 ```
 
 PyRosetta 도킹은 별도 `.ini` 설정 파일 사용 (legacy/ 참조).

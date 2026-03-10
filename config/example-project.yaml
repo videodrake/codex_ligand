@@ -35,6 +35,10 @@ postprocess:
   contact_cutoff: 4.0
   cluster_pockets: false
   pocket_cutoff: 4.0
+  merge_by_residue: false        # post-hoc merge pockets with overlapping residues
+  merge_jaccard: 0.3             # Jaccard threshold for merge (OR with overlap)
+  merge_overlap: 0.5             # Overlap coefficient threshold for merge
+  keep_chain: false              # preserve chain ID in residue comparison
   summarize_pockets: false
   compare_pockets: false
   comparison_centroid_cutoff: 15.0

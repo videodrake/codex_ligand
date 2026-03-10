@@ -133,6 +133,7 @@ def compare_all_pockets(
     pocket_rows: List[dict],
     drug_map_rows: List[dict],
     centroid_cutoff: float = 15.0,
+    keep_chain: bool = False,
 ) -> List[dict]:
     """Compare every pocket pair across different receptor states.
 
@@ -141,6 +142,7 @@ def compare_all_pockets(
         drug_map_rows: rows from vina_drug_pocket_map.csv
         centroid_cutoff: only emit pairs within this centroid distance (A).
             Set to 0 to emit all pairs.
+        keep_chain: preserve chain prefix in residue identifiers.
     """
     # Group pockets by receptor
     by_receptor: Dict[str, List[dict]] = defaultdict(list)
@@ -159,8 +161,8 @@ def compare_all_pockets(
                 if centroid_cutoff > 0 and dist > centroid_cutoff:
                     continue
 
-                res_a = parse_residue_set(pocket_a.get("union_contact_residues", ""))
-                res_b = parse_residue_set(pocket_b.get("union_contact_residues", ""))
+                res_a = parse_residue_set(pocket_a.get("union_contact_residues", ""), keep_chain=keep_chain)
+                res_b = parse_residue_set(pocket_b.get("union_contact_residues", ""), keep_chain=keep_chain)
                 shared = sorted(res_a & res_b)
                 only_a = sorted(res_a - res_b)
                 only_b = sorted(res_b - res_a)
@@ -231,5 +233,6 @@ def compare_from_config(
     pocket_rows = load_pocket_table(pocket_csv)
     drug_map_rows = load_drug_pocket_map(drug_csv)
 
-    comparison = compare_all_pockets(pocket_rows, drug_map_rows, centroid_cutoff)
+    keep_chain = config.get("postprocess", {}).get("keep_chain", False)
+    comparison = compare_all_pockets(pocket_rows, drug_map_rows, centroid_cutoff, keep_chain=keep_chain)
     return write_csv(out_csv, comparison, COMPARISON_FIELDS)

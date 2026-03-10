@@ -206,9 +206,18 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
 
     elif step == "cluster":
         from egfr_pipeline.vina.cluster import cluster_pose_table
-        cutoff = config.get("postprocess", {}).get("pocket_cutoff", 4.0)
-        print(f"  Clustering pockets (cutoff={cutoff}Å)...")
-        out = cluster_pose_table(config_path, cutoff=cutoff)
+        pp = config.get("postprocess", {})
+        cutoff = pp.get("pocket_cutoff", 4.0)
+        merge = pp.get("merge_by_residue", False)
+        merge_j = pp.get("merge_jaccard", 0.3)
+        merge_oc = pp.get("merge_overlap", 0.5)
+        print(f"  Clustering pockets (cutoff={cutoff}Å, merge={merge})...")
+        out = cluster_pose_table(
+            config_path, cutoff=cutoff,
+            merge_by_residue=merge,
+            merge_jaccard=merge_j,
+            merge_overlap=merge_oc,
+        )
         print(f"  → {out}")
 
     elif step == "summarize":

@@ -1,36 +1,75 @@
 # AutoDock Vina Docking Pipeline - Manual
 
+> **Deprecation Notice**: 이전 버전의 `run_docking.py` 단독 실행은 더 이상 지원되지 않습니다.
+> 모든 기능은 통합 CLI인 `main.py`를 통해 접근합니다.
+> 기존 스크립트는 `legacy/` 디렉토리에 보관되어 있으며, 매핑 정보는 `legacy/README.md`를 참고하세요.
+
 ## 1. 개요
 
 이 파이프라인은 AutoDock Vina Python API를 사용하여 단백질-리간드 도킹을 수행합니다.
-하나의 통합 스크립트(`run_docking.py`)로 **Blind Docking**과 **Focused Docking**을 모두 지원합니다.
+통합 CLI(`main.py`)를 통해 **Vina 도킹, 후처리, 보고서 생성, 검증, 사이트 판정**을 모두 관리합니다.
 
 **두 가지 실행 방식:**
-- `python run_docking.py` — 인터랙티브 모드 (단계별 메뉴 선택)
-- `python run_docking.py --mode blind ...` — CLI 모드 (명령줄 인자)
+- `python main.py` -- 인터랙티브 모드 (메뉴 [1]-[9] 선택)
+- `python main.py vina -c config/example-project.yaml` -- CLI 모드 (서브커맨드)
+
+**사용 가능한 서브커맨드:**
+
+| 서브커맨드 | 설명 | 메뉴 번호 |
+|------------|------|-----------|
+| `vina` | AutoDock Vina 도킹 실행 | [1] |
+| `postprocess` | Vina 결과 파싱/클러스터링 | [2] |
+| `pyrosetta` | PyRosetta PPI 도킹 | [3] |
+| `md` | GROMACS MD 분석 | [4] |
+| `report` | 종합 보고서 생성 | [5] |
+| `validate` | 출력 검증 | [6] |
+| `verdict` | 유효 사이트 자동 판정 | [7] |
+| `ppi-postprocess` | PPI 후처리 자동화 | [8] |
+| `full` | 전체 파이프라인 (1->2->7->5->6) | [9] |
 
 ---
 
 ## 2. 폴더 구조
 
 ```
-vina_docking/
-  run_docking.py              # 통합 도킹 스크립트
-  MANUAL.md                   # 이 매뉴얼
-  input/                      # 입력 파일 (receptor + ligand)
-    3gt8_monomer_anp.pdb      # receptor PDB
-    3gt8_monomer_anp_receptor.pdbqt  # 준비된 receptor PDBQT
-    97806_ligand.pdbqt         # ligand PDBQT
-    97806_ligand.sdf           # ligand 원본 SDF
+codex_ligand/
+  main.py                          # 통합 CLI 진입점
+  config/
+    example-project.yaml           # 프로젝트 설정 (YAML)
+    ppi_test_beta_meander.ini      # PPI 도킹 설정 (테스트)
+    ppi_test_TH1.ini               # PPI 도킹 설정 (테스트)
+    ppi_prod_beta_meander.ini      # PPI 도킹 설정 (프로덕션)
+    ppi_prod_TH1.ini               # PPI 도킹 설정 (프로덕션)
+    run_ppi_test.pbs               # PBS 스크립트 (테스트)
+    run_ppi_prod.pbs               # PBS 스크립트 (프로덕션)
+  egfr_pipeline/
+    config.py                      # Config 로드 유틸리티
+    report.py                      # 종합 보고서 생성
+    validate.py                    # 출력 검증
+    verdict.py                     # 사이트 판정 (STRONG/MODERATE/WEAK)
+    vina/
+      dock.py                      # Vina 도킹 코어 (구 run_docking.py)
+      parse_poses.py               # 결과 파싱 (구 parse_vina_results.py)
+      contacts.py                  # 접촉 잔기 추출 (구 extract_contacts.py)
+      cluster.py                   # 포켓 클러스터링 (구 cluster_pockets.py)
+      summarize.py                 # 포켓 요약 (구 summarize_pockets.py)
+      compare.py                   # 교차 비교 (구 compare_pockets.py)
+    ppi/
+      prepare_dimer_pdb.py         # Dimer PDB 준비 + chain 원복
+      pyrosetta_extract.py         # PPI 잔기 추출 (구 extract_ppi_residues.py)
+      postprocess_ppi.py           # PPI 후처리 자동화
+      afm_extract.py               # AlphaFold-Multimer 파서 (stub)
+    pyrosetta_docking/
+      pipeline_manager.py          # PyRosetta PPI 도킹 오케스트레이터
+      docking.py                   # PyRosetta 워커 (Relax, Docking, Refinement)
+      analysis.py                  # 스코어링, RMSD, Interface 분석
+      common.py                    # PyRosetta 유틸리티
+  legacy/                          # 구버전 스크립트 (참조용, 매핑은 legacy/README.md)
+    run_docking.py
+    parse_vina_results.py
     ...
-  output/                     # 출력 결과
-    YYYY-MM-DD_<label>/       # 실행별 폴더 (날짜_receptor이름)
-      <ligand>_blind.pdbqt    # 도킹 결과 (모드명 포함)
-      <ligand>_blind_pockets.pdbqt       # 완성 포켓 best pose
-      <ligand>_blind_all_pockets.pdbqt   # 완성 포켓 전체 포즈
-      <ligand>_blind_partial_pockets.pdbqt  # 미완성 포켓 (참고)
-      config.yaml             # 실행 설정 (재현용)
-    selected_poses/           # 수동 선별한 최종 pose
+  input/                           # 입력 파일
+  output/                          # 출력 결과
 ```
 
 ### 자동 파일 인식
@@ -63,13 +102,15 @@ pip install numpy vina pyyaml
 |--------|----------|------|
 | `numpy` | 필수 | 좌표 계산 |
 | `vina` | 필수 | AutoDock Vina Python API |
-| `pyyaml` | 권장 | config 저장/로드 (미설치 시 JSON fallback) |
+| `pyyaml` | 필수 | 프로젝트 config 로드 |
+| `pandas` | 필수 | 후처리 CSV 작업 |
+| `scipy` | 필수 | 클러스터링 (scipy.cluster.hierarchy) |
 
 ### Receptor 변환 도구 (--prepare-receptor 사용 시)
 아래 중 하나 이상 설치 필요 (순서대로 시도):
-1. **ADFR Suite** — `prepare_receptor` 명령
-2. **MGLTools** — `prepare_receptor4.py` 스크립트
-3. **OpenBabel** — `obabel` 명령
+1. **ADFR Suite** -- `prepare_receptor` 명령
+2. **MGLTools** -- `prepare_receptor4.py` 스크립트
+3. **OpenBabel** -- `obabel` 명령
 
 ---
 
@@ -77,302 +118,152 @@ pip install numpy vina pyyaml
 
 ### 4.0 인터랙티브 모드 (권장)
 
-인자 없이 실행하면 단계별 메뉴가 표시됩니다:
+인자 없이 실행하면 통합 메뉴가 표시됩니다:
 
 ```bash
-python run_docking.py
+python main.py
 ```
 
 ```
-============================================================
-  AutoDock Vina Docking Pipeline
-  인터랙티브 모드
-============================================================
-
---- 모드 선택 ---
-  [1] Blind Docking    (단백질 전체 탐색)
-  [2] Focused Docking  (특정 포켓 집중)
-  [3] Config 재실행    (이전 설정 로드)
-  [q] 종료
-
-선택: _
+╔══════════════════════════════════════════════════════════╗
+║     EGFR-MYO1D Docking Pipeline  (통합 실행 메뉴)        ║
+╠══════════════════════════════════════════════════════════╣
+║                                                          ║
+║  [1] Vina Docking            (AutoDock Vina 실행)        ║
+║  [2] Vina Postprocess        (결과 파싱/클러스터링)      ║
+║  [3] PPI Docking             (PyRosetta PPI 도킹)        ║
+║      3a. PDB 준비 (dimer + MYO1D 합치기)                 ║
+║      3b. 도킹 실행                                       ║
+║      3c. 결과 원복 (chain 번호 정상화)                   ║
+║  [4] MD Analysis             (GROMACS 분석)              ║
+║  [5] Generate Report         (종합 보고서 생성)          ║
+║  [6] Validate Outputs        (출력 검증)                 ║
+║  [7] Site Verdict            (유효 사이트 자동 판정)     ║
+║  [8] PPI Postprocess         (PPI 후처리 자동화)         ║
+║  [9] Full Pipeline           (1→2→7→5→6 자동 실행)       ║
+║                                                          ║
+║  [q] Quit                                                ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
 ```
 
-이후 Receptor, Ligand, 영역, 파라미터를 순서대로 선택하고 최종 확인 후 실행됩니다.
+Vina 도킹을 실행하려면 `1`을 선택합니다. 이후 `dock.py`의 인터랙티브 모드가 시작되어
+Receptor, Ligand, 영역, 파라미터를 순서대로 선택하고 최종 확인 후 실행됩니다.
+
 - Receptor/Ligand가 1개뿐이면 자동 선택
 - Ligand는 복수 선택 가능 (예: `1,2` 또는 `all`)
-- Config 재실행: output/ 내 이전 config.yaml을 선택하여 동일 조건 재실행
 
-### 4.1 CLI 모드 — 기본 사용 (자동 감지)
+### 4.1 CLI 모드 -- 서브커맨드 실행
 
-`input/` 폴더에 파일을 넣으면 자동으로 감지합니다.
-
-```bash
-# Blind docking — 단백질 전체 표면 탐색
-python run_docking.py --mode blind
-
-# Focused docking — 등록된 포켓 프리셋 사용
-python run_docking.py --mode focused --region clobe
-```
-
-자동 감지 규칙:
-- `*_receptor.pdbqt`가 1개면 자동 선택, 복수면 에러 (--receptor로 지정 필요)
-- `*_ligand.pdbqt`는 전부 선택
-- receptor PDB는 PDBQT 이름에서 유추
-
-### 4.2 특정 파일 지정
+YAML 프로젝트 설정 파일(`config/example-project.yaml`)을 사용합니다.
 
 ```bash
-# receptor 수동 지정
-python run_docking.py --mode blind \
-  --receptor input/3gt8_monomer_anp_receptor.pdbqt \
-  --receptor-pdb input/3gt8_monomer_anp.pdb
+# Vina 도킹
+python main.py vina -c config/example-project.yaml
 
-# 특정 리간드만 도킹
-python run_docking.py --mode blind --ligands input/97806_ligand.pdbqt
+# 후처리 (파싱 + 클러스터링 + 비교)
+python main.py postprocess -c config/example-project.yaml
 
-# 복수 리간드 지정
-python run_docking.py --mode blind \
-  --ligands input/97806_ligand.pdbqt input/173940_ligand.pdbqt
+# 사이트 판정
+python main.py verdict -c config/example-project.yaml
+
+# 보고서 생성
+python main.py report -c config/example-project.yaml
+
+# 출력 검증
+python main.py validate -c config/example-project.yaml
+
+# 전체 파이프라인 (vina → postprocess → verdict → report → validate)
+python main.py full -c config/example-project.yaml
 ```
 
-### 4.3 Focused Docking — 좌표 직접 지정
+### 4.2 Config 파일
+
+프로젝트 설정은 `config/` 디렉토리의 YAML 파일로 관리합니다.
 
 ```bash
-python run_docking.py --mode focused \
-  --center -38.2 0.2 -73.8 \
-  --box-size 30 30 30
+config/example-project.yaml   # 메인 프로젝트 설정
 ```
+
+Config 파일에는 receptor 목록, ligand 경로, 도킹 파라미터, 후처리 설정 등이 포함됩니다.
+인터랙티브 모드에서는 사용 가능한 config 파일 목록이 자동으로 표시됩니다.
+
+### 4.3 Focused Docking -- 좌표 직접 지정
+
+`dock.py`의 인터랙티브 모드(메뉴 [1])를 통해 focused docking 실행 시
+center 좌표와 box size를 직접 입력할 수 있습니다.
 
 ### 4.4 파라미터 조정
 
-```bash
-# exhaustiveness 변경 (높을수록 정확, 느림)
-python run_docking.py --mode blind --exhaustiveness 256
+파라미터는 config YAML 파일에서 설정하거나, 인터랙티브 모드에서 단계별로 지정합니다.
 
-# pose 수 변경
-python run_docking.py --mode blind --n-poses 50
+주요 파라미터:
 
-# blind mode box 패딩/최소 크기 변경
-python run_docking.py --mode blind --padding 10.0 --min-box 80.0
+| 파라미터 | 기본값 | 설명 |
+|----------|--------|------|
+| `exhaustiveness` | 128 | 탐색 강도 (높을수록 정확, 느림) |
+| `n_poses` | 20 | 생성할 pose 수 |
+| `padding` | 5.0 | blind 모드 box 여유 (Angstrom) |
+| `min_box` | 70.0 | blind 모드 최소 box 크기 (Angstrom) |
+| `contact_cutoff` | 4.0 | 접촉 잔기 판정 거리 (Angstrom) |
+| `pocket_cutoff` | 4.0 | 포켓 클러스터링 거리 (Angstrom) |
+
+### 4.5 Receptor PDB -> PDBQT 변환
+
+인터랙티브 모드(메뉴 [1])에서 새 receptor PDB를 넣으면 자동 변환을 제안합니다.
+
+### 4.6 출력 디렉토리
+
+출력은 config에 정의된 프로젝트 루트 아래에 생성됩니다.
+각 실행의 설정은 output 디렉토리 내에 `config.yaml`로 자동 저장됩니다.
+
+---
+
+## 5. 후처리 체인 (Postprocess)
+
+Vina 도킹 완료 후, 결과를 구조화된 CSV로 변환하는 6단계 후처리 체인이 있습니다.
+
+```
+  parse_poses → contacts → cluster → summarize → compare → ppi
 ```
 
-### 4.5 Config 파일로 재현
+### 5.1 각 단계 설명
 
-매 실행마다 `config.yaml`이 자동 저장됩니다. 이를 재사용하면 동일 조건으로 재실행 가능:
+| 순서 | 모듈 | 입력 | 출력 | 설명 |
+|------|------|------|------|------|
+| 1 | `parse_poses.py` | Vina PDBQT 결과 | `vina_pose_table.csv` | 포즈별 affinity, RMSD, 좌표 파싱 |
+| 2 | `contacts.py` | pose table + receptor PDB | pose table (enriched) | 각 포즈의 접촉 잔기 추출 |
+| 3 | `cluster.py` | enriched pose table | pose table (clustered) | 공간 기반 포켓 클러스터링 |
+| 4 | `summarize.py` | clustered pose table | `vina_pocket_table.csv`, `vina_drug_pocket_map.csv` | 포켓별 요약 통계 |
+| 5 | `compare.py` | pocket tables (다중 receptor) | `vina_pocket_comparison.csv` | 교차 receptor 포켓 비교 |
+| 6 | PPI 잔기 추출 | PPI 도킹 결과 | PPI 잔기 CSV | PyRosetta 결과에서 인터페이스 잔기 표준화 |
 
-```bash
-python run_docking.py --config output/2026-02-26_3gt8_monomer_anp/config.yaml
-```
-
-config.yaml 예시:
-```yaml
-mode: focused
-receptor: input/3gt8_monomer_anp_receptor.pdbqt
-receptor_pdb: input/3gt8_monomer_anp.pdb
-ligands:
-  - input/97806_ligand.pdbqt
-  - input/173940_ligand.pdbqt
-region: clobe
-center: [-38.2, 0.2, -73.8]
-box_size: [30, 30, 30]
-exhaustiveness: 128
-n_poses: 20
-```
-
-### 4.6 Receptor PDB → PDBQT 변환
-
-새 receptor PDB를 준비할 때:
+### 5.2 실행 방법
 
 ```bash
-python run_docking.py --mode blind \
-  --receptor-pdb input/3gt8_dimer_anp.pdb \
-  --prepare-receptor
+# CLI 모드 — 전체 후처리
+python main.py postprocess -c config/example-project.yaml
+
+# 인터랙티브 모드 — 메뉴 [2] 선택 후 단계별 또는 전체(a) 실행
+python main.py
+# → [2] 선택 → config 파일 선택 → [a] 전체 실행
 ```
 
-변환된 PDBQT는 `input/` 폴더에 저장됩니다.
+### 5.3 사이트 판정 (Verdict)
 
-### 4.7 출력 디렉토리 직접 지정
+후처리 완료 후, `verdict` 모듈이 Vina 포켓과 PPI 결과를 종합하여 각 사이트의 증거 수준을 자동 판정합니다.
+
+- **출력**: `cross_method_agreement.csv`, `valid_sites.csv`
+- **판정 등급**: STRONG (>=55점) / MODERATE (>=30점) / WEAK (<30점)
+- **적응적 점수 배분**: PPI 데이터가 있으면 Vina(50)+PPI(20)+Cross(30)=100, 없으면 Vina(60)+Cross(40)=100
 
 ```bash
-python run_docking.py --mode blind --output-dir output/my_custom_run
-
-# 또는 라벨만 지정 (날짜는 자동)
-python run_docking.py --mode blind --label test_run
-# → output/2026-03-05_test_run/
+python main.py verdict -c config/example-project.yaml
 ```
 
 ---
 
-## 5. 전체 인자 목록
-
-| 인자 | 기본값 | 설명 |
-|------|--------|------|
-| `--mode` | (필수) | `blind` 또는 `focused` |
-| `--receptor` | auto | receptor PDBQT 경로 |
-| `--receptor-pdb` | auto | receptor PDB 경로 (blind 모드 box 계산용) |
-| `--ligands` | auto | ligand PDBQT 파일 (복수 가능) |
-| `--smiles` | - | SMILES 문자열 직접 입력 (자동 3D→PDBQT 변환) |
-| `--center X Y Z` | - | focused 모드 box 중심 좌표 |
-| `--box-size X Y Z` | 30 30 30 | box 크기 (Angstrom) |
-| `--region` | - | 이름 기반 포켓 프리셋 |
-| `--exhaustiveness` | 128 | 탐색 강도 (높을수록 정확, 느림) |
-| `--n-poses` | 20 | 생성할 pose 수 |
-| `--padding` | 5.0 | blind 모드 box 여유 (Angstrom) |
-| `--min-box` | 70.0 | blind 모드 최소 box 크기 (Angstrom) |
-| `--output-dir` | auto | 출력 디렉토리 직접 지정 |
-| `--label` | auto | 출력 디렉토리 라벨 |
-| `--config` | - | YAML/JSON config 파일 경로 |
-| `--prepare-receptor` | False | PDB → PDBQT 변환 수행 |
-| `--n-pockets N` | - | 다중 포켓 탐색: N개 포켓 발견 |
-| `--max-per-pocket M` | 3 | 포켓당 최대 포즈 수 |
-| `--cluster-radius R` | 5.0 | 같은 포켓 판정 반경 (Å) |
-| `--exclude-zone X Y Z R` | - | 해당 좌표 반경 R Å 이내 포즈 제외 (복수 가능) |
-
-### 4.8 다중 포켓 탐색 (--n-pockets)
-
-블라인드 도킹에서 여러 결합 부위를 자동으로 발견합니다.
-
-```bash
-# 5개 포켓 탐색 (기본: 포켓당 3개 포즈)
-python run_docking.py --mode blind --n-pockets 5
-
-# 포켓당 5개 포즈, 판정 반경 8Å
-python run_docking.py --mode blind --n-pockets 5 --max-per-pocket 5 --cluster-radius 8
-```
-
-**작동 원리:**
-포즈를 에너지 순서대로 하나씩 처리하면서 포켓에 배정합니다:
-1. 포즈 수 자동 증가 (충분한 다양성 확보)
-2. 각 포즈의 centroid → 가장 가까운 열린 포켓에 배정
-3. 포켓이 `max-per-pocket`개 차면 **닫힘** → 다음 포즈는 다른 포켓으로
-4. 새 위치의 포즈는 **새 포켓** 생성
-5. N개 포켓이 모두 채워지면 종료
-
-**예시 흐름 (5개 포켓, 포켓당 3개):**
-```
-pose 1 → Pocket #1 (1/3)
-pose 2 → Pocket #1 (2/3)
-pose 3 → Pocket #2 (1/3)
-pose 4 → Pocket #1 (3/3) → Pocket #1 완성!
-pose 5 → Pocket #2 (2/3)
-pose 6 → Pocket #3 (1/3)
-pose 7 → Pocket #3 (2/3)
-pose 8 → Pocket #2 (3/3) → Pocket #2 완성!
-pose 9 → [Pocket #1 닫힘, skip] → Pocket #4 (1/3)
-...
-→ 5개 포켓 모두 완성!
-```
-
-**파라미터:**
-| 인자 | 기본값 | 설명 |
-|------|--------|------|
-| `--n-pockets N` | - | 탐색할 포켓 수 |
-| `--max-per-pocket M` | 3 | 포켓당 포즈 수 (가득 차면 닫힘) |
-| `--cluster-radius R` | 5.0 | 같은 포켓 판정 반경 (Å) |
-
-**출력 파일:**
-- `<ligand>_blind.pdbqt` — 전체 포즈 (기존)
-- `<ligand>_blind_pockets.pdbqt` — 각 포켓의 best pose만 (포켓 수만큼)
-- `<ligand>_blind_all_pockets.pdbqt` — 모든 포켓의 전체 포즈
-
-### 4.9 Exclusion Zone (수동 좌표 제외)
-
-좌표를 직접 지정하여 특정 영역의 포즈를 제외할 수도 있습니다:
-
-```bash
-python run_docking.py --mode blind --exclude-zone -38.2 0.2 -73.8 10
-```
-
-인터랙티브 모드에서는 "포즈 필터링" 메뉴에서 자동/수동을 선택할 수 있습니다.
-
----
-
-## 6. 통합 전처리 시스템
-
-스크립트 실행 시 `input/` 폴더의 **모든** 분자 파일을 자동으로 스캔 → 분류 → 변환합니다.
-**이미 PDBQT가 존재하면 자동으로 스킵합니다.**
-
-실행 시 전처리 요약이 자동 출력됩니다:
-```
-══════════════════════════════════════════════════
-  전처리 완료 — input/ 현황
-══════════════════════════════════════════════════
-  Receptor: 1개
-    > 3gt8_monomer_anp_receptor.pdbqt
-  Ligand:   2개
-    > 97806_ligand.pdbqt
-    > drug_ligand.pdbqt
-  변환: receptor 0개, ligand 1개
-══════════════════════════════════════════════════
-```
-
-### Receptor (PDB/MOL2/CIF → PDBQT)
-```
-input/3gt8_monomer_anp.pdb  →  input/3gt8_monomer_anp_receptor.pdbqt
-input/protein.mol2          →  input/protein_receptor.pdbqt
-```
-변환 도구 시도 순서: ADFR → MGLTools → OpenBabel
-
-### Ligand (SDF/MOL2 → PDBQT)
-```
-input/97806_ligand.sdf      →  input/97806_ligand.pdbqt
-input/173940_ligand.mol2    →  input/173940_ligand.pdbqt
-```
-변환 도구 시도 순서: Meeko → ADFR → MGLTools → OpenBabel
-
-### SMILES 입력 (.smi 파일)
-
-SMILES 문자열이 담긴 `.smi` 파일을 `input/`에 넣으면 자동으로 3D 구조 생성 → PDBQT 변환됩니다.
-
-**SMI 파일 포맷** (`input/compounds.smi`):
-```
-# 주석 줄 (무시됨)
-CC(=O)Oc1ccccc1C(=O)O  aspirin
-c1ccc2[nH]c(-c3ccccn3)nc2c1  benzimidazole
-CCO
-```
-- 각 줄: `SMILES [이름]` (탭 또는 공백 구분)
-- 이름을 생략하면 `{파일명}_0`, `{파일명}_1`, ... 자동 부여
-- `#`으로 시작하는 줄과 빈 줄은 무시
-
-**변환 흐름:**
-```
-compounds.smi 의 "CC(=O)Oc1ccccc1C(=O)O  aspirin"
-    → input/aspirin_ligand.sdf    (3D 좌표 생성)
-    → input/aspirin_ligand.pdbqt  (도킹용 변환)
-```
-
-**CLI에서 직접 SMILES 입력:**
-```bash
-# 단일 SMILES
-python run_docking.py --mode blind --smiles "CC(=O)Oc1ccccc1C(=O)O"
-
-# 복수 SMILES
-python run_docking.py --mode blind --smiles "CCO" "CC(=O)Oc1ccccc1C(=O)O"
-```
-
-**3D 구조 생성 도구** (하나 이상 필요):
-| 도구 | 설치 | 비고 |
-|------|------|------|
-| RDKit | `conda install -c conda-forge rdkit` | ETKDGv3 + MMFF 최적화 (권장) |
-| OpenBabel | `conda install -c conda-forge openbabel` | `--gen3d --minimize` |
-
-### 사용 흐름
-1. `input/`에 receptor PDB와 ligand 파일을 넣는다 (SDF/MOL2/SMI 중 아무거나)
-2. `python run_docking.py` 실행
-3. 자동으로 SMILES→SDF→PDBQT 변환 → 도킹 실행
-
-변환 도구 설치:
-```bash
-pip install meeko                       # 리간드 SDF→PDBQT 변환 (권장)
-conda install -c conda-forge openbabel  # 범용 변환 + SMILES 3D 생성
-conda install -c conda-forge rdkit      # SMILES 3D 생성 (선택)
-```
-
----
-
-## 7. Blind vs Focused Docking
+## 6. Blind vs Focused Docking
 
 ### 6.1 알고리즘
 
@@ -384,7 +275,7 @@ conda install -c conda-forge rdkit      # SMILES 3D 생성 (선택)
 2. 변형 후 BFGS quasi-Newton 방법으로 local optimization
 3. Metropolis criterion으로 수락/거부 결정
 4. exhaustiveness 횟수만큼 독립적으로 병렬 실행
-5. 모든 결과에서 에너지 순 정렬 + RMSD 클러스터링 → 상위 pose 출력
+5. 모든 결과에서 에너지 순 정렬 + RMSD 클러스터링 -> 상위 pose 출력
 
 **Vina Scoring Function 구성 요소:**
 - van der Waals 상호작용
@@ -421,7 +312,7 @@ box 중심 좌표를 결정하는 방법:
 
 ### 7.1 Region 프리셋 (스크립트 내장)
 
-`run_docking.py` 내의 `REGION_PRESETS` 딕셔너리에 등록된 좌표:
+`egfr_pipeline/vina/dock.py` 내의 `REGION_PRESETS` 딕셔너리에 등록된 좌표:
 
 ```python
 REGION_PRESETS = {
@@ -442,7 +333,7 @@ REGION_PRESETS = {
     },
 ```
 
-사용: `python run_docking.py --mode focused --region clobe`
+인터랙티브 모드(메뉴 [1])에서 focused docking 선택 시 프리셋 목록이 자동 표시됩니다.
 
 ### 7.2 구조 기반 수동 지정
 
@@ -462,11 +353,11 @@ select :808-810,848,987-991
 measure center sel
 ```
 
-사용: `python run_docking.py --mode focused --center -38.2 0.2 -73.8 --box-size 30 30 30`
+인터랙티브 모드에서 center 좌표와 box size를 입력합니다.
 
 ### 7.3 Blind Docking 결과에서 추출
 
-1. Blind docking 실행
+1. Blind docking 실행 (메뉴 [1] 또는 `python main.py vina`)
 2. 결과 PDBQT를 PyMOL에서 로드
 3. 유의미한 pose의 리간드 중심 좌표 확인
 4. 그 좌표를 focused docking의 center로 사용
@@ -485,8 +376,50 @@ fpocket 예시:
 ```bash
 fpocket -f input/3gt8_monomer_anp.pdb
 # 결과: 3gt8_monomer_anp_out/ 폴더에 포켓 정보 출력
-# 각 포켓의 중심 좌표를 --center로 사용
+# 각 포켓의 중심 좌표를 focused docking에서 사용
 ```
+
+---
+
+## 8. 다중 포켓 탐색 (--n-pockets)
+
+블라인드 도킹에서 여러 결합 부위를 자동으로 발견합니다.
+인터랙티브 모드(메뉴 [1])에서 "포켓 탐색" 옵션을 선택하거나, dock.py 내부 설정으로 지정합니다.
+
+**작동 원리:**
+포즈를 에너지 순서대로 하나씩 처리하면서 포켓에 배정합니다:
+1. 포즈 수 자동 증가 (충분한 다양성 확보)
+2. 각 포즈의 centroid -> 가장 가까운 열린 포켓에 배정
+3. 포켓이 `max-per-pocket`개 차면 **닫힘** -> 다음 포즈는 다른 포켓으로
+4. 새 위치의 포즈는 **새 포켓** 생성
+5. N개 포켓이 모두 채워지면 종료
+
+**예시 흐름 (5개 포켓, 포켓당 3개):**
+```
+pose 1 → Pocket #1 (1/3)
+pose 2 → Pocket #1 (2/3)
+pose 3 → Pocket #2 (1/3)
+pose 4 → Pocket #1 (3/3) → Pocket #1 완성!
+pose 5 → Pocket #2 (2/3)
+pose 6 → Pocket #3 (1/3)
+pose 7 → Pocket #3 (2/3)
+pose 8 → Pocket #2 (3/3) → Pocket #2 완성!
+pose 9 → [Pocket #1 닫힘, skip] → Pocket #4 (1/3)
+...
+→ 5개 포켓 모두 완성!
+```
+
+**파라미터:**
+| 파라미터 | 기본값 | 설명 |
+|----------|--------|------|
+| `n_pockets` | - | 탐색할 포켓 수 |
+| `max_per_pocket` | 3 | 포켓당 포즈 수 (가득 차면 닫힘) |
+| `cluster_radius` | 5.0 | 같은 포켓 판정 반경 (Angstrom) |
+
+**출력 파일:**
+- `<ligand>_blind.pdbqt` -- 전체 포즈 (기존)
+- `<ligand>_blind_pockets.pdbqt` -- 각 포켓의 best pose만 (포켓 수만큼)
+- `<ligand>_blind_all_pockets.pdbqt` -- 모든 포켓의 전체 포즈
 
 ---
 
@@ -500,9 +433,88 @@ ATP 결합 포켓이 ANP로 점유되어 리간드가 해당 포켓에 결합하
 
 ---
 
-## 10. 출력 결과 해석
+## 10. 통합 전처리 시스템
 
-### 9.1 결과 테이블
+도킹 실행 시 `input/` 폴더의 **모든** 분자 파일을 자동으로 스캔 -> 분류 -> 변환합니다.
+**이미 PDBQT가 존재하면 자동으로 스킵합니다.**
+
+실행 시 전처리 요약이 자동 출력됩니다:
+```
+══════════════════════════════════════════════════
+  전처리 완료 — input/ 현황
+══════════════════════════════════════════════════
+  Receptor: 1개
+    > 3gt8_monomer_anp_receptor.pdbqt
+  Ligand:   2개
+    > 97806_ligand.pdbqt
+    > drug_ligand.pdbqt
+  변환: receptor 0개, ligand 1개
+══════════════════════════════════════════════════
+```
+
+### Receptor (PDB/MOL2/CIF -> PDBQT)
+```
+input/3gt8_monomer_anp.pdb  →  input/3gt8_monomer_anp_receptor.pdbqt
+input/protein.mol2          →  input/protein_receptor.pdbqt
+```
+변환 도구 시도 순서: ADFR -> MGLTools -> OpenBabel
+
+### Ligand (SDF/MOL2 -> PDBQT)
+```
+input/97806_ligand.sdf      →  input/97806_ligand.pdbqt
+input/173940_ligand.mol2    →  input/173940_ligand.pdbqt
+```
+변환 도구 시도 순서: Meeko -> ADFR -> MGLTools -> OpenBabel
+
+### SMILES 입력 (.smi 파일)
+
+SMILES 문자열이 담긴 `.smi` 파일을 `input/`에 넣으면 자동으로 3D 구조 생성 -> PDBQT 변환됩니다.
+
+**SMI 파일 포맷** (`input/compounds.smi`):
+```
+# 주석 줄 (무시됨)
+CC(=O)Oc1ccccc1C(=O)O  aspirin
+c1ccc2[nH]c(-c3ccccn3)nc2c1  benzimidazole
+CCO
+```
+- 각 줄: `SMILES [이름]` (탭 또는 공백 구분)
+- 이름을 생략하면 `{파일명}_0`, `{파일명}_1`, ... 자동 부여
+- `#`으로 시작하는 줄과 빈 줄은 무시
+
+**변환 흐름:**
+```
+compounds.smi 의 "CC(=O)Oc1ccccc1C(=O)O  aspirin"
+    → input/aspirin_ligand.sdf    (3D 좌표 생성)
+    → input/aspirin_ligand.pdbqt  (도킹용 변환)
+```
+
+**CLI에서 직접 SMILES 입력:**
+
+인터랙티브 모드(메뉴 [1])에서 SMILES 입력 옵션을 사용합니다.
+
+**3D 구조 생성 도구** (하나 이상 필요):
+| 도구 | 설치 | 비고 |
+|------|------|------|
+| RDKit | `conda install -c conda-forge rdkit` | ETKDGv3 + MMFF 최적화 (권장) |
+| OpenBabel | `conda install -c conda-forge openbabel` | `--gen3d --minimize` |
+
+### 사용 흐름
+1. `input/`에 receptor PDB와 ligand 파일을 넣는다 (SDF/MOL2/SMI 중 아무거나)
+2. `python main.py` 실행, 메뉴 [1] 선택
+3. 자동으로 SMILES->SDF->PDBQT 변환 -> 도킹 실행
+
+변환 도구 설치:
+```bash
+pip install meeko                       # 리간드 SDF→PDBQT 변환 (권장)
+conda install -c conda-forge openbabel  # 범용 변환 + SMILES 3D 생성
+conda install -c conda-forge rdkit      # SMILES 3D 생성 (선택)
+```
+
+---
+
+## 11. 출력 결과 해석
+
+### 11.1 결과 테이블
 
 ```
 ============================================================
@@ -524,7 +536,7 @@ ATP 결합 포켓이 ANP로 점유되어 리간드가 해당 포켓에 결합하
 | RMSD_lb | 최적 pose 대비 RMSD 하한 (lower bound) |
 | RMSD_ub | 최적 pose 대비 RMSD 상한 (upper bound) |
 
-### 9.2 해석 가이드
+### 11.2 해석 가이드
 
 | Affinity 범위 | 해석 |
 |---------------|------|
@@ -534,10 +546,22 @@ ATP 결합 포켓이 ANP로 점유되어 리간드가 해당 포켓에 결합하
 | -4 ~ -6 | 약한 결합 |
 | -4 이상 | 유의미하지 않음 |
 
-### 9.3 결과 파일
+### 11.3 결과 파일
 
-- `<ligand>_<mode>.pdbqt` — 모든 pose가 포함된 PDBQT 파일
-- `config.yaml` — 실행 파라미터 (재현용)
+- `<ligand>_<mode>.pdbqt` -- 모든 pose가 포함된 PDBQT 파일
+- `config.yaml` -- 실행 파라미터 (재현용)
+
+### 11.4 후처리 출력 파일
+
+| 파일 | 생성 단계 | 설명 |
+|------|----------|------|
+| `vina_pose_table.csv` | parse_poses | 전체 포즈 테이블 (affinity, 좌표, 접촉잔기, 포켓 ID) |
+| `vina_pocket_table.csv` | summarize | 포켓별 요약 (평균 affinity, 잔기 목록) |
+| `vina_drug_pocket_map.csv` | summarize | 리간드-포켓 매핑 |
+| `vina_pocket_comparison.csv` | compare | 교차 receptor 포켓 비교 |
+| `cross_method_agreement.csv` | verdict | Vina-PPI 교차 방법 일치도 |
+| `valid_sites.csv` | verdict | 유효 사이트 판정 결과 (STRONG/MODERATE/WEAK) |
+| `project_report.txt` | report | 종합 보고서 |
 
 ### PyMOL 시각화 스크립트 자동 생성
 
@@ -572,53 +596,90 @@ color limegreen, receptor and resi 856-979  # C-lobe
 color yellow, receptor and resi 997-1002    # AP2 helix
 ```
 
-매칭 규칙: `3gt8.pml` → `3gt8_receptor.pdbqt` (파일명 stem 매칭).
+매칭 규칙: `3gt8.pml` -> `3gt8_receptor.pdbqt` (파일명 stem 매칭).
 `.pml`이 1개면 모든 receptor에 적용.
 
 ---
 
-## 11. 새 리간드/receptor 추가하기
+## 12. 새 리간드/receptor 추가하기
 
 ### 새 리간드 추가
 
-1. SDF 또는 MOL2 파일을 PDBQT로 변환:
+1. SDF 또는 MOL2 파일을 `input/`에 넣으면 자동 변환됩니다.
+   또는 수동 변환:
    ```bash
    obabel new_compound.sdf -O input/new_compound_ligand.pdbqt --gen3d
-   ```
-   또는 ADFR Suite:
-   ```bash
-   prepare_ligand -l new_compound.mol2 -o input/new_compound_ligand.pdbqt
    ```
 
 2. `input/` 폴더에 `<ID>_ligand.pdbqt` 네이밍으로 저장
 
 3. 도킹 실행 (자동 감지됨):
    ```bash
-   python run_docking.py --mode blind
+   python main.py vina -c config/example-project.yaml
+   # 또는 인터랙티브: python main.py → [1]
    ```
 
 ### 새 receptor 추가
 
 1. PDB 파일을 `input/`에 저장
-2. PDBQT 변환:
-   ```bash
-   python run_docking.py --mode blind \
-     --receptor-pdb input/new_receptor.pdb \
-     --prepare-receptor
-   ```
+2. 인터랙티브 모드(메뉴 [1])에서 receptor를 선택하면 자동 변환을 제안합니다
 3. 변환된 `new_receptor_receptor.pdbqt`가 `input/`에 생성됨
 
 ---
 
-## 12. 문제 해결
+## 13. 전체 파이프라인 워크플로우
+
+권장되는 전체 실행 흐름:
+
+```
+python main.py full -c config/example-project.yaml
+```
+
+이 명령은 다음을 순차 실행합니다:
+
+```
+Step 1: Vina Docking          → 모든 receptor x ligand 조합 도킹
+Step 2: Postprocess           → parse → contacts → cluster → summarize → compare → ppi
+Step 3: Site Verdict          → Vina + PPI 교차 판정 (STRONG/MODERATE/WEAK)
+Step 4: Generate Report       → 종합 보고서 (project_report.txt)
+Step 5: Validate              → 출력 파일 무결성 검증
+```
+
+인터랙티브 모드에서는 메뉴 [9]를 선택하면 동일하게 실행됩니다.
+
+---
+
+## 14. 문제 해결
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| "복수 receptor 감지됨" | input/에 *_receptor.pdbqt가 2개 이상 | `--receptor`로 하나 지정 |
-| "Blind 모드에는 receptor PDB가 필요합니다" | PDB 파일을 자동 유추할 수 없음 | `--receptor-pdb`로 지정 |
-| "Focused 모드에는 --center 지정 필수" | center 좌표 누락 | `--center X Y Z` 또는 `--region` 사용 |
-| "pyyaml 미설치" | PyYAML 없음 | `pip install pyyaml` 또는 JSON fallback 사용 |
+| "복수 receptor 감지됨" | input/에 *_receptor.pdbqt가 2개 이상 | config에서 receptor를 지정 |
+| "Blind 모드에는 receptor PDB가 필요합니다" | PDB 파일을 자동 유추할 수 없음 | config에서 receptor_pdb 경로 지정 |
+| "Focused 모드에는 center 지정 필수" | center 좌표 누락 | 인터랙티브 모드에서 좌표 입력 또는 region 프리셋 사용 |
+| "pyyaml 미설치" | PyYAML 없음 | `pip install pyyaml` |
 | "receptor PDBQT 변환 실패" | 변환 도구 미설치 | ADFR, MGLTools, 또는 OpenBabel 설치 |
 | ANP WARNING | receptor에 ANP 미포함 | ANP 포함 PDB 사용 또는 의도된 경우 무시 |
-| "SMILES→SDF 변환 실패" | RDKit/OpenBabel 미설치 | `conda install -c conda-forge openbabel` 또는 `rdkit` 설치 |
-| "Invalid SMILES" | SMILES 문법 오류 | SMILES 문자열 확인 (https://www.daylight.com/dayhtml/doc/theory/theory.smiles.html) |
+| "SMILES->SDF 변환 실패" | RDKit/OpenBabel 미설치 | `conda install -c conda-forge openbabel` 또는 `rdkit` 설치 |
+| config 파일을 못 찾음 | YAML 경로 오류 | `config/example-project.yaml` 경로 확인 |
+| 서브커맨드 인식 안됨 | 오타 | `python main.py --help`로 사용 가능한 서브커맨드 확인 |
+
+---
+
+## 15. 구버전(legacy) 명령 대응표
+
+이전 `run_docking.py` 기반 명령은 다음과 같이 변경되었습니다:
+
+| 구버전 | 신버전 |
+|--------|--------|
+| `python run_docking.py` | `python main.py` (메뉴 [1]) |
+| `python run_docking.py --mode blind` | `python main.py vina -c config/example-project.yaml` |
+| `python run_docking.py --config output/.../config.yaml` | `python main.py vina -c config/example-project.yaml` |
+| `python parse_vina_results.py ...` | `python main.py postprocess` (단계 1) |
+| `python extract_contacts.py ...` | `python main.py postprocess` (단계 2) |
+| `python cluster_pockets.py ...` | `python main.py postprocess` (단계 3) |
+| `python summarize_pockets.py ...` | `python main.py postprocess` (단계 4) |
+| `python compare_pockets.py ...` | `python main.py postprocess` (단계 5) |
+| `python generate_report.py ...` | `python main.py report` |
+| `python validate_outputs.py ...` | `python main.py validate` |
+
+구버전 스크립트는 `legacy/` 디렉토리에 보관되어 있습니다. 상세 매핑은 `legacy/README.md`를 참고하세요.
