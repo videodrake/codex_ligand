@@ -61,15 +61,27 @@ def format_receptor_pocket_section(
         lines.append(f"  Ligands docked: {len(drugs)}")
         lines.append("")
 
-        # Pocket table
-        lines.append(f"  {'Pocket':<8} {'Poses':>6} {'Ligs':>5} {'Best aff':>9} {'Mean aff':>9} {'Top residues'}")
-        lines.append(f"  {'------':<8} {'-----':>6} {'----':>5} {'--------':>9} {'--------':>9} {'------------'}")
+        # Pocket table (with uncertainty columns when available)
+        has_uncertainty = any(p.get("centroid_spread_A") for p in pockets)
+        if has_uncertainty:
+            lines.append(f"  {'Pocket':<8} {'Poses':>6} {'Ligs':>5} {'Best aff':>9} {'Mean aff':>9} "
+                         f"{'Spread':>7} {'Aff SD':>7} {'Top residues'}")
+            lines.append(f"  {'------':<8} {'-----':>6} {'----':>5} {'--------':>9} {'--------':>9} "
+                         f"{'------':>7} {'------':>7} {'------------'}")
+        else:
+            lines.append(f"  {'Pocket':<8} {'Poses':>6} {'Ligs':>5} {'Best aff':>9} {'Mean aff':>9} {'Top residues'}")
+            lines.append(f"  {'------':<8} {'-----':>6} {'----':>5} {'--------':>9} {'--------':>9} {'------------'}")
         for p in sorted(pockets, key=lambda r: float(r.get("best_affinity", 0) or 0)):
-            lines.append(
+            base = (
                 f"  {p['pocket_id']:<8} {p.get('n_pose',''):>6} {p.get('n_ligand',''):>5} "
                 f"{p.get('best_affinity',''):>9} {p.get('mean_affinity',''):>9} "
-                f"{p.get('top_residues','')[:40]}"
             )
+            if has_uncertainty:
+                spread = p.get('centroid_spread_A', '')
+                aff_std = p.get('affinity_std', '')
+                base += f"{spread:>7} {aff_std:>7} "
+            base += f"{p.get('top_residues','')[:40]}"
+            lines.append(base)
         lines.append("")
 
         # Ligand-pocket mapping
@@ -409,6 +421,28 @@ def generate_report(
     agreement_rows = load_csv(project_root / "cross_method_agreement.csv")
     report_lines.append(section_header("4. Automated Site Verdict"))
     report_lines.append(format_verdict_section(verdict_rows, agreement_rows))
+
+    # Section 4.5: Experimental correlation (if available)
+    has_exp = any(r.get("exp_sensitivity") not in ("", None) for r in verdict_rows)
+    if has_exp:
+        report_lines.append(section_header("4.5 Experimental Residue Correlation", 2))
+        report_lines.append("  Pocket contacts vs. known binding/non-binding residues.")
+        report_lines.append("  Informational only — does NOT affect scoring.\n")
+        report_lines.append(f"  {'Receptor':<20} {'Pocket':<7} {'Sens':>6} {'Spec':>6} "
+                           f"{'Enrich':>7} {'Impact':<12} {'Hits'}")
+        report_lines.append(f"  {'--------':<20} {'------':<7} {'----':>6} {'----':>6} "
+                           f"{'------':>7} {'------':<12} {'----'}")
+        for r in verdict_rows:
+            sens = r.get("exp_sensitivity", "")
+            if sens in ("", None):
+                continue
+            report_lines.append(
+                f"  {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
+                f"{sens:>6} {r.get('exp_specificity',''):>6} "
+                f"{r.get('exp_enrichment',''):>7} {r.get('exp_rank_impact',''):<12} "
+                f"{r.get('reasons','').split('exp_hit=')[1].split(';')[0] if 'exp_hit=' in r.get('reasons','') else '-'}"
+            )
+        report_lines.append("")
 
     # Section 5: Key observations
     report_lines.append(section_header("5. Key Observations"))

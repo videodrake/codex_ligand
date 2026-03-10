@@ -158,6 +158,7 @@ def run_postprocess(config_path: str = None):
         ("포켓 요약 (summarize)", "summarize"),
         ("교차 비교 (compare)", "compare"),
         ("PPI 잔기 추출 (ppi)", "ppi"),
+        ("부트스트랩 안정성 분석 (bootstrap)", "bootstrap"),
     ]
 
     print("\n후처리 단계:")
@@ -237,6 +238,14 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         from egfr_pipeline.ppi.pyrosetta_extract import extract_pyrosetta_batch
         print("  Extracting PPI residues...")
         extract_pyrosetta_batch(config_path)
+
+    elif step == "bootstrap":
+        from egfr_pipeline.vina.bootstrap import bootstrap_from_config
+        bs = config.get("bootstrap", {})
+        n = bs.get("n_replicates", 100)
+        print(f"  Bootstrap stability analysis ({n} replicates)...")
+        out = bootstrap_from_config(config_path)
+        print(f"  → {out}")
 
 
 def run_pyrosetta(config_ini: str = None):

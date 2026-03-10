@@ -126,6 +126,7 @@ COMPARISON_FIELDS = [
     "n_pose_a",
     "n_pose_b",
     "same_patch_candidate",
+    "centroid_dist_bootstrap_ci",
 ]
 
 
@@ -134,6 +135,7 @@ def compare_all_pockets(
     drug_map_rows: List[dict],
     centroid_cutoff: float = 15.0,
     keep_chain: bool = False,
+    bootstrap_index: Optional[Dict[Tuple[str, str], dict]] = None,
 ) -> List[dict]:
     """Compare every pocket pair across different receptor states.
 
@@ -143,6 +145,7 @@ def compare_all_pockets(
         centroid_cutoff: only emit pairs within this centroid distance (A).
             Set to 0 to emit all pairs.
         keep_chain: preserve chain prefix in residue identifiers.
+        bootstrap_index: {(receptor_id, pocket_id): bootstrap_row} for CI.
     """
     # Group pockets by receptor
     by_receptor: Dict[str, List[dict]] = defaultdict(list)
@@ -182,6 +185,22 @@ def compare_all_pockets(
                     and (j >= 0.3 or oc >= 0.5)
                 )
 
+                # Bootstrap CI for centroid distance (error propagation)
+                ci_str = ""
+                if bootstrap_index:
+                    ba = bootstrap_index.get((rec_a, pocket_a["pocket_id"]))
+                    bb = bootstrap_index.get((rec_b, pocket_b["pocket_id"]))
+                    if ba and bb:
+                        try:
+                            std_a = float(ba.get("centroid_std_A", 0))
+                            std_b = float(bb.get("centroid_std_A", 0))
+                            combined_std = math.sqrt(std_a ** 2 + std_b ** 2)
+                            lo = max(0, dist - 1.96 * combined_std)
+                            hi = dist + 1.96 * combined_std
+                            ci_str = f"{lo:.1f}-{hi:.1f}"
+                        except (ValueError, TypeError):
+                            pass
+
                 results.append({
                     "receptor_a": rec_a,
                     "pocket_a": pocket_a["pocket_id"],
@@ -205,6 +224,7 @@ def compare_all_pockets(
                     "n_pose_a": pocket_a.get("n_pose", ""),
                     "n_pose_b": pocket_b.get("n_pose", ""),
                     "same_patch_candidate": is_candidate,
+                    "centroid_dist_bootstrap_ci": ci_str,
                 })
 
     # Sort by centroid distance (closest pairs first)
@@ -233,6 +253,17 @@ def compare_from_config(
     pocket_rows = load_pocket_table(pocket_csv)
     drug_map_rows = load_drug_pocket_map(drug_csv)
 
+    # Load bootstrap data for CI if available
+    bootstrap_csv = project_root / "vina_pocket_bootstrap.csv"
+    bootstrap_idx: Optional[Dict[Tuple[str, str], dict]] = None
+    if bootstrap_csv.exists():
+        with open(bootstrap_csv, newline="", encoding="utf-8") as f:
+            brows = list(csv.DictReader(f))
+        bootstrap_idx = {(r["receptor_id"], r["pocket_id"]): r for r in brows}
+
     keep_chain = config.get("postprocess", {}).get("keep_chain", False)
-    comparison = compare_all_pockets(pocket_rows, drug_map_rows, centroid_cutoff, keep_chain=keep_chain)
+    comparison = compare_all_pockets(
+        pocket_rows, drug_map_rows, centroid_cutoff,
+        keep_chain=keep_chain, bootstrap_index=bootstrap_idx,
+    )
     return write_csv(out_csv, comparison, COMPARISON_FIELDS)

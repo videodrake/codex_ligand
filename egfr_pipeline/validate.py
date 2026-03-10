@@ -103,6 +103,7 @@ OPTIONAL_OUTPUTS = [
     "cross_method_agreement.csv",
     "valid_sites.csv",
     "vina_consensus_sites.csv",
+    "vina_pocket_bootstrap.csv",
 ]
 
 
@@ -181,6 +182,7 @@ EXPECTED_SCHEMAS = {
         "receptor_id", "pocket_id", "centroid_x", "centroid_y", "centroid_z",
         "n_pose", "n_ligand", "best_affinity", "mean_affinity",
         "union_contact_residues", "top_residues",
+        "centroid_spread_A", "affinity_std", "affinity_iqr",
     ],
     "vina_drug_pocket_map.csv": [
         "receptor_id", "ligand_id", "dominant_pocket_id",
@@ -197,6 +199,7 @@ EXPECTED_SCHEMAS = {
         "shared_ligands", "n_shared_ligands", "n_ligands_a", "n_ligands_b",
         "affinity_a", "affinity_b", "n_pose_a", "n_pose_b",
         "same_patch_candidate",
+        "centroid_dist_bootstrap_ci",
     ],
     "ppi_pyrosetta_residues.csv": [
         "receptor_id", "source", "residue_id", "residue_num",
@@ -221,12 +224,20 @@ EXPECTED_SCHEMAS = {
         "ppi_data_available", "best_affinity", "n_pose", "n_ligand",
         "spatial_dist_to_ppi", "closest_ppi_partner", "n_ppi_partners_near",
         "n_shared_with_ppi",
-        "cross_receptor_matches", "consensus_site_id", "reasons",
+        "cross_receptor_matches", "consensus_site_id",
+        "exp_sensitivity", "exp_specificity", "exp_enrichment", "exp_rank_impact",
+        "pocket_stability",
+        "reasons",
     ],
     "vina_consensus_sites.csv": [
         "consensus_site_id", "n_receptors", "receptor_list", "pocket_list",
         "centroid_x", "centroid_y", "centroid_z",
         "best_affinity", "total_n_ligand", "total_n_pose", "consensus_residues",
+    ],
+    "vina_pocket_bootstrap.csv": [
+        "receptor_id", "pocket_id", "pocket_exists_frac", "centroid_std_A",
+        "affinity_mean", "affinity_std", "affinity_iqr",
+        "n_pose_mean", "n_pose_std", "n_replicates",
     ],
 }
 

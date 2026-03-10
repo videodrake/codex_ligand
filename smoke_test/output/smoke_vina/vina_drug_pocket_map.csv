@@ -1,7 +1,1 @@
 receptor_id,ligand_id,dominant_pocket_id,dominant_pocket_pose_count,dominant_pocket_fraction,best_affinity,best_pose_rank,top_pose_residues,alternative_pockets,is_multimodal_binding
-3GT8_cl38_48,ligand_a,P001,1,0.5,-8.4,1,A:HIS972;A:MET971,P002,True
-3GT8_cl38_48,ligand_b,P001,1,0.5,-8.1,1,A:HIS972;A:MET971,P003,True
-3GT8_cl85_100,ligand_a,P001,1,0.5,-8.2,1,A:HIS972;A:MET971,P002,True
-3GT8_cl85_100,ligand_b,P001,1,0.5,-8.0,1,A:HIS972;A:MET971,P003,True
-3GT8_raw,ligand_a,P001,1,0.5,-8.0,1,A:HIS972;A:MET971,P002,True
-3GT8_raw,ligand_b,P001,1,0.5,-7.8,1,A:HIS972;A:MET971,P003,True

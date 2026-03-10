@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import csv
+import math
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -41,18 +42,42 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict]]:
             residue_counter.update(split_contact_residues(item.get("contact_residues", "")))
         union_contact_residues = sorted(residue_counter)
         top_residues = [residue for residue, _ in sorted(residue_counter.items(), key=lambda item: (-item[1], item[0]))[:5]]
+
+        # Centroid spread (RMSD of pose centroids from pocket centroid)
+        mean_x = sum(centroids_x) / len(centroids_x)
+        mean_y = sum(centroids_y) / len(centroids_y)
+        mean_z = sum(centroids_z) / len(centroids_z)
+        if len(centroids_x) >= 2:
+            spread = math.sqrt(sum(
+                (x - mean_x) ** 2 + (y - mean_y) ** 2 + (z - mean_z) ** 2
+                for x, y, z in zip(centroids_x, centroids_y, centroids_z)
+            ) / len(centroids_x))
+        else:
+            spread = 0.0
+
+        # Affinity uncertainty
+        aff_std = round(statistics.stdev(affinities), 4) if len(affinities) >= 2 else 0.0
+        if len(affinities) >= 4:
+            s_aff = sorted(affinities)
+            aff_iqr = round(s_aff[3 * len(s_aff) // 4] - s_aff[len(s_aff) // 4], 4)
+        else:
+            aff_iqr = 0.0
+
         pocket_rows.append({
             "receptor_id": receptor_id,
             "pocket_id": pocket_id,
-            "centroid_x": round(sum(centroids_x) / len(centroids_x), 4),
-            "centroid_y": round(sum(centroids_y) / len(centroids_y), 4),
-            "centroid_z": round(sum(centroids_z) / len(centroids_z), 4),
+            "centroid_x": round(mean_x, 4),
+            "centroid_y": round(mean_y, 4),
+            "centroid_z": round(mean_z, 4),
             "n_pose": len(group),
             "n_ligand": len(ligands),
             "best_affinity": round(min(affinities), 4) if affinities else "",
             "mean_affinity": round(sum(affinities) / len(affinities), 4) if affinities else "",
             "union_contact_residues": ";".join(union_contact_residues),
             "top_residues": ";".join(top_residues),
+            "centroid_spread_A": round(spread, 4),
+            "affinity_std": aff_std,
+            "affinity_iqr": aff_iqr,
         })
 
     drug_map_rows: List[dict] = []
@@ -125,6 +150,9 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
             "mean_affinity",
             "union_contact_residues",
             "top_residues",
+            "centroid_spread_A",
+            "affinity_std",
+            "affinity_iqr",
         ],
     )
     drug_csv = write_csv(

@@ -1,10 +1,1 @@
-receptor_id,pocket_id,centroid_x,centroid_y,centroid_z,n_pose,n_ligand,best_affinity,mean_affinity,union_contact_residues,top_residues
-3GT8_cl38_48,P001,21.8,20.7,20.45,2,2,-8.4,-8.25,A:HIS972;A:MET971,A:HIS972;A:MET971
-3GT8_cl38_48,P002,28.15,28.05,28.1,1,1,-7.0,-7.0,,
-3GT8_cl38_48,P003,35.15,35.05,35.1,1,1,-6.5,-6.5,,
-3GT8_cl85_100,P001,31.8,30.7,30.45,2,2,-8.2,-8.1,A:HIS972;A:MET971,A:HIS972;A:MET971
-3GT8_cl85_100,P002,38.15,38.05,38.1,1,1,-7.3,-7.3,,
-3GT8_cl85_100,P003,45.1,45.05,45.15,1,1,-6.8,-6.8,,
-3GT8_raw,P001,11.875,10.725,10.45,2,2,-8.0,-7.9,A:HIS972;A:MET971,A:HIS972;A:MET971
-3GT8_raw,P002,18.25,18.05,18.1,1,1,-7.1,-7.1,,
-3GT8_raw,P003,25.1,25.05,25.15,1,1,-6.2,-6.2,,
+receptor_id,pocket_id,centroid_x,centroid_y,centroid_z,n_pose,n_ligand,best_affinity,mean_affinity,union_contact_residues,top_residues,centroid_spread_A,affinity_std,affinity_iqr

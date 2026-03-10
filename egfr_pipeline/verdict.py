@@ -80,6 +80,11 @@ VERDICT_FIELDS = [
     "n_shared_with_ppi",
     "cross_receptor_matches",
     "consensus_site_id",
+    "exp_sensitivity",
+    "exp_specificity",
+    "exp_enrichment",
+    "exp_rank_impact",
+    "pocket_stability",
     "reasons",
 ]
 
@@ -731,6 +736,121 @@ def _check_membrane_overlap(pocket: dict) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# Experimental priors (known binding/non-binding residues)
+# ---------------------------------------------------------------------------
+
+def _parse_residue_ranges(raw: str) -> Set[int]:
+    """Parse comma-separated residue numbers and ranges into a set of ints.
+
+    Accepts: "744, 752, 831-859" → {744, 752, 831, 832, ..., 859}
+    """
+    result: Set[int] = set()
+    if not raw:
+        return result
+    for token in str(raw).split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            parts = token.split("-", 1)
+            try:
+                lo, hi = int(parts[0].strip()), int(parts[1].strip())
+                result.update(range(lo, hi + 1))
+            except ValueError:
+                continue
+        else:
+            try:
+                result.add(int(token))
+            except ValueError:
+                continue
+    return result
+
+
+def _pocket_resnums(pocket: dict) -> Set[int]:
+    """Extract residue numbers from a pocket's union_contact_residues."""
+    resnums: Set[int] = set()
+    raw = pocket.get("union_contact_residues", "")
+    for res in raw.split(";"):
+        res = res.strip()
+        if not res:
+            continue
+        m = re.search(r'(\d+)$', res)
+        if m:
+            resnums.add(int(m.group(1)))
+    return resnums
+
+
+def compute_experimental_correlation(
+    pocket_rows: List[dict],
+    known_binding: Set[int],
+    known_non_binding: Set[int],
+) -> Dict[Tuple[str, str], dict]:
+    """Compute per-pocket correlation with experimental residue data.
+
+    For each pocket, computes:
+      - sensitivity: fraction of known binding residues contacted
+      - specificity: fraction of known non-binding residues NOT contacted
+      - enrichment: observed/expected ratio of binding residue hits
+      - exp_hit_count: number of known binding residues in pocket contacts
+      - exp_false_pos: number of known non-binding residues in pocket contacts
+
+    Returns {(receptor_id, pocket_id): stats_dict}.
+    Does NOT change the 100-point scoring — adds informational tags only.
+    """
+    if not known_binding and not known_non_binding:
+        return {}
+
+    n_known_binding = len(known_binding)
+    n_known_non_binding = len(known_non_binding)
+    total_known = n_known_binding + n_known_non_binding
+
+    results: Dict[Tuple[str, str], dict] = {}
+
+    for pocket in pocket_rows:
+        rid = pocket["receptor_id"]
+        pid = pocket["pocket_id"]
+        pocket_nums = _pocket_resnums(pocket)
+        n_pocket = len(pocket_nums)
+
+        # Hits: known binding residues found in pocket contacts
+        hits = pocket_nums & known_binding
+        n_hits = len(hits)
+
+        # False positives: known non-binding residues in pocket contacts
+        false_pos = pocket_nums & known_non_binding
+        n_false_pos = len(false_pos)
+
+        # Sensitivity: how many known binders does this pocket capture?
+        sensitivity = n_hits / n_known_binding if n_known_binding > 0 else 0.0
+
+        # Specificity: how many known non-binders does this pocket avoid?
+        specificity = (
+            (n_known_non_binding - n_false_pos) / n_known_non_binding
+            if n_known_non_binding > 0 else 1.0
+        )
+
+        # Enrichment: observed / expected ratio
+        # Expected = n_pocket * (n_known_binding / total_residue_pool)
+        # Use total_known as a proxy for the testable pool
+        if total_known > 0 and n_pocket > 0:
+            expected = n_pocket * (n_known_binding / total_known)
+            enrichment = n_hits / expected if expected > 0 else 0.0
+        else:
+            enrichment = 0.0
+
+        results[(rid, pid)] = {
+            "exp_sensitivity": round(sensitivity, 4),
+            "exp_specificity": round(specificity, 4),
+            "exp_enrichment": round(enrichment, 2),
+            "exp_hit_count": n_hits,
+            "exp_false_pos": n_false_pos,
+            "exp_hit_residues": ";".join(str(r) for r in sorted(hits)),
+        }
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Step 3: Per-pocket scoring (adaptive)
 # ---------------------------------------------------------------------------
 
@@ -740,6 +860,7 @@ def score_pocket(
     cross_receptor_matches: List[str],
     thresholds: dict,
     has_ppi_data: bool,
+    exp_correlation: Optional[dict] = None,
 ) -> Tuple[float, str, List[str], float, float, float]:
     """Score a single pocket with adaptive weighting.
 
@@ -748,6 +869,9 @@ def score_pocket(
       Without PPI data: Vina(60) + Cross_receptor(40) = 100
 
     This ensures pockets are never penalized for missing PPI data.
+
+    exp_correlation: optional dict from compute_experimental_correlation().
+      Does NOT change the 100-point total — adds informational reason tags only.
     """
     reasons: List[str] = []
     T = thresholds
@@ -856,6 +980,19 @@ def score_pocket(
         reasons.append(f"cross=2/3")
 
     cross_score = min(cross_raw, cross_max)
+
+    # ---- Experimental priors (informational only, no score impact) ----
+    if exp_correlation:
+        sens = exp_correlation.get("exp_sensitivity", 0)
+        n_hits = exp_correlation.get("exp_hit_count", 0)
+        n_fp = exp_correlation.get("exp_false_pos", 0)
+        enrichment = exp_correlation.get("exp_enrichment", 0)
+        if n_hits > 0:
+            reasons.append(f"exp_hit={n_hits}res(sens={sens:.0%})")
+        if enrichment > 2.0:
+            reasons.append(f"exp_enriched({enrichment:.1f}x)")
+        if n_fp > 0:
+            reasons.append(f"exp_fp={n_fp}res")
 
     # ---- Total (always out of 100) ----
     total = vina_score + ppi_score + cross_score
@@ -970,6 +1107,38 @@ def generate_verdict(
     else:
         print("[verdict] No consensus sites found (need same_patch_candidate across receptors)")
 
+    # Step 2.7: Experimental priors (known binding/non-binding residues)
+    exp_config = config.get("experimental", {})
+    known_binding_raw = exp_config.get("known_binding_residues", "")
+    known_non_binding_raw = exp_config.get("known_non_binding_residues", "")
+    known_binding = _parse_residue_ranges(
+        ",".join(str(r) for r in known_binding_raw)
+        if isinstance(known_binding_raw, list) else str(known_binding_raw)
+    )
+    known_non_binding = _parse_residue_ranges(
+        ",".join(str(r) for r in known_non_binding_raw)
+        if isinstance(known_non_binding_raw, list) else str(known_non_binding_raw)
+    )
+
+    exp_correlations: Dict[Tuple[str, str], dict] = {}
+    if known_binding or known_non_binding:
+        exp_source = exp_config.get("source", "unknown")
+        print(f"[verdict] Experimental priors: {len(known_binding)} binding, "
+              f"{len(known_non_binding)} non-binding residues (source: {exp_source})")
+        exp_correlations = compute_experimental_correlation(
+            pocket_rows, known_binding, known_non_binding,
+        )
+
+    # Step 2.8: Bootstrap stability data (optional)
+    bootstrap_path = project_root / "vina_pocket_bootstrap.csv"
+    bootstrap_index: Dict[Tuple[str, str], dict] = {}
+    if bootstrap_path.exists():
+        bootstrap_rows = _load_csv(bootstrap_path)
+        for brow in bootstrap_rows:
+            bkey = (brow["receptor_id"], brow["pocket_id"])
+            bootstrap_index[bkey] = brow
+        print(f"[verdict] Bootstrap data loaded: {len(bootstrap_rows)} pocket entries")
+
     # Step 3: Build lookup indices
     agreement_index = {
         (r["receptor_id"], r["pocket_id"]): r for r in agreement_rows
@@ -992,8 +1161,10 @@ def generate_verdict(
         # Per-pocket PPI availability check
         pocket_has_ppi = rid in ppi_receptor_ids
 
+        exp_corr = exp_correlations.get(key)
         total, verdict, reasons, v_score, p_score, c_score = score_pocket(
             pocket, ppi_agr, cross_matches, thresholds, pocket_has_ppi,
+            exp_correlation=exp_corr,
         )
 
         spatial_dist = ""
@@ -1024,6 +1195,12 @@ def generate_verdict(
             "n_shared_with_ppi": ppi_agr.get("n_shared_residues", 0) if ppi_agr else 0,
             "cross_receptor_matches": ";".join(cross_matches),
             "consensus_site_id": cs_id,
+            "exp_sensitivity": exp_corr["exp_sensitivity"] if exp_corr else "",
+            "exp_specificity": exp_corr["exp_specificity"] if exp_corr else "",
+            "exp_enrichment": exp_corr["exp_enrichment"] if exp_corr else "",
+            "exp_rank_impact": _compute_exp_rank_impact(exp_corr) if exp_corr else "",
+            "pocket_stability": bootstrap_index[key]["pocket_exists_frac"]
+                if key in bootstrap_index else "",
             "reasons": "; ".join(reasons),
         })
 
@@ -1064,6 +1241,28 @@ def _count_pocket_ligands(
                 if pid:
                     counter[(rid, pid)].add(lid)
     return {k: len(v) for k, v in counter.items()}
+
+
+def _compute_exp_rank_impact(exp_corr: Optional[dict]) -> str:
+    """Qualitative rank impact tag from experimental correlation.
+
+    Helps the researcher see at a glance whether experimental data
+    supports, contradicts, or is neutral for this pocket.
+    """
+    if not exp_corr:
+        return ""
+    sens = exp_corr.get("exp_sensitivity", 0)
+    enrichment = exp_corr.get("exp_enrichment", 0)
+    n_fp = exp_corr.get("exp_false_pos", 0)
+
+    if sens >= 0.3 and enrichment >= 2.0 and n_fp == 0:
+        return "supports"
+    elif sens >= 0.1 and enrichment >= 1.5:
+        return "consistent"
+    elif n_fp > 0 and sens == 0:
+        return "contradicts"
+    else:
+        return "neutral"
 
 
 def _safe_float(val, default: float = 0.0) -> float:
