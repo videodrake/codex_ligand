@@ -200,14 +200,45 @@ def extract_pyrosetta_interface_residues(
 # Batch extraction from project config
 # ---------------------------------------------------------------------------
 
+def _normalize_result_dirs(raw) -> List[dict]:
+    """Normalize pyrosetta_result_dirs value to list-of-dicts.
+
+    Supports three formats:
+      - str: legacy single path  -> [{"path": "...", "partner": ""}]
+      - list of dicts: [{path, partner}, ...]
+      - list of str: ["path1", "path2"]  -> [{"path": "...", "partner": ""}, ...]
+    """
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        return [{"path": raw, "partner": ""}]
+    if isinstance(raw, list):
+        entries = []
+        for item in raw:
+            if isinstance(item, dict):
+                entries.append(item)
+            elif isinstance(item, str):
+                entries.append({"path": item, "partner": ""})
+        return entries
+    return []
+
+
 def extract_pyrosetta_batch(
     config_path: str,
     output_dir: Optional[str] = None,
 ) -> Tuple[Path, Path]:
     """Extract PyRosetta PPI residues for all receptors in config.
 
-    Looks for PyRosetta result directories matching receptor IDs.
-    Expected layout: <some_dir>/<receptor_id>/final_ranking.csv
+    Supports multiple PPI result directories per receptor:
+      ppi:
+        pyrosetta_result_dirs:
+          3GT8_raw:
+            - path: EGFR_dimer_beta_meander/restored
+              partner: beta_meander
+            - path: EGFR_dimer_TH1/restored
+              partner: TH1
+
+    Also supports legacy single-path format for backward compatibility.
     """
     config = load_config(config_path)
     out_root = Path(output_dir) if output_dir else Path(config.get("output_root", "./output"))
@@ -223,17 +254,28 @@ def extract_pyrosetta_batch(
 
     for receptor in config.get("receptors", []):
         receptor_id = receptor["id"]
-        result_dir_str = pyrosetta_dirs.get(receptor_id, "")
-        if not result_dir_str:
-            continue
-        result_dir = Path(result_dir_str)
-        if not result_dir.exists():
-            print(f"[WARN] PyRosetta result dir not found for {receptor_id}: {result_dir}")
+        entries = _normalize_result_dirs(pyrosetta_dirs.get(receptor_id))
+        if not entries:
             continue
 
-        data = extract_pyrosetta_interface_residues(result_dir, receptor_id)
-        all_residue_rows.extend(data["residue_rows"])
-        all_summaries.append(data["summary"])
+        for entry in entries:
+            result_dir = Path(entry["path"])
+            partner = entry.get("partner", "")
+            if not result_dir.exists():
+                print(f"[WARN] PyRosetta result dir not found for {receptor_id}"
+                      f"{f' ({partner})' if partner else ''}: {result_dir}")
+                continue
+
+            data = extract_pyrosetta_interface_residues(result_dir, receptor_id)
+
+            # Tag source with partner name for multi-PPI distinction
+            source_tag = f"pyrosetta_ppi:{partner}" if partner else "pyrosetta_ppi"
+            for row in data["residue_rows"]:
+                row["source"] = source_tag
+            data["summary"]["source"] = source_tag
+
+            all_residue_rows.extend(data["residue_rows"])
+            all_summaries.append(data["summary"])
 
     residue_csv = write_csv_rows(
         out_root / "ppi_pyrosetta_residues.csv",

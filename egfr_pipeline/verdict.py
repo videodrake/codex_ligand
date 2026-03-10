@@ -55,6 +55,8 @@ AGREEMENT_FIELDS = [
     "ppi_mean_occupancy_of_shared",
     "spatial_dist_A",
     "spatial_proximity",
+    "closest_ppi_partner",
+    "n_ppi_partners_near",
     "vina_best_affinity_kcal",
     "ppi_best_dg_REU",
     "agreement_level",
@@ -73,9 +75,26 @@ VERDICT_FIELDS = [
     "n_pose",
     "n_ligand",
     "spatial_dist_to_ppi",
+    "closest_ppi_partner",
+    "n_ppi_partners_near",
     "n_shared_with_ppi",
     "cross_receptor_matches",
+    "consensus_site_id",
     "reasons",
+]
+
+CONSENSUS_FIELDS = [
+    "consensus_site_id",
+    "n_receptors",
+    "receptor_list",
+    "pocket_list",
+    "centroid_x",
+    "centroid_y",
+    "centroid_z",
+    "best_affinity",
+    "total_n_ligand",
+    "total_n_pose",
+    "consensus_residues",
 ]
 
 # ---------------------------------------------------------------------------
@@ -240,38 +259,104 @@ def load_all_evidence(project_root: Path) -> dict:
 # PPI interface centroid computation
 # ---------------------------------------------------------------------------
 
+def _merge_multi_partner_residues(
+    ppi_residues: List[dict],
+) -> List[dict]:
+    """Merge PPI residues from multiple partners into a unified set.
+
+    When multiple partners (e.g., beta_meander + TH1) provide residue data
+    for the same receptor, keeps the entry with the highest occupancy per
+    (receptor_id, residue_id) pair. Annotates merged source.
+
+    Returns merged list (safe to use as drop-in replacement).
+    """
+    # Group by (receptor_id, residue_id), keep best occupancy
+    best: Dict[Tuple[str, str], dict] = {}
+    sources: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
+
+    for row in ppi_residues:
+        key = (row["receptor_id"], row.get("residue_id", ""))
+        source = row.get("source", "pyrosetta_ppi")
+        sources[key].add(source)
+        occ = _safe_float(row.get("occupancy"), 0.0)
+        existing = best.get(key)
+        if existing is None or occ > _safe_float(existing.get("occupancy"), 0.0):
+            best[key] = dict(row)
+
+    # Annotate merged source
+    for key, row in best.items():
+        src_set = sources[key]
+        if len(src_set) > 1:
+            partners = sorted(s.replace("pyrosetta_ppi:", "") for s in src_set)
+            row["source"] = f"pyrosetta_ppi:merged({'+'.join(partners)})"
+
+    return list(best.values())
+
+
+def _build_ppi_partner_centroids(
+    ppi_residues: List[dict],
+    config: dict,
+) -> Dict[str, List[Tuple[str, Optional[Tuple[float, float, float]], float]]]:
+    """Compute per-partner PPI interface centroids for each receptor.
+
+    Returns {receptor_id: [(partner_name, centroid, spread), ...]}.
+    Each PPI partner gets its own centroid, enabling min-distance matching.
+    """
+    # Group PPI residue numbers by (receptor, partner)
+    partner_resnums: Dict[Tuple[str, str], Set[int]] = defaultdict(set)
+    for row in ppi_residues:
+        rid = row["receptor_id"]
+        source = row.get("source", "pyrosetta_ppi")
+        # Extract partner name from source tag
+        partner = source.replace("pyrosetta_ppi:", "").replace("pyrosetta_ppi", "")
+        if not partner:
+            partner = "default"
+        resnum = _safe_int(row.get("residue_num"), 0)
+        if resnum > 0:
+            partner_resnums[(rid, partner)].add(resnum)
+
+    if not partner_resnums:
+        return {}
+
+    # Build receptor PDB path index
+    receptor_pdbs: Dict[str, Path] = {}
+    for rec in config.get("receptors", []):
+        pdb_path = rec.get("pdb", "")
+        if pdb_path:
+            receptor_pdbs[rec["id"]] = Path(pdb_path)
+
+    result: Dict[str, List[Tuple[str, Optional[Tuple[float, float, float]], float]]] = defaultdict(list)
+    for (rid, partner), resnums in partner_resnums.items():
+        pdb_path = receptor_pdbs.get(rid)
+        if not pdb_path or not pdb_path.exists():
+            result[rid].append((partner, None, 0.0))
+            continue
+        ca_coords = _parse_ca_coords(pdb_path)
+        centroid, spread = _compute_centroid_and_spread(ca_coords, resnums)
+        result[rid].append((partner, centroid, spread))
+
+    return dict(result)
+
+
 def _build_ppi_interface_centroids(
     ppi_residues: List[dict],
     config: dict,
 ) -> Tuple[Dict[str, Tuple[float, float, float]], Dict[str, float]]:
-    """Compute PPI interface centroid per receptor from CA coordinates.
+    """Compute merged PPI interface centroid per receptor (backward compatible).
 
-    Uses receptor PDB files from config to look up coordinates.
-    Returns {receptor_id: (cx, cy, cz)}.
-
-    IMPORTANT — Coordinate system assumption:
-    This function reads CA coords from the receptor PDB listed in config.
-    The resulting centroid is compared to Vina pocket centroids, which come
-    from the PDBQT used by Vina. Both must share the same coordinate frame.
-
-    For crystal structures (3GT8_raw), PDB→PDBQT conversion preserves coords.
-    For MD cluster representatives (cl38_48, cl85_100), the PDB may have a
-    different origin if extracted from a trajectory without re-alignment.
-    If PPI is ever run on MD clusters, ensure the PDB used here is the same
-    structure (or aligned to the same reference) as the Vina PDBQT input.
+    Uses merged residues from all partners. Returns {receptor_id: centroid}.
     """
-    # Group PPI residue numbers by receptor
+    merged = _merge_multi_partner_residues(ppi_residues)
     ppi_resnums: Dict[str, Set[int]] = defaultdict(set)
-    for row in ppi_residues:
+    for row in merged:
         rid = row["receptor_id"]
         resnum = _safe_int(row.get("residue_num"), 0)
         if resnum > 0:
             ppi_resnums[rid].add(resnum)
 
     if not ppi_resnums:
-        return {}
+        return {}, {}
 
-    # Build receptor PDB path index
     receptor_pdbs: Dict[str, Path] = {}
     for rec in config.get("receptors", []):
         pdb_path = rec.get("pdb", "")
@@ -338,13 +423,14 @@ def check_ppi_residue_offsets(ppi_residues: List[dict]) -> List[str]:
 def compute_cross_method_agreement(
     pocket_rows: List[dict],
     ppi_residues: List[dict],
-    ppi_centroids: Dict[str, Tuple[float, float, float]],
+    ppi_partner_centroids: Dict[str, List[Tuple[str, Optional[Tuple[float, float, float]], float]]],
     thresholds: Optional[dict] = None,
 ) -> List[dict]:
     """Compute Vina ↔ PPI agreement for each pocket.
 
-    Includes both residue overlap (informational) and spatial proximity
-    (distance between pocket centroid and PPI interface centroid).
+    Uses per-partner centroids: for each pocket, finds the closest PPI
+    partner centroid and reports the minimum distance. This is biologically
+    meaningful: "Is this drug pocket near ANY known PPI interface?"
 
     Note on centroid semantics: Vina pocket centroids are ligand-atom
     averages (inside binding cavity), while PPI centroids are receptor
@@ -356,7 +442,9 @@ def compute_cross_method_agreement(
     T = thresholds or DEFAULT_THRESHOLDS
     ppi_index = _build_ppi_residue_index(ppi_residues)
     # Collect all receptors that have PPI data
-    ppi_receptors = set(ppi_index.keys()) | set(ppi_centroids.keys())
+    ppi_receptors = set(ppi_index.keys())
+    for rid in ppi_partner_centroids:
+        ppi_receptors.add(rid)
 
     results: List[dict] = []
 
@@ -394,26 +482,42 @@ def compute_cross_method_agreement(
                     pass
             mean_occ = sum(occs) / len(occs) if occs else 0.0
 
-        # Spatial proximity (primary PPI signal)
+        # Spatial proximity: find closest PPI partner centroid
         spatial_dist = None
         spatial_proximity = "no_data"
-        ppi_centroid = ppi_centroids.get(receptor_id)
-        if ppi_centroid:
+        closest_partner = ""
+        n_partners_near = 0
+
+        partner_entries = ppi_partner_centroids.get(receptor_id, [])
+        if partner_entries:
             try:
                 pocket_centroid = (
                     float(pocket.get("centroid_x", 0)),
                     float(pocket.get("centroid_y", 0)),
                     float(pocket.get("centroid_z", 0)),
                 )
-                spatial_dist = round(_euclidean_dist(pocket_centroid, ppi_centroid), 2)
-                if spatial_dist < T["ppi_dist_adjacent"]:
-                    spatial_proximity = "adjacent"
-                elif spatial_dist < T["ppi_dist_near"]:
-                    spatial_proximity = "near"
-                elif spatial_dist < T["ppi_dist_moderate"]:
-                    spatial_proximity = "moderate"
-                else:
-                    spatial_proximity = "distant"
+                best_dist = float("inf")
+                for pname, pcentroid, _ in partner_entries:
+                    if pcentroid is None:
+                        continue
+                    d = _euclidean_dist(pocket_centroid, pcentroid)
+                    # Count partners within "moderate" distance
+                    if d < T["ppi_dist_moderate"]:
+                        n_partners_near += 1
+                    if d < best_dist:
+                        best_dist = d
+                        closest_partner = pname
+                spatial_dist = round(best_dist, 2) if best_dist < float("inf") else None
+
+                if spatial_dist is not None:
+                    if spatial_dist < T["ppi_dist_adjacent"]:
+                        spatial_proximity = "adjacent"
+                    elif spatial_dist < T["ppi_dist_near"]:
+                        spatial_proximity = "near"
+                    elif spatial_dist < T["ppi_dist_moderate"]:
+                        spatial_proximity = "moderate"
+                    else:
+                        spatial_proximity = "distant"
             except (ValueError, TypeError):
                 pass
 
@@ -441,6 +545,8 @@ def compute_cross_method_agreement(
             "ppi_mean_occupancy_of_shared": round(mean_occ, 4),
             "spatial_dist_A": spatial_dist if spatial_dist is not None else "",
             "spatial_proximity": spatial_proximity,
+            "closest_ppi_partner": closest_partner,
+            "n_ppi_partners_near": n_partners_near,
             "vina_best_affinity_kcal": pocket.get("best_affinity", ""),
             "ppi_best_dg_REU": "",
             "agreement_level": agreement_level,
@@ -467,6 +573,123 @@ def compute_cross_receptor_consistency(
         matches[(rec_a, pkt_a)].add(rec_b)
         matches[(rec_b, pkt_b)].add(rec_a)
     return {k: sorted(v) for k, v in matches.items()}
+
+
+# ---------------------------------------------------------------------------
+# Step 2.5: Consensus site identification
+# ---------------------------------------------------------------------------
+
+def identify_consensus_sites(
+    comparison_rows: List[dict],
+    pocket_rows: List[dict],
+) -> Tuple[List[dict], Dict[Tuple[str, str], str]]:
+    """Group pockets into consensus sites via transitive closure.
+
+    A consensus site = group of pockets from different receptors that are
+    same_patch_candidates. Pockets appearing in 2+ receptors form a
+    consensus site (structurally stable across conformational states).
+
+    Returns:
+      - List of consensus site rows (for CSV)
+      - Mapping {(receptor_id, pocket_id): consensus_site_id}
+    """
+    # Build adjacency from same_patch_candidate pairs
+    edges: List[Tuple[Tuple[str, str], Tuple[str, str]]] = []
+    for row in comparison_rows:
+        is_candidate = str(row.get("same_patch_candidate", "")).lower()
+        if is_candidate not in ("true", "1", "yes"):
+            continue
+        a = (row["receptor_a"], row["pocket_a"])
+        b = (row["receptor_b"], row["pocket_b"])
+        edges.append((a, b))
+
+    if not edges:
+        return [], {}
+
+    # Union-Find for transitive closure
+    parent: Dict[Tuple[str, str], Tuple[str, str]] = {}
+
+    def find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for a, b in edges:
+        parent.setdefault(a, a)
+        parent.setdefault(b, b)
+        union(a, b)
+
+    # Group by root
+    groups: Dict[Tuple[str, str], List[Tuple[str, str]]] = defaultdict(list)
+    for node in parent:
+        groups[find(node)].append(node)
+
+    # Filter: consensus = 2+ different receptors
+    pocket_index = {
+        (p["receptor_id"], p["pocket_id"]): p for p in pocket_rows
+    }
+
+    consensus_rows: List[dict] = []
+    pocket_to_cs: Dict[Tuple[str, str], str] = {}
+    cs_id = 0
+
+    for members in sorted(groups.values(), key=lambda m: len(set(r for r, _ in m)), reverse=True):
+        receptors = set(r for r, _ in members)
+        if len(receptors) < 2:
+            continue
+        cs_id += 1
+        cs_name = f"CS{cs_id:03d}"
+
+        # Aggregate metrics
+        all_residues: Set[str] = set()
+        best_aff = 0.0
+        total_ligand = 0
+        total_pose = 0
+        centroids_x, centroids_y, centroids_z = [], [], []
+
+        for key in members:
+            pocket_to_cs[key] = cs_name
+            p = pocket_index.get(key, {})
+            residues = parse_residue_set(p.get("union_contact_residues", ""))
+            all_residues |= residues
+            aff = _safe_float(p.get("best_affinity"), 0.0)
+            if aff < best_aff:
+                best_aff = aff
+            total_ligand += _safe_int(p.get("n_ligand"), 0)
+            total_pose += _safe_int(p.get("n_pose"), 0)
+            cx = _safe_float(p.get("centroid_x"), None)
+            cy = _safe_float(p.get("centroid_y"), None)
+            cz = _safe_float(p.get("centroid_z"), None)
+            if cx is not None and cy is not None and cz is not None:
+                centroids_x.append(cx)
+                centroids_y.append(cy)
+                centroids_z.append(cz)
+
+        avg_cx = sum(centroids_x) / len(centroids_x) if centroids_x else ""
+        avg_cy = sum(centroids_y) / len(centroids_y) if centroids_y else ""
+        avg_cz = sum(centroids_z) / len(centroids_z) if centroids_z else ""
+
+        consensus_rows.append({
+            "consensus_site_id": cs_name,
+            "n_receptors": len(receptors),
+            "receptor_list": ";".join(sorted(receptors)),
+            "pocket_list": ";".join(f"{r}:{p}" for r, p in sorted(members)),
+            "centroid_x": round(avg_cx, 2) if isinstance(avg_cx, float) else "",
+            "centroid_y": round(avg_cy, 2) if isinstance(avg_cy, float) else "",
+            "centroid_z": round(avg_cz, 2) if isinstance(avg_cz, float) else "",
+            "best_affinity": round(best_aff, 2) if best_aff < 0 else "",
+            "total_n_ligand": total_ligand,
+            "total_n_pose": total_pose,
+            "consensus_residues": ";".join(sorted(all_residues)),
+        })
+
+    return consensus_rows, pocket_to_cs
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +833,12 @@ def score_pocket(
             else:
                 ppi_score += 2.0
 
+        # Multi-partner corroboration bonus: near both beta_meander AND TH1
+        n_partners_near = _safe_int(ppi_agreement.get("n_ppi_partners_near"), 0)
+        if n_partners_near >= 2:
+            ppi_score += 3.0
+            reasons.append(f"multi_ppi={n_partners_near}partners")
+
         ppi_score = min(ppi_score, ppi_max)
     elif not has_ppi_data:
         reasons.append("no_ppi_data")
@@ -677,28 +906,35 @@ def generate_verdict(
             print(f"  ... and {len(offset_warnings) - 5} more")
         print("  Run PPI Postprocess (option 8) to fix before verdict.\n")
 
+    # Merge multi-partner PPI residues
+    ppi_residues_merged = _merge_multi_partner_residues(ppi_residues)
+
     # Determine which receptors have PPI data
-    ppi_receptor_ids = {r["receptor_id"] for r in ppi_residues}
+    ppi_receptor_ids = {r["receptor_id"] for r in ppi_residues_merged}
     has_any_ppi = len(ppi_receptor_ids) > 0
 
-    # Compute PPI interface centroids from receptor PDBs
+    # Compute per-partner PPI centroids (for min-distance matching)
+    ppi_partner_centroids = _build_ppi_partner_centroids(ppi_residues, config)
+    # Also compute merged centroids for backward-compatible display
     ppi_centroids, ppi_spreads = _build_ppi_interface_centroids(ppi_residues, config)
 
     if has_any_ppi:
         print(f"[verdict] PPI data available for: {', '.join(sorted(ppi_receptor_ids))}")
-        if ppi_centroids:
-            for rid, c in sorted(ppi_centroids.items()):
-                spread = ppi_spreads.get(rid, 0)
-                spread_warn = " (DISPERSED — centroid unreliable)" if spread > 15.0 else ""
-                print(f"  PPI interface centroid ({rid}): "
-                      f"({c[0]:.1f}, {c[1]:.1f}, {c[2]:.1f})  "
-                      f"spread={spread:.1f}A{spread_warn}")
-        else:
+        for rid, partners in sorted(ppi_partner_centroids.items()):
+            for pname, centroid, spread in partners:
+                if centroid:
+                    spread_warn = " (DISPERSED)" if spread > 15.0 else ""
+                    print(f"  PPI centroid ({rid}/{pname}): "
+                          f"({centroid[0]:.1f}, {centroid[1]:.1f}, {centroid[2]:.1f})  "
+                          f"spread={spread:.1f}A{spread_warn}")
+                else:
+                    print(f"  PPI centroid ({rid}/{pname}): no PDB coords")
+        if not ppi_partner_centroids:
             print("  (No receptor PDBs found for centroid — using residue overlap only)")
 
-    # Step 1: Cross-method agreement
+    # Step 1: Cross-method agreement (uses per-partner centroids)
     agreement_rows = compute_cross_method_agreement(
-        pocket_rows, ppi_residues, ppi_centroids, thresholds,
+        pocket_rows, ppi_residues_merged, ppi_partner_centroids, thresholds,
     )
 
     # Enrich with PPI summary best_dg (receptor-level, not pocket-specific;
@@ -719,6 +955,20 @@ def generate_verdict(
     cross_receptor = compute_cross_receptor_consistency(
         evidence["pocket_comparison"]
     )
+
+    # Step 2.5: Consensus site identification
+    consensus_rows, pocket_to_cs = identify_consensus_sites(
+        evidence["pocket_comparison"], pocket_rows,
+    )
+    if consensus_rows:
+        consensus_csv = _write_csv(
+            out_dir / "vina_consensus_sites.csv",
+            consensus_rows,
+            CONSENSUS_FIELDS,
+        )
+        print(f"[verdict] {len(consensus_rows)} consensus sites identified → {consensus_csv}")
+    else:
+        print("[verdict] No consensus sites found (need same_patch_candidate across receptors)")
 
     # Step 3: Build lookup indices
     agreement_index = {
@@ -747,8 +997,14 @@ def generate_verdict(
         )
 
         spatial_dist = ""
+        closest_partner = ""
+        n_partners_near = 0
         if ppi_agr:
             spatial_dist = ppi_agr.get("spatial_dist_A", "")
+            closest_partner = ppi_agr.get("closest_ppi_partner", "")
+            n_partners_near = _safe_int(ppi_agr.get("n_ppi_partners_near"), 0)
+
+        cs_id = pocket_to_cs.get(key, "")
 
         verdict_rows.append({
             "receptor_id": rid,
@@ -763,8 +1019,11 @@ def generate_verdict(
             "n_pose": pocket.get("n_pose", ""),
             "n_ligand": pocket.get("n_ligand", ""),
             "spatial_dist_to_ppi": spatial_dist,
+            "closest_ppi_partner": closest_partner,
+            "n_ppi_partners_near": n_partners_near,
             "n_shared_with_ppi": ppi_agr.get("n_shared_residues", 0) if ppi_agr else 0,
             "cross_receptor_matches": ";".join(cross_matches),
+            "consensus_site_id": cs_id,
             "reasons": "; ".join(reasons),
         })
 

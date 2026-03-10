@@ -102,6 +102,7 @@ OPTIONAL_OUTPUTS = [
     "combined_residue_evidence.csv",
     "cross_method_agreement.csv",
     "valid_sites.csv",
+    "vina_consensus_sites.csv",
 ]
 
 
@@ -211,14 +212,21 @@ EXPECTED_SCHEMAS = {
         "receptor_id", "pocket_id", "n_vina_residues", "n_ppi_residues",
         "n_shared_residues", "jaccard", "overlap_coeff", "shared_residue_list",
         "ppi_mean_occupancy_of_shared", "spatial_dist_A", "spatial_proximity",
+        "closest_ppi_partner", "n_ppi_partners_near",
         "vina_best_affinity_kcal", "ppi_best_dg_REU", "agreement_level",
     ],
     "valid_sites.csv": [
         "receptor_id", "pocket_id", "verdict", "confidence_score",
         "vina_quality_score", "ppi_proximity_score", "cross_receptor_score",
         "ppi_data_available", "best_affinity", "n_pose", "n_ligand",
-        "spatial_dist_to_ppi", "n_shared_with_ppi",
-        "cross_receptor_matches", "reasons",
+        "spatial_dist_to_ppi", "closest_ppi_partner", "n_ppi_partners_near",
+        "n_shared_with_ppi",
+        "cross_receptor_matches", "consensus_site_id", "reasons",
+    ],
+    "vina_consensus_sites.csv": [
+        "consensus_site_id", "n_receptors", "receptor_list", "pocket_list",
+        "centroid_x", "centroid_y", "centroid_z",
+        "best_affinity", "total_n_ligand", "total_n_pose", "consensus_residues",
     ],
 }
 

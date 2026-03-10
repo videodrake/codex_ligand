@@ -119,20 +119,41 @@ def _update_config_ppi_dir(
     config_path: str,
     receptor_id: str,
     restored_dir: Path,
+    partner_name: str = "",
 ) -> None:
-    """Update config's ppi.pyrosetta_result_dirs with the restored path.
+    """Append a PPI result entry to config's pyrosetta_result_dirs list.
 
-    This modifies the config in-memory only (does not write to disk)
-    unless the caller saves it.
+    Supports the multi-partner list format:
+      ppi:
+        pyrosetta_result_dirs:
+          3GT8_raw:
+            - path: .../restored
+              partner: beta_meander
+
+    Migrates legacy string values to list format automatically.
+    Skips if the same path+partner entry already exists.
     """
     from egfr_pipeline.config import load_config, save_config
 
     config = load_config(config_path)
     ppi = config.setdefault("ppi", {})
     dirs = ppi.setdefault("pyrosetta_result_dirs", {})
-    dirs[receptor_id] = str(restored_dir)
+
+    existing = dirs.get(receptor_id, [])
+    # Migrate legacy string format to list
+    if isinstance(existing, str):
+        existing = [{"path": existing, "partner": "legacy"}] if existing else []
+
+    new_entry = {"path": str(restored_dir), "partner": partner_name}
+    # Skip duplicate
+    if not any(e.get("path") == new_entry["path"] and e.get("partner") == new_entry["partner"]
+               for e in existing):
+        existing.append(new_entry)
+
+    dirs[receptor_id] = existing
     save_config(config, config_path)
-    print(f"[postprocess] Updated config ppi.pyrosetta_result_dirs[{receptor_id}] = {restored_dir}")
+    label = f" ({partner_name})" if partner_name else ""
+    print(f"[postprocess] Updated config ppi.pyrosetta_result_dirs[{receptor_id}]{label} = {restored_dir}")
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +204,7 @@ def postprocess_ppi_results(
 
     # Step 2: Update config with restored dir
     print("\n--- Step 2: Register in config ---")
-    _update_config_ppi_dir(config_path, receptor_id, restored_dir)
+    _update_config_ppi_dir(config_path, receptor_id, restored_dir, partner_name)
 
     # Step 3: PPI residue extraction
     if not skip_extract:
