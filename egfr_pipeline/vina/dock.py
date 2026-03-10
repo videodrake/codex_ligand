@@ -1391,6 +1391,16 @@ Available regions: """ + ", ".join(REGION_PRESETS.keys()),
                         help="Pocket clustering cutoff in Angstrom (default: 4.0)")
     parser.add_argument("--summarize-pockets", action="store_true",
                         help="Generate vina_pocket_table.csv and vina_drug_pocket_map.csv")
+    parser.add_argument("--compare-pockets", action="store_true",
+                        help="Cross-receptor pocket comparison (vina_pocket_comparison.csv)")
+    parser.add_argument("--comparison-centroid-cutoff", type=float, default=15.0,
+                        help="Max centroid distance for pocket comparison (default: 15.0 Å)")
+    parser.add_argument("--extract-ppi-residues", action="store_true",
+                        help="Extract PPI interface residues from PyRosetta results")
+    parser.add_argument("--generate-report", action="store_true",
+                        help="Generate project report after all postprocessing")
+    parser.add_argument("--validate-outputs", action="store_true",
+                        help="Run output validation checks")
 
     # Exclusion zone (수동)
     parser.add_argument("--exclude-zone", nargs=4, type=float, action="append",
