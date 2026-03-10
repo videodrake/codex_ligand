@@ -1147,7 +1147,7 @@ def generate_verdict(
         print("[verdict] No consensus sites found (need same_patch_candidate across receptors)")
 
     # Step 2.7: Experimental priors (known binding/non-binding residues)
-    exp_config = config.get("experimental", {})
+    exp_config = config.get("experimental") or {}
     known_binding_raw = exp_config.get("known_binding_residues", "")
     known_non_binding_raw = exp_config.get("known_non_binding_residues", "")
     known_binding = _parse_residue_ranges(
