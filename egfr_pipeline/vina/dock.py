@@ -1872,33 +1872,7 @@ def main():
     # --config 로드
     if args.config:
         config = load_config(args.config)
-        # config 값으로 args 업데이트 (CLI 인자가 없는 경우만)
-        if args.mode is None:
-            args.mode = config.get("mode")
-        if args.receptor is None:
-            args.receptor = config.get("receptor")
-        if args.receptor_pdb is None:
-            args.receptor_pdb = config.get("receptor_pdb")
-        if args.ligands is None:
-            args.ligands = config.get("ligands")
-        if args.center is None:
-            args.center = config.get("center")
-        if args.box_size is None:
-            args.box_size = config.get("box_size")
-        if args.region is None:
-            args.region = config.get("region")
-        if args.exclude_zone is None:
-            args.exclude_zone = config.get("exclude_zone")
-        if getattr(args, "n_pockets", None) is None:
-            args.n_pockets = config.get("n_pockets")
-        args.max_per_pocket = config.get("max_per_pocket", getattr(args, "max_per_pocket", 3))
-        args.cluster_radius = config.get("cluster_radius", getattr(args, "cluster_radius", 5.0))
-        args.exhaustiveness = config.get("exhaustiveness", args.exhaustiveness)
-        args.n_poses = config.get("n_poses", args.n_poses)
-        args.padding = config.get("padding", args.padding)
-        args.min_box = config.get("min_box", args.min_box)
-        if getattr(args, "smiles", None) is None:
-            args.smiles = config.get("smiles")
+        apply_config_to_args(args, config)
 
     # mode 필수 확인
     if args.mode is None:
@@ -1925,25 +1899,26 @@ def main():
                     prepare_ligand(sdf_file, pdbqt_file)
         print()
 
-    # 통합 전처리 (스캔 → 분류 → 변환 → 요약)
-    ready_receptors, ready_ligands = preprocess_inputs(INPUT_DIR)
-
     # ── Receptor / Ligand 감지 ──
-    input_dir = INPUT_DIR
-
-    # receptor 리스트 결정
+    # Project config 모드: config에서 경로 직접 지정 → auto-detect 불필요
     if hasattr(args, "receptors") and args.receptors:
-        # interactive mode에서 복수 선택
         all_receptors = [Path(r) for r in args.receptors]
-    elif args.receptor:
-        all_receptors = [Path(args.receptor)]
+        if args.ligands:
+            args.ligands = [Path(l) for l in args.ligands]
+        else:
+            args.ligands = auto_detect_ligands(INPUT_DIR)
     else:
-        all_receptors = auto_detect_receptor(input_dir)
-
-    if args.ligands:
-        args.ligands = [Path(l) for l in args.ligands]
-    else:
-        args.ligands = auto_detect_ligands(input_dir)
+        # 비-project config: input/ 스캔
+        ready_receptors, ready_ligands = preprocess_inputs(INPUT_DIR)
+        input_dir = INPUT_DIR
+        if args.receptor:
+            all_receptors = [Path(args.receptor)]
+        else:
+            all_receptors = auto_detect_receptor(input_dir)
+        if args.ligands:
+            args.ligands = [Path(l) for l in args.ligands]
+        else:
+            args.ligands = auto_detect_ligands(input_dir)
 
     # 파일 존재 확인 (ligands)
     for lig in args.ligands:
