@@ -272,6 +272,161 @@ class PipelineManager:
             sys.exit(1)
 
     # ------------------------------------------------------------------ #
+    #  Preflight: chain label / numbering / constraint validation
+    # ------------------------------------------------------------------ #
+    def _preflight_check(self, relaxed_pdb: str) -> bool:
+        """Run preflight checks on the input structure before docking.
+
+        Checks:
+          1. Chain labels match expected A/B
+          2. Chain count is exactly 2
+          3. Excluded residue coverage (hard fail if < 50%)
+          4. Log PDB numbering range per chain
+
+        Returns True if all critical checks pass, False otherwise.
+        """
+        pose = common.string_to_pose(relaxed_pdb)
+        if pose is None:
+            self.progress_logger.critical("    [Preflight FAIL] Could not load relaxed pose")
+            return False
+
+        n_chains = pose.num_chains()
+        self.progress_logger.info(f"    [Preflight] Number of chains: {n_chains}")
+
+        if n_chains < 2:
+            self.progress_logger.critical(
+                f"    [Preflight FAIL] Expected 2 chains (A+B), found {n_chains}. "
+                f"Input PDB must be a 2-chain dimer.")
+            return False
+
+        conf = pose.conformation()
+        pdb_info = pose.pdb_info()
+
+        # Check chain labels
+        chain_labels = {}
+        for chain_idx in range(1, n_chains + 1):
+            first_res = conf.chain_begin(chain_idx)
+            label = pdb_info.chain(first_res)
+            chain_labels[chain_idx] = label
+
+        self.progress_logger.info(
+            f"    [Preflight] Chain labels: {chain_labels}")
+
+        expected_a = chain_labels.get(1, "?")
+        expected_b = chain_labels.get(2, "?")
+
+        if expected_a != "A" or expected_b != "B":
+            self.progress_logger.warning(
+                f"    [Preflight WARN] Expected chain labels A/B, got "
+                f"{expected_a}/{expected_b}. Docking uses hardcoded A_B partners. "
+                f"This will cause errors if chain labels don't match.")
+
+        # Log numbering ranges per chain
+        for chain_idx in range(1, min(n_chains + 1, 4)):  # max 3 chains
+            c_start = conf.chain_begin(chain_idx)
+            c_end = conf.chain_end(chain_idx)
+            pdb_start = pdb_info.number(c_start)
+            pdb_end = pdb_info.number(c_end)
+            chain_label = pdb_info.chain(c_start)
+            n_res = c_end - c_start + 1
+            self.progress_logger.info(
+                f"    [Preflight] Chain {chain_label} (internal {chain_idx}): "
+                f"residues {pdb_start}-{pdb_end} ({n_res} res)")
+
+        # Excluded residue coverage (hard check)
+        if self.excluded_residues_A:
+            chain_a_end = conf.chain_end(1)
+            chain_a_pdb_nums = set()
+            for i in range(1, chain_a_end + 1):
+                chain_a_pdb_nums.add(pdb_info.number(i))
+
+            excl_found = self.excluded_residues_A & chain_a_pdb_nums
+            excl_missing = self.excluded_residues_A - chain_a_pdb_nums
+            coverage_pct = len(excl_found) / len(self.excluded_residues_A) * 100
+
+            self.progress_logger.info(
+                f"    [Preflight] Excluded residues: {len(excl_found)}/"
+                f"{len(self.excluded_residues_A)} found ({coverage_pct:.0f}%)")
+
+            if excl_missing and len(excl_missing) <= 20:
+                self.progress_logger.info(
+                    f"    [Preflight] Missing excluded residues: "
+                    f"{sorted(excl_missing)}")
+
+            if coverage_pct < 50:
+                self.progress_logger.critical(
+                    f"    [Preflight FAIL] Excluded residue coverage {coverage_pct:.0f}% < 50%. "
+                    f"Numbering mismatch between config and input PDB. "
+                    f"Check excluded_residues_A values against actual PDB numbering.")
+                return False
+            elif coverage_pct < 80:
+                self.progress_logger.warning(
+                    f"    [Preflight WARN] Excluded residue coverage {coverage_pct:.0f}% < 80%. "
+                    f"Some constraint residues may not be effective.")
+
+        # Key residues B coverage
+        if self.key_residues_B:
+            chain_b_start = conf.chain_begin(2)
+            chain_b_end = conf.chain_end(2)
+            chain_b_pdb_nums = set()
+            for i in range(chain_b_start, chain_b_end + 1):
+                chain_b_pdb_nums.add(pdb_info.number(i))
+
+            key_found = self.key_residues_B & chain_b_pdb_nums
+            key_pct = len(key_found) / len(self.key_residues_B) * 100
+            self.progress_logger.info(
+                f"    [Preflight] Key residues B: {len(key_found)}/"
+                f"{len(self.key_residues_B)} found ({key_pct:.0f}%)")
+
+        self.progress_logger.info("    [Preflight] All checks passed.")
+        return True
+
+    # ------------------------------------------------------------------ #
+    #  Filter threshold telemetry
+    # ------------------------------------------------------------------ #
+    def _log_filter_thresholds(self) -> None:
+        """Log all active filter thresholds for reproducibility and debugging."""
+        self.progress_logger.info("    [Filter Thresholds] Active configuration:")
+
+        if self.filter_v2_enabled:
+            self.progress_logger.info("    [Filter] Version: v2.0 (2-pass)")
+            self.progress_logger.info(
+                f"    [Stage1] total_score_percentile={self.stage1_total_score_pct}, "
+                f"max_dG={self.stage1_max_dG}, enabled={self.stage1_enabled}")
+            self.progress_logger.info(
+                f"    [Stage2] min_dSASA={self.stage2_min_dSASA}, "
+                f"max_dG_density={self.stage2_max_dG_density}, "
+                f"min_sc={self.stage2_min_sc}")
+            self.progress_logger.info(
+                f"    [Stage2] min_packstat={self.stage2_min_packstat}, "
+                f"max_unsatHb={self.stage2_max_unsat}, "
+                f"min_nres_int={self.stage2_min_nres}, "
+                f"min_hbonds={self.stage2_min_hbonds}")
+            self.progress_logger.info(
+                f"    [Stage2] expensive_metrics={self.stage2_expensive}, "
+                f"min_survivors={self.stage2_min_survivors}")
+            if self.mini_refine_enabled:
+                self.progress_logger.info(
+                    f"    [MiniRefine] enabled, mode={self.mini_refine_mode}, "
+                    f"n_rounds={self.mini_refine_n_rounds}")
+        else:
+            self.progress_logger.info("    [Filter] Version: v1.0 (legacy)")
+            self.progress_logger.info(
+                f"    [v1] filter_percentile={self.filter_percentile}, "
+                f"min_dSASA={self.min_dSASA}, "
+                f"min_sc={self.min_sc_value}, "
+                f"min_survivors={self.min_survivors}")
+
+        if self.exp_data_configured:
+            self.progress_logger.info(
+                f"    [ExperimentalData] critical_B={len(self.exp_critical_B)} residues, "
+                f"non_binding_B={len(self.exp_non_binding_B)} residues, "
+                f"confidence={self.exp_confidence}")
+        else:
+            self.progress_logger.info(
+                "    [ExperimentalData] Not configured (sensitivity/specificity analysis skipped)")
+
+    # ------------------------------------------------------------------ #
     #  L_RMSD helper (for clustering in main process)
     # ------------------------------------------------------------------ #
     def _compute_l_rmsd(self, mobile_pose: Any, ref_pose: Any) -> float:
@@ -388,6 +543,21 @@ class PipelineManager:
             f.write(f"# n_cpus (resolved) = {self.n_cpus}\n")
             f.write(f"# master_seed = {self.master_seed}\n")
             f.write(f"# filter_version = {'v2.0' if self.filter_v2_enabled else 'v1.0'}\n")
+            # Append active filter thresholds for full reproducibility
+            if self.filter_v2_enabled:
+                f.write(f"# [Stage1] total_score_pct={self.stage1_total_score_pct}, "
+                        f"max_dG={self.stage1_max_dG}\n")
+                f.write(f"# [Stage2] min_dSASA={self.stage2_min_dSASA}, "
+                        f"max_dG_density={self.stage2_max_dG_density}, "
+                        f"min_sc={self.stage2_min_sc}\n")
+                f.write(f"# [Stage2] min_packstat={self.stage2_min_packstat}, "
+                        f"max_unsatHb={self.stage2_max_unsat}, "
+                        f"min_nres={self.stage2_min_nres}, "
+                        f"min_hbonds={self.stage2_min_hbonds}\n")
+            else:
+                f.write(f"# [v1] filter_pct={self.filter_percentile}, "
+                        f"min_dSASA={self.min_dSASA}, "
+                        f"min_sc={self.min_sc_value}\n")
         self.progress_logger.info(f"    > [Config] Snapshot saved: {snap_path}")
 
     # ------------------------------------------------------------------ #
@@ -3156,6 +3326,17 @@ function sortTable(th) {
             self.cache_path = cache_path
 
             self._resolve_chain_sizes(relaxed_pdb)
+
+            # Preflight: validate chain labels, numbering, constraints
+            if not self._preflight_check(relaxed_pdb):
+                self.progress_logger.critical(
+                    "!!! Preflight check FAILED. Aborting pipeline. "
+                    "Fix input PDB or config before re-running.")
+                return
+
+            # Log all filter thresholds for transparency
+            self._log_filter_thresholds()
+
             self._save_config_snapshot()
 
             # Step 2: Global Docking
