@@ -113,6 +113,11 @@ def create_test_config() -> Path:
     config["output_root"] = "./output"
     config["vina"]["exhaustiveness"] = TEST_EXHAUSTIVENESS
     config["vina"]["n_poses"] = TEST_N_POSES
+    # top-level mode도 동기화 (dock.py가 양쪽 다 체크)
+    config["mode"] = config["vina"].get("mode", "blind")
+    # top-level exhaustiveness/n_poses도 설정 (dock.py fallback용)
+    config["exhaustiveness"] = TEST_EXHAUSTIVENESS
+    config["n_poses"] = TEST_N_POSES
     config["bootstrap"] = {
         "n_replicates": TEST_BOOTSTRAP_REPS,
         "sample_fraction": 0.8,

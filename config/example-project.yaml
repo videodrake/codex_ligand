@@ -21,10 +21,13 @@ receptors:
 ligands:
   - id: "173940"
     sdf: input/ligands/173940_ligand.sdf
+    pdbqt: input/ligands/173940_ligand.pdbqt
   - id: "97806"
     sdf: input/ligands/97806_ligand.sdf
+    pdbqt: input/ligands/97806_ligand.pdbqt
   - id: VAX-C12_0
     sdf: input/ligands/VAX-C12_0_ligand.sdf
+    pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
 vina:
   mode: blind
   exhaustiveness: 128
@@ -37,10 +40,10 @@ postprocess:
   contact_cutoff: 4.0
   cluster_pockets: false
   pocket_cutoff: 4.0
-  merge_by_residue: false        # post-hoc merge pockets with overlapping residues
-  merge_jaccard: 0.3             # Jaccard threshold for merge (OR with overlap)
-  merge_overlap: 0.5             # Overlap coefficient threshold for merge
-  keep_chain: false              # preserve chain ID in residue comparison
+  merge_by_residue: false
+  merge_jaccard: 0.3
+  merge_overlap: 0.5
+  keep_chain: false
   summarize_pockets: false
   compare_pockets: false
   comparison_centroid_cutoff: 15.0
@@ -52,23 +55,15 @@ bootstrap:
   seed: 42
 
 experimental:
-  # known_binding_residues:     # 실험적으로 확인된 결합 잔기 (mutagenesis, crosslinking)
-  #   - 744
-  #   - 752
-  # known_non_binding_residues: # 확인된 비결합 잔기 (negative control)
-  #   - 899
-  #   - 950
-  # source: "Kim et al. 2023"  # 출처
+  # known_binding_residues: [744, 752]
+  # known_non_binding_residues: [899, 950]
+  # source: "Kim et al. 2023"
 
 ppi:
   pyrosetta_result_dirs:
     # 3GT8_raw: /path/to/3GT8_raw/pyrosetta_results
-    # 3GT8_cl38_48: /path/to/cl38_48/pyrosetta_results
-    # 3GT8_cl85_100: /path/to/cl85_100/pyrosetta_results
   afm_models:
     # 3GT8_raw: /path/to/afm_model_3GT8_raw.pdb
-    # 3GT8_cl38_48: /path/to/afm_model_cl38_48.pdb
-    # 3GT8_cl85_100: /path/to/afm_model_cl85_100.pdb
   afm_settings:
     receptor_chain: A
     partner_chain: B
