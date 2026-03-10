@@ -162,16 +162,89 @@ def step1_convert_pdbqt():
                 raise RuntimeError(f"Ligand 변환 실패: {sdf.name}")
 
 
-def step2_vina_docking(config_path: Path):
-    """Vina blind docking."""
-    from egfr_pipeline.vina.dock import main as vina_main
+def _dock_one_receptor(receptor_entry, ligand_entries, config):
+    """단일 receptor에 대해 모든 ligand 도킹 (subprocess 워커용)."""
+    from egfr_pipeline.vina.dock import (
+        run_docking, calc_box_from_pdb, print_results,
+        build_receptor_output_dir, resolve_receptor_id,
+    )
+    import types
 
-    argv_backup = sys.argv[:]
-    try:
-        sys.argv = ["dock", "--config", str(config_path)]
-        vina_main()
-    finally:
-        sys.argv = argv_backup
+    receptor_id = receptor_entry["id"]
+    receptor_pdbqt = Path(receptor_entry["pdbqt"])
+    receptor_pdb = Path(receptor_entry["pdb"])
+    mode = config.get("mode", "blind")
+
+    # box 계산
+    padding = config.get("vina", {}).get("padding", 5.0)
+    min_box = config.get("vina", {}).get("min_box", 70.0)
+    center, box_size = calc_box_from_pdb(receptor_pdb, padding, min_box)
+
+    # 출력 디렉토리
+    output_root = Path(config.get("output_root", "./output"))
+    project_name = config.get("project_name", "full_test")
+    out_dir = output_root / project_name / receptor_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    exhaustiveness = config.get("vina", {}).get("exhaustiveness", 8)
+    n_poses = config.get("vina", {}).get("n_poses", 5)
+
+    results = {}
+    for lig_entry in ligand_entries:
+        lig_path = Path(lig_entry["pdbqt"])
+        lig_name = lig_path.name.replace("_ligand.pdbqt", "")
+        output_file = out_dir / f"{lig_name}_{mode}.pdbqt"
+
+        print(f"\n>>> [{receptor_id}] {lig_name} {mode} docking 시작...")
+        energies = run_docking(
+            receptor_pdbqt, lig_path, output_file,
+            center, box_size, exhaustiveness, n_poses,
+        )
+        results[lig_name] = energies
+        print_results(lig_name, mode, energies, center, box_size, display_n=n_poses)
+
+    # 요약
+    print(f"\n{'='*60}")
+    print(f"  [{receptor_id}] Summary - Best Affinity per Ligand")
+    print(f"{'='*60}")
+    for lig_name, energies in results.items():
+        best = energies[0][0] if energies is not None and len(energies) > 0 else float("nan")
+        print(f"  {lig_name:>12}  {best:>15.2f}")
+    print(f"\n[완료] {receptor_id} 결과 저장: {out_dir}")
+    return receptor_id, results
+
+
+def step2_vina_docking(config_path: Path):
+    """Vina blind docking — receptor별 병렬 실행."""
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    import yaml
+
+    with open(config_path, encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    receptors = config.get("receptors", [])
+    ligands = config.get("ligands", [])
+    n_receptors = len(receptors)
+
+    if n_receptors == 0:
+        print("  [ERROR] config에 receptor가 없습니다.")
+        return
+
+    print(f"  Receptor {n_receptors}개 × Ligand {len(ligands)}개 = {n_receptors * len(ligands)} 도킹 잡")
+    print(f"  병렬 실행: {n_receptors}개 프로세스")
+
+    with ProcessPoolExecutor(max_workers=n_receptors) as executor:
+        futures = {
+            executor.submit(_dock_one_receptor, rec, ligands, config): rec["id"]
+            for rec in receptors
+        }
+        for future in as_completed(futures):
+            rec_id = futures[future]
+            try:
+                future.result()
+                print(f"\n  [OK] {rec_id} 도킹 완료")
+            except Exception as e:
+                print(f"\n  [FAIL] {rec_id} 도킹 실패: {e}")
 
 
 def step3_postprocess(config_path: str):

@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N full_test
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=999:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/full_test.o
+#PBS -e ${PBS_O_WORKDIR}/full_test.e
+
+cd $PBS_O_WORKDIR
+
+# Conda 환경 활성화
+source ~/.bashrc
+conda activate pyrosetta
+
+echo "============================================"
+echo "  Full Pipeline Test (16 cores)"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "============================================"
+
+# 이전 테스트 결과 정리
+rm -rf output/full_test/ config/full_test.yaml
+
+python run_full_test.py
+
+echo ""
+echo "============================================"
+echo "  Finished: $(date)"
+echo "============================================"
