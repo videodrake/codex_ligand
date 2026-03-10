@@ -42,11 +42,15 @@ codex_ligand/
 │   │   ├── cluster.py                # 포켓 클러스터링 (centroid greedy)
 │   │   ├── summarize.py              # 포켓/리간드 요약 테이블
 │   │   ├── compare.py                # 교차 수용체 포켓 비교
-│   │   └── sweep.py                  # 커트오프 감도 분석 (pocket_cutoff 스윕)
+│   │   ├── sweep.py                  # 커트오프 감도 분석 (pocket_cutoff 스윕)
+│   │   └── bootstrap.py              # 부트스트랩 포켓 안정성 분석
 │   │
-│   ├── ppi/                          # PPI 잔기 표준화
+│   ├── ppi/                          # PPI 잔기 표준화 + 자동화
 │   │   ├── pyrosetta_extract.py      # PyRosetta 결과에서 인터페이스 잔기 추출
-│   │   └── afm_extract.py            # AlphaFold-Multimer 결과 처리
+│   │   ├── afm_extract.py            # AlphaFold-Multimer 결과 처리
+│   │   ├── postprocess_ppi.py        # Chain 원복 + 잔기 추출 자동화
+│   │   ├── prepare_dimer_pdb.py      # Dimer PDB 준비
+│   │   └── submit.py                 # PBS qsub 제출 (HPC)
 │   │
 │   ├── pyrosetta_docking/            # PyRosetta PPI 글로벌 도킹 (v2.0)
 │   │   ├── pipeline_manager.py       # 7단계 파이프라인 오케스트레이터
@@ -58,8 +62,10 @@ codex_ligand/
 │       ├── gromacs_analysis.py        # 궤적 분석
 │       └── ligand_contacts.py         # 리간드 접촉 분석
 │
-├── config/                           # 프로젝트 설정 파일
-│   └── example-project.yaml          # Vina 프로젝트 config 예시
+├── config/                           # 프로젝트 설정 파일 (README.md 참조)
+│   ├── example-project.yaml          # Vina 프로젝트 config 예시
+│   ├── ppi_*.ini                     # PyRosetta PPI 설정 (test/prod)
+│   └── run_ppi_*.pbs                 # PBS 배치 스크립트
 │
 ├── input/                            # 실제 입력 데이터
 │   ├── receptors/                    # 수용체 PDB (3개)

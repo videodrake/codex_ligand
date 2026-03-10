@@ -355,12 +355,12 @@ def _ppi_run_docking(config_ini: str = None):
 
 def _ppi_submit_pbs(config_ini: str = None):
     """Submit PPI docking job via qsub."""
-    import shutil
-    import subprocess as sp
+    from egfr_pipeline.ppi.submit import (
+        resolve_pbs_script, check_qsub_available, submit_pbs_job,
+    )
 
-    # Determine test vs prod PBS
-    is_test = "test" in (config_ini or "")
     is_both = config_ini == "__both__"
+    is_test = "test" in (config_ini or "")
 
     if is_both:
         print("\n  실행 규모:")
@@ -369,32 +369,28 @@ def _ppi_submit_pbs(config_ini: str = None):
         scale = input("\n  선택 [1/2]: ").strip()
         is_test = scale != "2"
 
-    pbs_path = REPO_ROOT / "config" / ("run_ppi_test.pbs" if is_test else "run_ppi_prod.pbs")
-    log_prefix = "ppi_test" if is_test else "ppi_prod"
+    pbs_path, log_prefix = resolve_pbs_script(config_ini, REPO_ROOT, is_test=is_test)
 
-    if not shutil.which("qsub"):
+    if not check_qsub_available():
         print("\n  ⚠ qsub를 찾을 수 없습니다. PBS가 설치된 서버에서 실행하세요.")
         print(f"  수동 실행: qsub {pbs_path}")
         return
 
-    if is_both:
-        cmd = ["qsub", "-v", "RUN_MODE=both", str(pbs_path)]
-    else:
-        cmd = ["qsub", "-v", f"CONFIG_FILE={config_ini}", str(pbs_path)]
+    run_mode = "both" if is_both else None
+    cfg_arg = None if is_both else config_ini
 
     print(f"\n  PBS: {pbs_path.name}")
-    print(f"  실행: {' '.join(cmd)}")
-
     if ask_yes_no("제출하시겠습니까?"):
-        result = sp.run(cmd, capture_output=True, text=True, cwd=str(REPO_ROOT))
-        if result.returncode == 0:
-            job_id = result.stdout.strip()
-            print(f"\n  제출 완료: {job_id}")
+        success, message = submit_pbs_job(
+            pbs_path, config_ini=cfg_arg, run_mode=run_mode, cwd=REPO_ROOT,
+        )
+        if success:
+            print(f"\n  제출 완료: {message}")
             print(f"  로그: {log_prefix}.o / {log_prefix}.e")
-            print(f"  상태 확인: qstat {job_id}")
+            print(f"  상태 확인: qstat {message}")
         else:
             print(f"\n  제출 실패:")
-            print(f"    {result.stderr.strip()}")
+            print(f"    {message}")
 
 
 def _ppi_restore():
