@@ -6,19 +6,31 @@
 
 ## 0. 환경 준비
 
-기존 conda 환경 `pyrosetta`를 사용한다:
+conda 환경 `pyrosetta`를 사용한다:
 
 ```bash
 cd ~/codex_ligand
 conda activate pyrosetta
-pip install pyyaml numpy pandas scipy matplotlib   # 없으면 설치
 ```
 
-추가 (선택):
-- **Vina 도킹**: `pip install vina rdkit` + AutoDock Vina 바이너리
-- **MD 분석**: `pip install MDAnalysis`
+### 필수 패키지 설치 (처음 1회)
+
+```bash
+pip install pyyaml numpy pandas scipy matplotlib pytest
+```
+
+### 선택 패키지 (필요 시)
+
+```bash
+# Vina 도킹 (SDF→PDBQT 변환 포함)
+pip install vina rdkit
+
+# MD 궤적 분석
+pip install MDAnalysis
+```
 
 > PyRosetta는 `pyrosetta` 환경에 이미 설치되어 있다.
+> AutoDock Vina 바이너리는 별도 설치 필요 (https://vina.scripps.edu/).
 
 ---
 

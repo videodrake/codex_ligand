@@ -5,24 +5,26 @@ mode: blind
 receptors:
   - id: 3GT8_raw
     source_type: raw_3GT8
-    pdb: input/3GT8_raw.pdb
-    pdbqt: input/3GT8_raw_receptor.pdbqt
+    pdb: input/receptors/3GT8_raw.pdb
+    pdbqt: input/receptors/3GT8_raw_receptor.pdbqt
     chain: A
   - id: 3GT8_cl38_48
     source_type: md_cluster_38_48
-    pdb: input/3GT8_cl38_48.pdb
-    pdbqt: input/3GT8_cl38_48_receptor.pdbqt
+    pdb: input/receptors/3GT8_cl38_48.pdb
+    pdbqt: input/receptors/3GT8_cl38_48_receptor.pdbqt
     chain: A
   - id: 3GT8_cl85_100
     source_type: md_cluster_85_100
-    pdb: input/3GT8_cl85_100.pdb
-    pdbqt: input/3GT8_cl85_100_receptor.pdbqt
+    pdb: input/receptors/3GT8_cl85_100.pdb
+    pdbqt: input/receptors/3GT8_cl85_100_receptor.pdbqt
     chain: A
 ligands:
-  - id: ligand_a
-    pdbqt: input/ligand_a_ligand.pdbqt
-  - id: ligand_b
-    pdbqt: input/ligand_b_ligand.pdbqt
+  - id: "173940"
+    sdf: input/ligands/173940_ligand.sdf
+  - id: "97806"
+    sdf: input/ligands/97806_ligand.sdf
+  - id: VAX-C12_0
+    sdf: input/ligands/VAX-C12_0_ligand.sdf
 vina:
   mode: blind
   exhaustiveness: 128
