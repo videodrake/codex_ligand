@@ -2031,6 +2031,12 @@ def main():
 
         # 출력 디렉토리 (receptor별)
         args.receptor_pdb = str(receptor_pdb) if receptor_pdb else None
+        receptor_id = resolve_receptor_id(args, receptor_path)
+        args.receptor_id = receptor_id
+        receptor_output_dir = build_receptor_output_dir(args, receptor_id)
+        if receptor_output_dir:
+            args.output_dir = str(receptor_output_dir)
+            args.label = receptor_id
         out_dir = setup_output_dir(args)
 
         # 도킹 실행
