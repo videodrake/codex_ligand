@@ -7,20 +7,62 @@
 #PBS -o ${PBS_O_WORKDIR}/production.o
 #PBS -e ${PBS_O_WORKDIR}/production.e
 
+# ============================================================
+# EGFR-MYO1D Production Pipeline (PBS)
+#
+# 사용법:
+#   qsub config/run_production.pbs                        # 자동 이어하기
+#   qsub -v MODE=force config/run_production.pbs          # 전부 재실행
+#   qsub -v MODE=from,FROM=4 config/run_production.pbs    # Phase 4부터
+#   qsub -v MODE=status config/run_production.pbs         # 상태만 확인
+#   qsub -v MODE=vina-only config/run_production.pbs      # Vina만 (Phase 1,4-7)
+#   qsub -v MODE=ppi-only config/run_production.pbs       # PPI만 (Phase 2-3)
+#   qsub -v MODE=post-only config/run_production.pbs      # 후처리만 (Phase 4-7)
+# ============================================================
+
 cd $PBS_O_WORKDIR
 
 source ~/.bashrc
 conda activate pyrosetta
 
+# 기본값
+MODE=${MODE:-auto}
+FROM=${FROM:-0}
+
 echo "============================================"
 echo "  EGFR-MYO1D Production Pipeline"
-echo "  Vina(128) + PPI(20K×2) + Verdict + Report"
+echo "  Vina(256exh/50poses) + PPI(50K×2)"
 echo "  Started: $(date)"
 echo "  Node: $(hostname)"
 echo "  Cores: $(nproc)"
+echo "  MODE: $MODE"
+echo "  FROM: $FROM"
 echo "============================================"
 
-python run_production.py
+# 모드별 분기
+case "$MODE" in
+    force)
+        python run_production.py --force
+        ;;
+    from)
+        python run_production.py --from "$FROM"
+        ;;
+    status)
+        python run_production.py --status
+        ;;
+    vina-only)
+        python run_production.py --only 1,4,5,6,7
+        ;;
+    ppi-only)
+        python run_production.py --only 2,3
+        ;;
+    post-only)
+        python run_production.py --from 4
+        ;;
+    auto|*)
+        python run_production.py
+        ;;
+esac
 
 echo ""
 echo "============================================"

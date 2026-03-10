@@ -413,7 +413,7 @@ def phase7_validate():
 
 PHASES = [
     (1, "Phase 1: Vina Blind Docking (production)", phase1_vina),
-    (2, "Phase 2: PPI Global Blind Docking (20K models)", phase2_ppi),
+    (2, "Phase 2: PPI Global Blind Docking (50K models)", phase2_ppi),
     (3, "Phase 3: PPI Postprocess (chain restore + extract)", phase3_ppi_postprocess),
     (4, "Phase 4: Vina Postprocess (전체)", phase4_vina_postprocess),
     (5, "Phase 5: Site Verdict (3축 통합)", phase5_verdict),
@@ -428,14 +428,26 @@ def main():
                         help="전체 재실행 (기존 결과 무시)")
     parser.add_argument("--from", type=int, default=0, dest="from_phase",
                         help="지정 Phase부터 실행 (예: --from 4)")
+    parser.add_argument("--only", type=str, default="",
+                        help="지정 Phase만 실행 (예: --only 1,4,5,6,7)")
     parser.add_argument("--status", action="store_true",
                         help="각 Phase 완료 상태만 출력")
     args = parser.parse_args()
 
+    only_phases = set()
+    if args.only:
+        only_phases = {int(x.strip()) for x in args.only.split(",")}
+
+    config = _load_config()
+    vina_cfg = config.get("vina", {})
+    ppi_models = "50K"  # from ini files
+
     print()
     print("╔══════════════════════════════════════════════════════╗")
-    print("║  EGFR-MYO1D Production Pipeline                     ║")
-    print("║  Vina (128 exh) + PPI (20K) + Verdict + Report      ║")
+    print(f"║  EGFR-MYO1D Production Pipeline                     ║")
+    print(f"║  Vina (exh={vina_cfg.get('exhaustiveness', '?')}, "
+          f"poses={vina_cfg.get('n_poses', '?')}) + "
+          f"PPI ({ppi_models}) ║")
     print("╚══════════════════════════════════════════════════════╝")
 
     print_status()
@@ -446,6 +458,11 @@ def main():
     t_start = time.time()
 
     for phase_num, name, func in PHASES:
+        # --only: 지정된 Phase만 실행
+        if only_phases and phase_num not in only_phases:
+            print(f"\n  [SKIP] {name} (--only {args.only})")
+            continue
+
         # --from: 지정 Phase 이전은 스킵
         if phase_num < args.from_phase:
             print(f"\n  [SKIP] {name} (--from {args.from_phase})")
@@ -453,12 +470,13 @@ def main():
 
         # Phase 7 (Validate)은 항상 실행
         if phase_num < 7 and not args.force and phase_num != args.from_phase:
-            check_fn = PHASE_CHECKS.get(phase_num, (None, None))[1]
-            if check_fn:
-                missing = check_fn()
-                if not missing:
-                    print(f"\n  [SKIP] {name} — 결과물 이미 존재")
-                    continue
+            if not (only_phases and phase_num in only_phases):
+                check_fn = PHASE_CHECKS.get(phase_num, (None, None))[1]
+                if check_fn:
+                    missing = check_fn()
+                    if not missing:
+                        print(f"\n  [SKIP] {name} — 결과물 이미 존재")
+                        continue
 
         run_step(name, func)
 
