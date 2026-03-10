@@ -1,0 +1,10 @@
+receptor_id,pocket_id,n_vina_residues,n_ppi_residues,n_shared_residues,jaccard,overlap_coeff,shared_residue_list,ppi_mean_occupancy_of_shared,spatial_dist_A,spatial_proximity,vina_best_affinity_kcal,ppi_best_dg_REU,agreement_level
+3GT8_cl38_48,P001,2,0,0,0.0,0.0,,0.0,,no_data,-8.4,,no_data
+3GT8_cl38_48,P002,0,0,0,0.0,0.0,,0.0,,no_data,-7.0,,no_data
+3GT8_cl38_48,P003,0,0,0,0.0,0.0,,0.0,,no_data,-6.5,,no_data
+3GT8_cl85_100,P001,2,0,0,0.0,0.0,,0.0,,no_data,-8.2,,no_data
+3GT8_cl85_100,P002,0,0,0,0.0,0.0,,0.0,,no_data,-7.3,,no_data
+3GT8_cl85_100,P003,0,0,0,0.0,0.0,,0.0,,no_data,-6.8,,no_data
+3GT8_raw,P001,2,10,1,0.0909,0.5,MET971,0.5,100.5,distant,-8.0,,weak
+3GT8_raw,P002,0,10,0,0.0,0.0,,0.0,110.38,distant,-7.1,,none
+3GT8_raw,P003,0,10,0,0.0,0.0,,0.0,120.3,distant,-6.2,,none

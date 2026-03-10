@@ -100,6 +100,8 @@ OPTIONAL_OUTPUTS = [
     "ppi_afm_residues.csv",
     "project_report.txt",
     "combined_residue_evidence.csv",
+    "cross_method_agreement.csv",
+    "valid_sites.csv",
 ]
 
 
@@ -204,6 +206,19 @@ EXPECTED_SCHEMAS = {
     "combined_residue_evidence.csv": [
         "receptor_id", "residue_id", "vina_pockets", "n_vina_pockets",
         "ppi_occupancy", "ppi_frequency", "ppi_delta_e", "evidence_sources",
+    ],
+    "cross_method_agreement.csv": [
+        "receptor_id", "pocket_id", "n_vina_residues", "n_ppi_residues",
+        "n_shared_residues", "jaccard", "overlap_coeff", "shared_residue_list",
+        "ppi_mean_occupancy_of_shared", "spatial_dist_A", "spatial_proximity",
+        "vina_best_affinity_kcal", "ppi_best_dg_REU", "agreement_level",
+    ],
+    "valid_sites.csv": [
+        "receptor_id", "pocket_id", "verdict", "confidence_score",
+        "vina_quality_score", "ppi_proximity_score", "cross_receptor_score",
+        "ppi_data_available", "best_affinity", "n_pose", "n_ligand",
+        "spatial_dist_to_ppi", "n_shared_with_ppi",
+        "cross_receptor_matches", "reasons",
     ],
 }
 

@@ -273,6 +273,85 @@ COMBINED_FIELDS = [
 ]
 
 
+def format_verdict_section(
+    verdict_rows: List[dict],
+    agreement_rows: List[dict],
+) -> str:
+    """Section 4: Automated site verdict summary."""
+    if not verdict_rows:
+        return "  No verdict data available.\n  Run 'Site Verdict' (option 7) to generate.\n"
+
+    lines = []
+
+    # Verdict counts
+    counts = defaultdict(int)
+    for r in verdict_rows:
+        counts[r.get("verdict", "UNKNOWN")] += 1
+    lines.append(f"  Total pockets evaluated: {len(verdict_rows)}")
+    lines.append(f"  STRONG: {counts.get('STRONG', 0)}  |  "
+                 f"MODERATE: {counts.get('MODERATE', 0)}  |  "
+                 f"WEAK: {counts.get('WEAK', 0)}")
+    lines.append("")
+
+    # Scoring mode explanation
+    ppi_recs = set(r.get("ppi_data_available", "") for r in verdict_rows)
+    if "yes" in ppi_recs and "no" in ppi_recs:
+        lines.append("  Scoring mode: ADAPTIVE (PPI data partial — weights auto-adjusted)")
+    elif "yes" in ppi_recs:
+        lines.append("  Scoring mode: FULL (PPI + Vina + Cross-receptor)")
+    else:
+        lines.append("  Scoring mode: VINA-ONLY (no PPI data — Vina + Cross-receptor)")
+    lines.append("")
+
+    # Per-pocket detail
+    lines.append(f"  {'Receptor':<20} {'Pocket':<7} {'Verdict':<11} "
+                 f"{'Score':>6} {'Vina':>5} {'PPI':>5} {'Cross':>5} {'PPI?':>4}  Reasons")
+    lines.append(f"  {'--------':<20} {'------':<7} {'-------':<11} "
+                 f"{'-----':>6} {'----':>5} {'---':>5} {'-----':>5} {'----':>4}  -------")
+    for r in verdict_rows:
+        ppi_flag = "Y" if r.get("ppi_data_available") == "yes" else "-"
+        lines.append(
+            f"  {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
+            f"{r.get('verdict',''):<11} "
+            f"{r.get('confidence_score',''):>6} "
+            f"{r.get('vina_quality_score',''):>5} "
+            f"{r.get('ppi_proximity_score',''):>5} "
+            f"{r.get('cross_receptor_score',''):>5} "
+            f"{ppi_flag:>4}  "
+            f"{r.get('reasons','')}"
+        )
+    lines.append("")
+
+    # Spatial proximity highlights
+    if agreement_rows:
+        spatial = [r for r in agreement_rows
+                   if r.get("spatial_proximity") in ("adjacent", "near", "moderate")]
+        residue = [r for r in agreement_rows
+                   if r.get("agreement_level") in ("strong", "moderate")]
+
+        if spatial:
+            lines.append("  Spatial proximity to PPI interface:")
+            for r in spatial:
+                lines.append(
+                    f"    {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
+                    f"{r.get('spatial_proximity',''):<10} dist={r.get('spatial_dist_A','')}A  "
+                    f"shared_residues={r.get('n_shared_residues','')}"
+                )
+            lines.append("")
+
+        if residue:
+            lines.append("  Residue overlap highlights (informational):")
+            for r in residue:
+                lines.append(
+                    f"    {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
+                    f"jaccard={r.get('jaccard','')}  overlap={r.get('overlap_coeff','')}  "
+                    f"shared={r.get('shared_residue_list','')}"
+                )
+            lines.append("")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Main report generator
 # ---------------------------------------------------------------------------
@@ -325,8 +404,14 @@ def generate_report(
     report_lines.append(section_header("3. Auxiliary PPI Evidence"))
     report_lines.append(format_ppi_section(pyrosetta_summary, pyrosetta_residues, afm_residues))
 
-    # Section 4: Key observations
-    report_lines.append(section_header("4. Key Observations"))
+    # Section 4: Site Verdict (if available)
+    verdict_rows = load_csv(project_root / "valid_sites.csv")
+    agreement_rows = load_csv(project_root / "cross_method_agreement.csv")
+    report_lines.append(section_header("4. Automated Site Verdict"))
+    report_lines.append(format_verdict_section(verdict_rows, agreement_rows))
+
+    # Section 5: Key observations
+    report_lines.append(section_header("5. Key Observations"))
     n_candidates = sum(1 for r in comparison_rows if r.get("same_patch_candidate", "").lower() == "true")
     n_receptors = len(set(r.get("receptor_id", "") for r in pocket_rows))
     n_total_pockets = len(pocket_rows)

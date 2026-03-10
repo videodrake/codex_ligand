@@ -3,8 +3,8 @@
 EGFR-MYO1D Docking Analysis Report
 ======================================================================
 
-Generated: 2026-03-09 07:17
-Config: smoke_test/config.yaml
+Generated: 2026-03-09 11:52
+Config: /tmp/test_v4.json
 Project: smoke_vina
 
 Data sources loaded:
@@ -126,7 +126,29 @@ Receptor: 3GT8_raw
 
 
 ======================================================================
-4. Key Observations
+4. Automated Site Verdict
+======================================================================
+
+  Total pockets evaluated: 9
+  STRONG: 0  |  MODERATE: 3  |  WEAK: 6
+
+  Scoring mode: ADAPTIVE (PPI data partial — weights auto-adjusted)
+
+  Receptor             Pocket  Verdict      Score  Vina   PPI Cross PPI?  Reasons
+  --------             ------  -------      -----  ----   --- ----- ----  -------
+  3GT8_cl38_48         P001    MODERATE      32.7  32.7   0.0   0.0    -  affinity=-8.4; n_ligand=2; no_ppi_data
+  3GT8_cl85_100        P001    MODERATE      32.7  32.7   0.0   0.0    -  affinity=-8.2; n_ligand=2; no_ppi_data
+  3GT8_raw             P001    MODERATE      32.3  27.3   5.0   0.0    Y  affinity=-8.0; n_ligand=2; ppi_distant(100.5A); shared_highocc=1
+  3GT8_cl38_48         P002    WEAK          10.9  10.9   0.0   0.0    -  affinity=-7.0; no_ppi_data
+  3GT8_cl38_48         P003    WEAK          10.9  10.9   0.0   0.0    -  affinity=-6.5; no_ppi_data
+  3GT8_cl85_100        P002    WEAK          10.9  10.9   0.0   0.0    -  affinity=-7.3; no_ppi_data
+  3GT8_cl85_100        P003    WEAK          10.9  10.9   0.0   0.0    -  affinity=-6.8; no_ppi_data
+  3GT8_raw             P002    WEAK           9.1   9.1   0.0   0.0    Y  affinity=-7.1; ppi_distant(110.38A)
+  3GT8_raw             P003    WEAK           0.0   0.0   0.0   0.0    Y  ppi_distant(120.3A)
+
+
+======================================================================
+5. Key Observations
 ======================================================================
 
   Total receptor states analyzed: 3

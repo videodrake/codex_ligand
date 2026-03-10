@@ -37,7 +37,9 @@ MENU = """
 ║  [4] MD Analysis             (GROMACS 분석)              ║
 ║  [5] Generate Report         (종합 보고서 생성)          ║
 ║  [6] Validate Outputs        (출력 검증)                 ║
-║  [7] Full Pipeline           (1→2→5→6 자동 실행)         ║
+║  [7] Site Verdict            (유효 사이트 자동 판정)     ║
+║  [8] PPI Postprocess         (PPI 후처리 자동화)         ║
+║  [9] Full Pipeline           (1→2→7→5→6 자동 실행)       ║
 ║                                                          ║
 ║  [q] Quit                                                ║
 ║                                                          ║
@@ -495,10 +497,77 @@ def run_validate(config_path: str = None):
     return result
 
 
-def run_full(config_path: str = None):
-    """Run full pipeline: Vina → Postprocess → Report → Validate."""
+def run_verdict(config_path: str = None):
+    """Run site verdict (automated pocket validation)."""
     print("\n" + "=" * 50)
-    print("  [7] Full Pipeline (Vina → Postprocess → Report → Validate)")
+    print("  [7] Site Verdict")
+    print("=" * 50)
+
+    if not config_path:
+        config_path = find_config()
+
+    from egfr_pipeline.verdict import generate_verdict
+
+    output_dir = ask_input("출력 디렉토리 (기본: project root)", "")
+    agreement_csv, verdict_csv = generate_verdict(
+        config_path,
+        output_dir=output_dir if output_dir else None,
+    )
+
+    if agreement_csv and verdict_csv:
+        print(f"\n  Agreement: {agreement_csv}")
+        print(f"  Verdict:   {verdict_csv}")
+    else:
+        print("\n  판정 실행 실패 — pocket table이 없습니다.")
+
+
+def run_ppi_postprocess(config_path: str = None):
+    """Run PPI post-processing automation."""
+    print("\n" + "=" * 50)
+    print("  [8] PPI Postprocess")
+    print("=" * 50)
+
+    if not config_path:
+        config_path = find_config()
+
+    from egfr_pipeline.ppi.postprocess_ppi import postprocess_ppi_results
+
+    docking_dir = ask_input("도킹 결과 디렉토리 경로")
+    if not docking_dir:
+        print("  경로가 입력되지 않았습니다.")
+        return
+
+    # Find mapping files
+    mapping_dir = REPO_ROOT / "input" / "PPI" / "prepared"
+    mappings = sorted(mapping_dir.glob("*_mapping.csv"))
+    if mappings:
+        print("\nMapping 파일:")
+        for i, p in enumerate(mappings, 1):
+            print(f"  [{i}] {p.name}")
+        raw = input("\n선택: ").strip()
+        if raw.isdigit() and 1 <= int(raw) <= len(mappings):
+            mapping_path = str(mappings[int(raw) - 1])
+        else:
+            mapping_path = ask_input("Mapping CSV 경로")
+    else:
+        mapping_path = ask_input("Mapping CSV 경로")
+
+    receptor_id = ask_input("Receptor ID (예: 3GT8_raw)")
+    partner_name = ask_input("Partner 이름 (예: beta_meander)", "")
+
+    postprocess_ppi_results(
+        config_path=config_path,
+        docking_dir=docking_dir,
+        mapping_csv=mapping_path,
+        receptor_id=receptor_id,
+        partner_name=partner_name,
+    )
+
+
+def run_full(config_path: str = None):
+    """Run full pipeline: Vina → Postprocess → Verdict → Report → Validate."""
+    print("\n" + "=" * 50)
+    print("  [9] Full Pipeline (Vina → Postprocess → Verdict → Report → Validate)")
     print("=" * 50)
 
     if not config_path:
@@ -507,8 +576,9 @@ def run_full(config_path: str = None):
     print("\n실행 순서:")
     print("  1. Vina Docking")
     print("  2. Postprocess (전체)")
-    print("  3. Report 생성")
-    print("  4. Output 검증")
+    print("  3. Site Verdict (유효 사이트 판정)")
+    print("  4. Report 생성")
+    print("  5. Output 검증")
 
     if not ask_yes_no("\n진행하시겠습니까?"):
         return
@@ -533,9 +603,21 @@ def run_full(config_path: str = None):
         except Exception as e:
             print(f"  [WARN] {step}: {e}")
 
-    # Step 3: Report
+    # Step 3: Verdict
     print("\n" + "━" * 40)
-    print("Step 3/4: Generate Report")
+    print("Step 3/5: Site Verdict")
+    print("━" * 40)
+    try:
+        from egfr_pipeline.verdict import generate_verdict
+        agr_csv, ver_csv = generate_verdict(config_path)
+        if ver_csv:
+            print(f"  Verdict: {ver_csv}")
+    except Exception as e:
+        print(f"  [WARN] Verdict: {e}")
+
+    # Step 4: Report
+    print("\n" + "━" * 40)
+    print("Step 4/5: Generate Report")
     print("━" * 40)
     from egfr_pipeline.report import generate_report
     try:
@@ -544,9 +626,9 @@ def run_full(config_path: str = None):
     except Exception as e:
         print(f"  [WARN] Report generation: {e}")
 
-    # Step 4: Validate
+    # Step 5: Validate
     print("\n" + "━" * 40)
-    print("Step 4/4: Validate")
+    print("Step 5/5: Validate")
     print("━" * 40)
     from egfr_pipeline.validate import run_validation
     result = run_validation(config_path, repo_root=str(REPO_ROOT))
@@ -572,7 +654,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("md", help="Run MD GROMACS analysis")
     sub.add_parser("report", help="Generate combined report")
     sub.add_parser("validate", help="Validate pipeline outputs")
-    sub.add_parser("full", help="Run full pipeline (vina→postprocess→report→validate)")
+    sub.add_parser("verdict", help="Run site verdict (automated pocket validation)")
+    sub.add_parser("ppi-postprocess", help="Run PPI post-processing automation")
+    sub.add_parser("full", help="Run full pipeline (vina→postprocess→verdict→report→validate)")
 
     return parser
 
@@ -586,7 +670,7 @@ def interactive_menu():
     print(MENU)
 
     while True:
-        sel = input("선택 [1-7, 3a/3b/3c, q]: ").strip().lower()
+        sel = input("선택 [1-9, 3a/3b/3c, q]: ").strip().lower()
 
         if sel == "q":
             print("종료합니다.")
@@ -610,9 +694,13 @@ def interactive_menu():
         elif sel == "6":
             run_validate()
         elif sel == "7":
+            run_verdict()
+        elif sel == "8":
+            run_ppi_postprocess()
+        elif sel == "9":
             run_full()
         else:
-            print("잘못된 입력입니다. 1-7 또는 q를 선택하세요.\n")
+            print("잘못된 입력입니다. 1-9 또는 q를 선택하세요.\n")
             continue
 
         # After task, show menu again
@@ -640,6 +728,8 @@ def main():
         "md": lambda: run_md(),
         "report": lambda: run_report(config),
         "validate": lambda: run_validate(config),
+        "verdict": lambda: run_verdict(config),
+        "ppi-postprocess": lambda: run_ppi_postprocess(config),
         "full": lambda: run_full(config),
     }
 

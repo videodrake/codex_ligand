@@ -1,0 +1,10 @@
+receptor_id,pocket_id,verdict,confidence_score,vina_quality_score,ppi_proximity_score,cross_receptor_score,ppi_data_available,best_affinity,n_pose,n_ligand,spatial_dist_to_ppi,n_shared_with_ppi,cross_receptor_matches,reasons
+3GT8_cl38_48,P001,MODERATE,32.7,32.7,0.0,0.0,no,-8.4,2,2,,0,,affinity=-8.4; n_ligand=2; no_ppi_data
+3GT8_cl85_100,P001,MODERATE,32.7,32.7,0.0,0.0,no,-8.2,2,2,,0,,affinity=-8.2; n_ligand=2; no_ppi_data
+3GT8_raw,P001,MODERATE,32.3,27.3,5.0,0.0,yes,-8.0,2,2,100.5,1,,affinity=-8.0; n_ligand=2; ppi_distant(100.5A); shared_highocc=1
+3GT8_cl38_48,P002,WEAK,10.9,10.9,0.0,0.0,no,-7.0,1,1,,0,,affinity=-7.0; no_ppi_data
+3GT8_cl38_48,P003,WEAK,10.9,10.9,0.0,0.0,no,-6.5,1,1,,0,,affinity=-6.5; no_ppi_data
+3GT8_cl85_100,P002,WEAK,10.9,10.9,0.0,0.0,no,-7.3,1,1,,0,,affinity=-7.3; no_ppi_data
+3GT8_cl85_100,P003,WEAK,10.9,10.9,0.0,0.0,no,-6.8,1,1,,0,,affinity=-6.8; no_ppi_data
+3GT8_raw,P002,WEAK,9.1,9.1,0.0,0.0,yes,-7.1,1,1,110.38,0,,affinity=-7.1; ppi_distant(110.38A)
+3GT8_raw,P003,WEAK,0.0,0.0,0.0,0.0,yes,-6.2,1,1,120.3,0,,ppi_distant(120.3A)
