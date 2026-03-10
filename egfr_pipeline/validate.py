@@ -564,24 +564,23 @@ def check_known_mutations(config: dict, result: ValidationResult):
 HANDOFF_DOCS = [
     ("README.md", True),
     ("CLAUDE.md", True),
-    ("CODEX_CONTINUATION_2026-03-09.md", True),
-    ("codex_handoff_egfr_myo_1_d_pipeline_spec.md", True),
-    ("tasks_egfr_myo_1_d_pipeline.md", True),
-    ("prd_egfr_myo_1_d_pipeline.md", False),
-    ("brief_egfr_myo_1_d_pipeline.md", False),
-    ("MANUAL.md", False),
+    ("docs/manual_execution.md", False),
 ]
 
 HANDOFF_MODULES = [
-    "run_docking.py",
-    "parse_vina_results.py",
-    "extract_contacts.py",
-    "cluster_pockets.py",
-    "summarize_pockets.py",
-    "compare_pockets.py",
-    "extract_ppi_residues.py",
-    "generate_report.py",
-    "validate_outputs.py",
+    "egfr_pipeline/__init__.py",
+    "egfr_pipeline/config.py",
+    "egfr_pipeline/vina/dock.py",
+    "egfr_pipeline/vina/parse_poses.py",
+    "egfr_pipeline/vina/contacts.py",
+    "egfr_pipeline/vina/cluster.py",
+    "egfr_pipeline/vina/summarize.py",
+    "egfr_pipeline/vina/compare.py",
+    "egfr_pipeline/vina/bootstrap.py",
+    "egfr_pipeline/verdict.py",
+    "egfr_pipeline/report.py",
+    "egfr_pipeline/validate.py",
+    "main.py",
 ]
 
 
