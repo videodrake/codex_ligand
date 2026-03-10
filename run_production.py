@@ -3,20 +3,32 @@
 
 Usage:
     conda activate pyrosetta
-    python run_production.py
+    python run_production.py            # 자동 이어하기 (완료된 Phase 스킵)
+    python run_production.py --force    # 전체 재실행 (기존 결과 무시)
+    python run_production.py --from 4   # Phase 4부터 실행 (이전 Phase 스킵)
 
 전체 흐름:
   Phase 1: Vina blind docking (3 receptor × 3 ligand, exhaustiveness=128)  ~15분
+           결과물: output/{project}//{receptor_id}/{ligand}_blind.pdbqt
   Phase 2: PPI docking (PyRosetta 20K models × 2 targets)                  ~24-36시간
+           결과물: {pdb_stem}/final_result/final_ranking.csv
   Phase 3: PPI postprocess (chain restoration + residue extraction)
+           결과물: output/{project}/ppi_pyrosetta_residues.csv
   Phase 4: Vina postprocess (parse → contacts → cluster → summarize → compare → bootstrap)
+           결과물: output/{project}/vina_pocket_table.csv
   Phase 5: Verdict (3축 통합 scoring)
-  Phase 6: Report + Validate
+           결과물: output/{project}/valid_sites.csv
+  Phase 6: Report
+           결과물: output/{project}/project_report.txt
+  Phase 7: Validate (항상 실행)
 """
 
+import argparse
+import csv
 import sys
 import time
 from pathlib import Path
+from typing import List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
@@ -71,16 +83,171 @@ def run_step(name: str, func, *args, **kwargs):
         return None
 
 
-# ── Phase 1: Vina Docking ──
+def _load_config():
+    import yaml
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def _project_root() -> Path:
+    config = _load_config()
+    output_root = Path(config.get("output_root", "./output"))
+    project_name = config.get("project_name", "")
+    return output_root / project_name if project_name else output_root
+
+
+def _csv_has_rows(path: Path) -> bool:
+    """CSV 파일이 존재하고 데이터 행이 1개 이상인지 확인."""
+    if not path.exists():
+        return False
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader, None)  # header
+            return next(reader, None) is not None
+    except Exception:
+        return False
+
+
+def _ppi_docking_dir(target: dict) -> Optional[Path]:
+    """PPI 도킹 결과 디렉토리 경로 반환."""
+    input_pdb = Path(target["input_pdb"])
+    if not input_pdb.exists():
+        input_pdb = Path(target["input_pdb"].replace("_wt.pdb", ".pdb"))
+    return REPO_ROOT / input_pdb.stem
+
+
+# ---------------------------------------------------------------------------
+# Phase 완료 체크 함수
+# ---------------------------------------------------------------------------
+
+def check_phase1() -> List[str]:
+    """Phase 1 (Vina): 모든 receptor×ligand .pdbqt 결과 존재 여부.
+    결과물: output/{project}/{receptor_id}/{ligand}_blind.pdbqt
+    """
+    config = _load_config()
+    project_root = _project_root()
+    mode = config.get("mode", config.get("vina", {}).get("mode", "blind"))
+    missing = []
+
+    for rec in config.get("receptors", []):
+        for lig in config.get("ligands", []):
+            lig_name = Path(lig["pdbqt"]).stem.replace("_ligand", "")
+            pdbqt = project_root / rec["id"] / f"{lig_name}_{mode}.pdbqt"
+            if not pdbqt.exists():
+                missing.append(f"{rec['id']}/{lig_name}_{mode}.pdbqt")
+
+    return missing
+
+
+def check_phase2() -> List[str]:
+    """Phase 2 (PPI): 각 target의 final_ranking.csv 존재 여부.
+    결과물: {pdb_stem}/final_result/final_ranking.csv
+    """
+    missing = []
+    for target in PPI_TARGETS:
+        docking_dir = _ppi_docking_dir(target)
+        ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
+        if not ranking or not ranking.exists():
+            missing.append(f"{target['name']}: final_ranking.csv")
+    return missing
+
+
+def check_phase3() -> List[str]:
+    """Phase 3 (PPI Postprocess): ppi_pyrosetta_residues.csv 존재+비어있지 않음.
+    결과물: output/{project}/ppi_pyrosetta_residues.csv
+    """
+    path = _project_root() / "ppi_pyrosetta_residues.csv"
+    if _csv_has_rows(path):
+        return []
+    return ["ppi_pyrosetta_residues.csv 없음 또는 비어있음"]
+
+
+def check_phase4() -> List[str]:
+    """Phase 4 (Vina Postprocess): 핵심 CSV들 존재+비어있지 않음.
+    결과물: vina_pose_table.csv, vina_pocket_table.csv, vina_drug_pocket_map.csv,
+           vina_pocket_comparison.csv, vina_pocket_bootstrap.csv
+    """
+    project_root = _project_root()
+    required = [
+        "vina_pose_table.csv",
+        "vina_pocket_table.csv",
+        "vina_drug_pocket_map.csv",
+        "vina_pocket_comparison.csv",
+        "vina_pocket_bootstrap.csv",
+    ]
+    missing = []
+    for name in required:
+        if not _csv_has_rows(project_root / name):
+            missing.append(name)
+    return missing
+
+
+def check_phase5() -> List[str]:
+    """Phase 5 (Verdict): valid_sites.csv 존재+비어있지 않음.
+    결과물: valid_sites.csv, cross_method_agreement.csv
+    """
+    project_root = _project_root()
+    missing = []
+    for name in ["valid_sites.csv", "cross_method_agreement.csv"]:
+        if not _csv_has_rows(project_root / name):
+            missing.append(name)
+    return missing
+
+
+def check_phase6() -> List[str]:
+    """Phase 6 (Report): project_report.txt 존재.
+    결과물: project_report.txt, combined_residue_evidence.csv
+    """
+    project_root = _project_root()
+    missing = []
+    report = project_root / "project_report.txt"
+    if not report.exists() or report.stat().st_size < 100:
+        missing.append("project_report.txt")
+    return missing
+
+
+PHASE_CHECKS = {
+    1: ("Vina blind docking 결과 (.pdbqt)", check_phase1),
+    2: ("PPI docking 결과 (final_ranking.csv)", check_phase2),
+    3: ("PPI postprocess (ppi_pyrosetta_residues.csv)", check_phase3),
+    4: ("Vina postprocess (pocket_table 등 5개 CSV)", check_phase4),
+    5: ("Verdict (valid_sites.csv)", check_phase5),
+    6: ("Report (project_report.txt)", check_phase6),
+}
+
+
+def print_status():
+    """각 Phase별 완료 상태 출력."""
+    print("\n  Phase 상태 점검:")
+    print(f"  {'Phase':<8} {'상태':<8} {'결과물':<50} {'상세'}")
+    print(f"  {'─'*8} {'─'*8} {'─'*50} {'─'*20}")
+
+    for phase_num, (desc, check_fn) in PHASE_CHECKS.items():
+        missing = check_fn()
+        if not missing:
+            status = "[DONE]"
+            detail = ""
+        else:
+            status = "[TODO]"
+            detail = f"누락: {', '.join(missing[:3])}"
+            if len(missing) > 3:
+                detail += f" ...+{len(missing)-3}"
+        print(f"  Phase {phase_num:<3} {status:<8} {desc:<50} {detail}")
+
+    print(f"  Phase 7   [항상]   Validate (매 실행마다 검증)")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Phase 실행 함수 (기존과 동일)
+# ---------------------------------------------------------------------------
 
 def phase1_vina():
     """Vina blind docking — receptor별 병렬 실행."""
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    import yaml
 
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-
+    config = _load_config()
     receptors = config.get("receptors", [])
     ligands = config.get("ligands", [])
 
@@ -104,8 +271,6 @@ def phase1_vina():
                 print(f"\n  [FAIL] {rec_id} 도킹 실패: {e}")
 
 
-# ── Phase 2: PPI Docking ──
-
 def phase2_ppi():
     """PyRosetta PPI global blind docking — 순차 실행 (CPU 집약적)."""
     for target in PPI_TARGETS:
@@ -113,7 +278,6 @@ def phase2_ppi():
         config_ini = target["config_ini"]
         input_pdb = target["input_pdb"]
 
-        # _wt.pdb가 없으면 원본 .pdb 사용
         pdb_path = Path(input_pdb)
         if not pdb_path.exists():
             alt_path = Path(input_pdb.replace("_wt.pdb", ".pdb"))
@@ -124,6 +288,13 @@ def phase2_ppi():
                 print(f"  [ERROR] {name}: 입력 PDB 없음: {input_pdb}")
                 continue
 
+        # 이미 완료된 target은 스킵
+        docking_dir = _ppi_docking_dir(target)
+        ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
+        if ranking and ranking.exists():
+            print(f"  [SKIP] {name}: 이미 완료 ({ranking})")
+            continue
+
         print(f"\n  --- {name} (20K models) ---")
         print(f"  Config: {config_ini}")
         print(f"  Input:  {pdb_path}")
@@ -132,8 +303,6 @@ def phase2_ppi():
         sys.argv = ["pipeline_manager", config_ini, str(pdb_path)]
         ppi_main()
 
-
-# ── Phase 3: PPI Postprocess ──
 
 def phase3_ppi_postprocess():
     """PPI 결과 chain restoration + residue extraction."""
@@ -145,8 +314,6 @@ def phase3_ppi_postprocess():
         receptor_id = target["receptor_id"]
         partner_name = target["partner_name"]
 
-        # PPI 도킹 결과 디렉토리 찾기
-        # PyRosetta는 input PDB 이름 기반으로 출력 디렉토리 생성
         input_pdb = Path(target["input_pdb"])
         if not input_pdb.exists():
             input_pdb = Path(target["input_pdb"].replace("_wt.pdb", ".pdb"))
@@ -169,8 +336,6 @@ def phase3_ppi_postprocess():
             partner_name=partner_name,
         )
 
-
-# ── Phase 4: Vina Postprocess ──
 
 def phase4_vina_postprocess():
     """Vina 후처리 전체 체인."""
@@ -216,8 +381,6 @@ def phase4_vina_postprocess():
     print(f"  → {out}")
 
 
-# ── Phase 5: Verdict ──
-
 def phase5_verdict():
     """3축 증거 통합 판정."""
     from egfr_pipeline.verdict import generate_verdict
@@ -228,8 +391,6 @@ def phase5_verdict():
     else:
         print("  [WARN] pocket table 없음 — verdict 스킵")
 
-
-# ── Phase 6: Report + Validate ──
 
 def phase6_report():
     """보고서 생성."""
@@ -247,35 +408,60 @@ def phase7_validate():
     return result
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+PHASES = [
+    (1, "Phase 1: Vina Blind Docking (production)", phase1_vina),
+    (2, "Phase 2: PPI Global Blind Docking (20K models)", phase2_ppi),
+    (3, "Phase 3: PPI Postprocess (chain restore + extract)", phase3_ppi_postprocess),
+    (4, "Phase 4: Vina Postprocess (전체)", phase4_vina_postprocess),
+    (5, "Phase 5: Site Verdict (3축 통합)", phase5_verdict),
+    (6, "Phase 6: Report 생성", phase6_report),
+    (7, "Phase 7: Validate", phase7_validate),
+]
+
+
 def main():
+    parser = argparse.ArgumentParser(description="EGFR-MYO1D Production Pipeline")
+    parser.add_argument("--force", action="store_true",
+                        help="전체 재실행 (기존 결과 무시)")
+    parser.add_argument("--from", type=int, default=0, dest="from_phase",
+                        help="지정 Phase부터 실행 (예: --from 4)")
+    parser.add_argument("--status", action="store_true",
+                        help="각 Phase 완료 상태만 출력")
+    args = parser.parse_args()
+
     print()
     print("╔══════════════════════════════════════════════════════╗")
     print("║  EGFR-MYO1D Production Pipeline                     ║")
     print("║  Vina (128 exh) + PPI (20K) + Verdict + Report      ║")
     print("╚══════════════════════════════════════════════════════╝")
 
+    print_status()
+
+    if args.status:
+        return
+
     t_start = time.time()
 
-    # Phase 1: Vina (빠름, ~15분)
-    run_step("Phase 1: Vina Blind Docking (production)", phase1_vina)
+    for phase_num, name, func in PHASES:
+        # --from: 지정 Phase 이전은 스킵
+        if phase_num < args.from_phase:
+            print(f"\n  [SKIP] {name} (--from {args.from_phase})")
+            continue
 
-    # Phase 2: PPI (느림, ~24-36시간)
-    run_step("Phase 2: PPI Global Blind Docking (20K models)", phase2_ppi)
+        # Phase 7 (Validate)은 항상 실행
+        if phase_num < 7 and not args.force and phase_num != args.from_phase:
+            check_fn = PHASE_CHECKS.get(phase_num, (None, None))[1]
+            if check_fn:
+                missing = check_fn()
+                if not missing:
+                    print(f"\n  [SKIP] {name} — 결과물 이미 존재")
+                    continue
 
-    # Phase 3: PPI Postprocess
-    run_step("Phase 3: PPI Postprocess (chain restore + extract)", phase3_ppi_postprocess)
-
-    # Phase 4: Vina Postprocess
-    run_step("Phase 4: Vina Postprocess (전체)", phase4_vina_postprocess)
-
-    # Phase 5: Verdict
-    run_step("Phase 5: Site Verdict (3축 통합)", phase5_verdict)
-
-    # Phase 6: Report
-    run_step("Phase 6: Report 생성", phase6_report)
-
-    # Phase 7: Validate
-    run_step("Phase 7: Validate", phase7_validate)
+        run_step(name, func)
 
     # 요약
     elapsed = time.time() - t_start
@@ -284,14 +470,15 @@ def main():
 
     banner("프로덕션 완료")
     print(f"  총 소요 시간: {hours}시간 {minutes}분")
-    print(f"  출력 디렉토리: output/egfr_myo1d_vina/")
+    print(f"  출력 디렉토리: {_project_root()}/")
     print(f"  config: {CONFIG_PATH}")
     print()
     print("  확인할 파일:")
-    print("    output/egfr_myo1d_vina/vina_pose_table.csv")
-    print("    output/egfr_myo1d_vina/vina_pocket_table.csv")
-    print("    output/egfr_myo1d_vina/valid_sites.csv")
-    print("    output/egfr_myo1d_vina/project_report.txt")
+    project = _project_root()
+    print(f"    {project}/vina_pose_table.csv")
+    print(f"    {project}/vina_pocket_table.csv")
+    print(f"    {project}/valid_sites.csv")
+    print(f"    {project}/project_report.txt")
     print()
 
 
