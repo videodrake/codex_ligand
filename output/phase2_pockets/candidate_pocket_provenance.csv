@@ -1,0 +1,4 @@
+receptor_id,merged_pocket_id,raw_pocket_id,proposal_source,pocket_rank,proposal_score,druggability_score
+3GT8_raw,3GT8_raw_PKT01,3GT8_raw_fpocket_P01,fpocket,1,0.8234,0.712
+3GT8_raw,3GT8_raw_PKT02,3GT8_raw_fpocket_P02,fpocket,2,0.5612,0.445
+3GT8_raw,3GT8_raw_PKT03,3GT8_raw_fpocket_P03,fpocket,3,0.3201,0.198

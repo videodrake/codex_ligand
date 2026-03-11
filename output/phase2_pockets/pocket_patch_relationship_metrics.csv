@@ -1,0 +1,4 @@
+receptor_id,pocket_id,pocket_centroid_x,pocket_centroid_y,pocket_centroid_z,patch_centroid_x,patch_centroid_y,patch_centroid_z,centroid_distance_A,pocket_residue_ids,patch_hotspot_ids,overlap_residue_ids,hotspot_overlap_count,hotspot_overlap_fraction,pocket_residue_jaccard,relationship_class
+3GT8_raw,3GT8_raw_PKT01,44.454,32.261,18.584,-20.627,0.644,-92.504,132.57,LEU838;ASP855;ILE857;GLU866,LEU819;ALA822;VAL834;LEU838;ASP855;ILE857;GLU866,LEU838;ASP855;ILE857;GLU866,4,0.571,0.571,orthosteric_candidate
+3GT8_raw,3GT8_raw_PKT02,28.490,45.493,12.601,-20.627,0.644,-92.504,124.38,LEU819;ALA822;VAL834,LEU819;ALA822;VAL834;LEU838;ASP855;ILE857;GLU866,LEU819;ALA822;VAL834,3,0.429,0.429,orthosteric_candidate
+3GT8_raw,3GT8_raw_PKT03,60.790,25.173,31.012,-20.627,0.644,-92.504,149.96,ARG748;GLY750,LEU819;ALA822;VAL834;LEU838;ASP855;ILE857;GLU866,,0,0.000,0.000,low_relevance_candidate

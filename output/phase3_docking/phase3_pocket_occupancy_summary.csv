@@ -1,0 +1,10 @@
+receptor_id,ligand_id,candidate_pocket_id,docking_priority,n_poses,n_seeds,best_affinity_kcal,mean_affinity_kcal,pocket_status,fraction_of_receptor_poses
+3GT8_raw,173940,3GT8_raw_PKT01,primary,3,3,,,open,0.500
+3GT8_raw,173940,3GT8_raw_PKT02,primary,3,3,,,open,0.500
+3GT8_raw,173940,3GT8_raw_PKT03,skip,0,0,,,skipped,0.000
+3GT8_raw,97806,3GT8_raw_PKT01,primary,3,3,,,open,0.500
+3GT8_raw,97806,3GT8_raw_PKT02,primary,3,3,,,open,0.500
+3GT8_raw,97806,3GT8_raw_PKT03,skip,0,0,,,skipped,0.000
+3GT8_raw,VAX-C12_0,3GT8_raw_PKT01,primary,3,3,,,open,0.500
+3GT8_raw,VAX-C12_0,3GT8_raw_PKT02,primary,3,3,,,open,0.500
+3GT8_raw,VAX-C12_0,3GT8_raw_PKT03,skip,0,0,,,skipped,0.000

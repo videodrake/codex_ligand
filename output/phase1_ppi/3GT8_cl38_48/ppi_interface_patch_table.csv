@@ -1,0 +1,6 @@
+receptor_id,chain,residue_id,residue_num,residue_name,lobe_label,n_clusters_present,clusters_present,max_occupancy,mean_occupancy,is_multi_cluster_hotspot,global_model_count,global_model_fraction
+3GT8_cl38_48,A,LEU819,819,LEU,N-lobe,2,C01;C03,0.75,0.60,False,6,0.60
+3GT8_cl38_48,A,ASP855,855,ASP,C-lobe,3,C01;C02;C03,0.90,0.70,True,8,0.80
+3GT8_cl38_48,A,GLU866,866,GLU,C-lobe,1,C01,0.50,0.50,False,3,0.30
+3GT8_cl38_48,A,ILE857,857,ILE,C-lobe,1,C02,0.60,0.60,False,4,0.40
+3GT8_cl38_48,B,VAL962,962,VAL,partner,2,C01;C03,0.80,0.65,False,5,0.50

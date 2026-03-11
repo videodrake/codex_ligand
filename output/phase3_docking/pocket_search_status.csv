@@ -1,0 +1,4 @@
+pocket_id,receptor_id,docking_priority,status,status_reason,seeds_allocated,seeds_completed,seeds_remaining,total_poses_generated,acceptable_poses,best_affinity_kcal,max_seeds,max_poses,saturation_threshold,rounds_completed,round_saturated
+3GT8_raw_PKT01,3GT8_raw,primary,open,,3,0,3,0,0,,3,60,10,0,
+3GT8_raw_PKT02,3GT8_raw,primary,open,,3,0,3,0,0,,3,60,10,0,
+3GT8_raw_PKT03,3GT8_raw,skip,skipped,tier_3 + low_relevance (not recommended for docking),0,0,0,0,0,,0,60,10,0,

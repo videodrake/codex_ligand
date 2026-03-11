@@ -1,0 +1,4 @@
+state_name,output_pdb,receptor_chain,receptor_range,receptor_n_residues,partner_chain,partner_range,partner_n_residues,excluded_residues_A,n_excluded,total_atoms
+3GT8_raw,input/PPI/phase1/docking_3GT8_raw_ext_beta_meander.pdb,A,699-1007,309,B,955-1006,52,"709-720,724-731,736-739,747,783-785,799-805,871-873,917-921",43,2891
+3GT8_cl38_48,input/PPI/phase1/docking_3GT8_cl38_48_ext_beta_meander.pdb,A,699-1007,309,B,955-1006,52,"709-720,724-731,736-739,747,783-785,799-805,871-873,917-921",43,10406
+3GT8_cl85_100,input/PPI/phase1/docking_3GT8_cl85_100_ext_beta_meander.pdb,A,699-1007,309,B,955-1006,52,"709-720,724-731,736-739,747,783-785,799-805,871-873,917-921",43,10406

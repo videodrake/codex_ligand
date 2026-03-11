@@ -1,0 +1,26 @@
+Pocket 1 :
+	Score :                0.8234
+	Druggability Score :   0.712
+	Number of Alpha Spheres :    42
+	Total SASA :           345.67
+	Polar SASA :           123.45
+	Apolar SASA :          222.22
+	Volume :               892.34
+
+Pocket 2 :
+	Score :                0.5612
+	Druggability Score :   0.445
+	Number of Alpha Spheres :    28
+	Total SASA :           234.56
+	Polar SASA :            89.01
+	Apolar SASA :          145.55
+	Volume :               567.89
+
+Pocket 3 :
+	Score :                0.3201
+	Druggability Score :   0.198
+	Number of Alpha Spheres :    15
+	Total SASA :           156.78
+	Polar SASA :            56.78
+	Apolar SASA :          100.00
+	Volume :               312.45

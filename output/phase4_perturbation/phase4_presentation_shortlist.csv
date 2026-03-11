@@ -1,0 +1,4 @@
+rank,pocket_id,receptor_id,mechanistic_class,mechanistic_short,perturbation_score,adjusted_confidence,top_ligand,top_ligand_support,hotspot_overlap,druggability_tier,state_accessibility,rationale
+1,3GT8_raw_PKT01,3GT8_raw,orthosteric_disruptor_candidate,orthosteric,0.6514,high_provisional,173940,pending_moderate,4,tier_1,single_state_only,Overlaps 4 PPI hotspot(s); tier_1 druggability; 3 ligand(s) tested; affinity pending
+4,3GT8_raw_PKT02,3GT8_raw,orthosteric_disruptor_candidate,orthosteric,0.534,high_provisional,173940,pending_moderate,3,tier_2,single_state_only,Overlaps 3 PPI hotspot(s); tier_2 druggability; 3 ligand(s) tested; affinity pending
+7,3GT8_raw_PKT03,3GT8_raw,ligandable_but_ppi_irrelevant_candidate,irrelevant,0.1493,high_provisional,,none,0,tier_3,single_state_only,No PPI hotspot overlap; Control site only

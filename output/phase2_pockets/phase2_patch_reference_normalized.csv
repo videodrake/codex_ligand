@@ -1,0 +1,8 @@
+patch_residue_id,residue_num,residue_name,chain,lobe,construct_type,orientation_validated,robustness,n_states,states,max_occupancy,is_hotspot,pyrosetta_support,lightdock_support,method_agreement,confidence,phase1_evidence_source,notes
+ASP855,855,ASP,A,C-lobe,full_kinase_domain,True,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,True,both,medium,primary,
+GLU866,866,GLU,A,C-lobe,full_kinase_domain,True,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,True,both,medium,primary,
+LEU819,819,LEU,A,N-lobe,full_kinase_domain,True,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,False,single,low,primary,N-lobe (newly detectable in Phase 1)
+ALA822,822,ALA,A,N-lobe,full_kinase_domain,True,state_specific,1,3GT8_raw,1.0,True,True,False,single,low,primary,N-lobe (newly detectable in Phase 1)
+LEU838,838,LEU,A,C-lobe,full_kinase_domain,True,state_specific,1,3GT8_raw,1.0,True,True,False,single,low,primary,
+VAL834,834,VAL,A,N-lobe,full_kinase_domain,True,state_specific,1,3GT8_raw,1.0,True,True,False,single,low,primary,N-lobe (newly detectable in Phase 1)
+ILE857,857,ILE,A,C-lobe,full_kinase_domain,True,state_specific,1,3GT8_cl38_48,0.6,True,True,False,pyrosetta_only,low,primary,

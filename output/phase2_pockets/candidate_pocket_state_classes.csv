@@ -1,0 +1,4 @@
+pocket_id,receptor_id,state_class,n_states_matched,matched_states,matched_pocket_ids,best_match_distance_A,best_match_jaccard,state_class_basis,druggability_confidence,overall_druggability_tier,relationship_class
+3GT8_raw_PKT01,3GT8_raw,state_specific_pocket,1,,,,,only 1 state(s) with pocket data; cross-state comparison not yet possible,high,tier_1,orthosteric_candidate
+3GT8_raw_PKT02,3GT8_raw,state_specific_pocket,1,,,,,only 1 state(s) with pocket data; cross-state comparison not yet possible,medium,tier_2,orthosteric_candidate
+3GT8_raw_PKT03,3GT8_raw,state_specific_pocket,1,,,,,only 1 state(s) with pocket data; cross-state comparison not yet possible,low,tier_3,low_relevance_candidate

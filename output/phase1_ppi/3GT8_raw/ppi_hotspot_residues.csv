@@ -1,0 +1,12 @@
+receptor_id,cluster_id,chain,residue_id,residue_num,residue_name,lobe_label,occupancy,n_models_with_residue,n_orientation_valid_models,is_hotspot,mean_delta_e_total
+3GT8_raw,C01,A,LEU819,819,LEU,N-lobe,1.0,1,1,True,
+3GT8_raw,C01,A,ALA822,822,ALA,N-lobe,1.0,1,1,True,
+3GT8_raw,C01,A,VAL834,834,VAL,N-lobe,1.0,1,1,True,
+3GT8_raw,C01,A,LEU838,838,LEU,C-lobe,1.0,1,1,True,
+3GT8_raw,C01,A,ASP855,855,ASP,C-lobe,1.0,1,1,True,
+3GT8_raw,C01,A,GLU866,866,GLU,C-lobe,1.0,1,1,True,
+3GT8_raw,C01,B,VAL962,962,VAL,partner,1.0,1,1,True,
+3GT8_raw,C01,B,ASN963,963,ASN,partner,1.0,1,1,True,
+3GT8_raw,C01,B,VAL964,964,VAL,partner,1.0,1,1,True,
+3GT8_raw,C01,B,GLN969,969,GLN,partner,1.0,1,1,True,
+3GT8_raw,C01,B,SER971,971,SER,partner,1.0,1,1,True,

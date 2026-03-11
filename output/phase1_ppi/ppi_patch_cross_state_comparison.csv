@@ -1,0 +1,13 @@
+chain,residue_id,residue_num,residue_name,lobe_label,n_states_present,states_present,max_occupancy_by_state,n_clusters_by_state,is_hotspot_in_states,robustness_class,global_max_occupancy,global_mean_occupancy
+A,ASP855,855,ASP,C-lobe,2,3GT8_cl38_48;3GT8_raw,3GT8_cl38_48:0.9000;3GT8_raw:1.0000,3GT8_cl38_48:3;3GT8_raw:1,3GT8_cl38_48;3GT8_raw,moderate,1.0,0.95
+A,GLU866,866,GLU,C-lobe,2,3GT8_cl38_48;3GT8_raw,3GT8_cl38_48:0.5000;3GT8_raw:1.0000,3GT8_cl38_48:1;3GT8_raw:1,3GT8_cl38_48;3GT8_raw,moderate,1.0,0.75
+A,LEU819,819,LEU,N-lobe,2,3GT8_cl38_48;3GT8_raw,3GT8_cl38_48:0.7500;3GT8_raw:1.0000,3GT8_cl38_48:2;3GT8_raw:1,3GT8_cl38_48;3GT8_raw,moderate,1.0,0.875
+A,ALA822,822,ALA,N-lobe,1,3GT8_raw,3GT8_raw:1.0000,3GT8_raw:1,3GT8_raw,state_specific,1.0,1.0
+A,LEU838,838,LEU,C-lobe,1,3GT8_raw,3GT8_raw:1.0000,3GT8_raw:1,3GT8_raw,state_specific,1.0,1.0
+A,VAL834,834,VAL,N-lobe,1,3GT8_raw,3GT8_raw:1.0000,3GT8_raw:1,3GT8_raw,state_specific,1.0,1.0
+A,ILE857,857,ILE,C-lobe,1,3GT8_cl38_48,3GT8_cl38_48:0.6000,3GT8_cl38_48:1,3GT8_cl38_48,state_specific,0.6,0.6
+B,VAL962,962,VAL,partner,2,3GT8_cl38_48;3GT8_raw,3GT8_cl38_48:0.8000;3GT8_raw:1.0000,3GT8_cl38_48:2;3GT8_raw:1,3GT8_raw,moderate,1.0,0.9
+B,ASN963,963,ASN,partner,1,3GT8_raw,3GT8_raw:1.0000,3GT8_raw:1,3GT8_raw,state_specific,1.0,1.0
+B,GLN969,969,GLN,partner,1,3GT8_raw,3GT8_raw:1.0000,3GT8_raw:1,3GT8_raw,state_specific,1.0,1.0
+B,SER971,971,SER,partner,1,3GT8_raw,3GT8_raw:1.0000,3GT8_raw:1,3GT8_raw,state_specific,1.0,1.0
+B,VAL964,964,VAL,partner,1,3GT8_raw,3GT8_raw:1.0000,3GT8_raw:1,3GT8_raw,state_specific,1.0,1.0

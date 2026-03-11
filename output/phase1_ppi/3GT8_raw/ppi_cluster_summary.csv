@@ -1,0 +1,4 @@
+receptor_id,cluster_id,n_members_total,n_members_orientation_valid,orientation_pass_rate,representative_model,representative_dG,mean_dG,mean_dSASA,mean_sc_value,mean_packstat,mean_nres_int,n_unique_receptor_residues,n_unique_partner_residues,n_nlobe_hotspots,n_clobe_hotspots,receptor_lobe_distribution,receptor_hotspot_residues,partner_hotspot_residues
+3GT8_raw,C01,1,1,1.0,Rank01_C01_M01_S-15.20.pdb,-15.2,-15.2,850.3,0.68,0.62,18.0,6,5,3,3,"N-lobe:50.0%,C-lobe:50.0%",LEU819;ALA822;VAL834;LEU838;ASP855;GLU866,VAL962;ASN963;VAL964;GLN969;SER971
+3GT8_raw,C02,1,0,0.0,,,,,,,,0,0,0,0,,,
+3GT8_raw,C03,1,0,0.0,,,,,,,,0,0,0,0,,,
