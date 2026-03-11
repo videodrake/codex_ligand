@@ -1,0 +1,5 @@
+Residue_ID,Residue_Name,Chain,DeltaE_total,DeltaE_fa_atr,DeltaE_fa_rep,DeltaE_fa_sol,DeltaE_fa_elec
+A1941,ILE,A,-0.8511,-1.2056,0.3712,-0.1359,0.0446
+A1942,ASP,A,-3.6250,-1.2992,0.2341,2.1610,-3.9549
+B960,LEU,B,-2.6421,-1.4978,0.4043,0.9860,-2.5267
+B961,GLN,B,-2.2306,-1.3915,0.2046,0.9472,-1.2899

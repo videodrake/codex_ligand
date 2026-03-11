@@ -1,8 +1,0 @@
-receptor_a,pocket_a,receptor_b,pocket_b,centroid_dist,residue_jaccard,residue_overlap_coeff,shared_residues,n_shared_residues,residues_only_a,residues_only_b,n_residues_a,n_residues_b,shared_ligands,n_shared_ligands,n_ligands_a,n_ligands_b,affinity_a,affinity_b,n_pose_a,n_pose_b,same_patch_candidate
-3GT8_cl38_48,P001,3GT8_raw,P002,5.01,0.0,0.0,,0,HIS972;MET971,,2,0,ligand_a,1,2,1,-8.4,-7.1,2,1,False
-3GT8_cl38_48,P002,3GT8_cl85_100,P001,5.09,0.0,0.0,,0,,HIS972;MET971,0,2,ligand_a,1,1,2,-7.0,-8.2,1,2,False
-3GT8_cl38_48,P003,3GT8_cl85_100,P002,5.2,0.0,0.0,,0,,,0,0,,0,1,1,-6.5,-7.3,1,1,False
-3GT8_cl38_48,P002,3GT8_raw,P003,5.2,0.0,0.0,,0,,,0,0,,0,1,1,-7.0,-6.2,1,1,False
-3GT8_cl38_48,P003,3GT8_cl85_100,P001,7.19,0.0,0.0,,0,,HIS972;MET971,0,2,ligand_b,1,1,2,-6.5,-8.2,1,2,False
-3GT8_cl38_48,P001,3GT8_raw,P003,7.2,0.0,0.0,,0,HIS972;MET971,,2,0,ligand_b,1,2,1,-8.4,-6.2,2,1,False
-3GT8_cl85_100,P001,3GT8_raw,P003,10.24,0.0,0.0,,0,HIS972;MET971,,2,0,ligand_b,1,2,1,-8.2,-6.2,2,1,False
