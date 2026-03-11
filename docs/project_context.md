@@ -214,5 +214,4 @@ This reading order ensures that the contributor understands:
 - 새 계산 결과가 더 높은 해석 우선순위를 가진다.
 - 서버는 32코어지만 실사용 16코어 기준으로 병렬 실행을 설계해야 한다.
 - 전체 재작성보다 기존 GitHub 코드의 점진적 리팩터링이 원칙이다.
-- 첫 구현은 Task Group 0~2까지만 제한하는 것이 맞다.
 
