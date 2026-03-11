@@ -233,7 +233,9 @@ def compute_reallocation(
             if surplus_seeds <= 0:
                 break
             max_extra = ps["max_seeds"] - ps["seeds_allocated"]
-            give = min(surplus_seeds, max(max_extra, 0))
+            if max_extra <= 0:
+                continue
+            give = min(surplus_seeds, max_extra)
             if give > 0:
                 actions.append({
                     "from_pocket": ",".join(donors),

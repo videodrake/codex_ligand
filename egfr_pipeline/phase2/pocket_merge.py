@@ -26,6 +26,7 @@ Usage:
 import argparse
 import csv
 import math
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -401,7 +402,6 @@ def _safe_float(val) -> Optional[float]:
 
 
 def _resnum_from_id(residue_id: str) -> int:
-    import re
     m = re.search(r"(\d+)$", residue_id)
     return int(m.group(1)) if m else 0
 

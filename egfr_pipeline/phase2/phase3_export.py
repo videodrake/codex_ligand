@@ -38,6 +38,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
 
+EXPECTED_RECEPTOR_STATES = {"3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"}
+
 # Phase 3 reference schema — the single file Phase 3 needs to consume
 EXPORT_COLUMNS = [
     # Identity
@@ -314,7 +316,7 @@ def build_handoff_note(
     ])
 
     states_present = set(r["receptor_id"] for r in rows)
-    missing = {"3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"} - states_present
+    missing = EXPECTED_RECEPTOR_STATES - states_present
     if missing:
         lines.extend([
             f"**{len(missing)} receptor state(s) do not yet have pocket data:**",

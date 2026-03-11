@@ -98,8 +98,8 @@ def build_evidence_table(
     One row per (receptor, pocket, ligand) combination.
     """
     # Build lookups
-    pocket_map = {p["pocket_id"]: p for p in normalized_pockets}
-    status_map = {ps["pocket_id"]: ps for ps in pocket_statuses}
+    pocket_map = {p["pocket_id"]: p for p in normalized_pockets if p.get("pocket_id")}
+    status_map = {ps["pocket_id"]: ps for ps in pocket_statuses if ps.get("pocket_id")}
 
     # Diversity lookup by (receptor, ligand)
     div_map = {}

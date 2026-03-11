@@ -632,7 +632,7 @@ def build_proposal_note(
                 "| Pocket ID | Source | Rank | Score | Drugg. | Centroid | N res |",
                 "|-----------|--------|------|-------|--------|---------|-------|",
             ])
-            for p in sorted(pockets, key=lambda x: int(x.get("pocket_rank", 99))):
+            for p in sorted(pockets, key=lambda x: _safe_int(x.get("pocket_rank", "99")) or 99):
                 centroid = f"({p['centroid_x']}, {p['centroid_y']}, {p['centroid_z']})"
                 lines.append(
                     f"| {p['candidate_pocket_id']} | {p['proposal_source']} | "

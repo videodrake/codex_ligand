@@ -334,9 +334,12 @@ def evaluate_round_results(
             # Update best affinity
             current_best = ps.get("best_affinity_kcal", "")
             if best_this != "":
-                best_val = float(best_this)
-                if current_best == "" or best_val < float(current_best):
-                    ps["best_affinity_kcal"] = best_this
+                try:
+                    best_val = float(best_this)
+                    if current_best == "" or best_val < float(current_best):
+                        ps["best_affinity_kcal"] = best_this
+                except (ValueError, TypeError):
+                    pass
 
             # Count acceptable poses
             if ps["best_affinity_kcal"] != "" and n_poses > 0:

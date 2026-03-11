@@ -189,9 +189,9 @@ def _section_inputs(receptor_meta, partner_meta) -> List[str]:
         for r in receptor_meta:
             lines.append(
                 f"| {r.get('state_name', '')} | "
-                f"{r.get('residue_range', '')} | "
+                f"{r.get('residue_start', '')}-{r.get('residue_end', '')} | "
                 f"{r.get('n_residues', '')} | "
-                f"{r.get('source', '')} |"
+                f"{r.get('source_pdb', '')} |"
             )
         lines.append("")
 
@@ -203,9 +203,9 @@ def _section_inputs(receptor_meta, partner_meta) -> List[str]:
         for p in partner_meta:
             lines.append(
                 f"- **{p.get('partner_id', '')}**: residues "
-                f"{p.get('residue_range', '')}, "
+                f"{p.get('residue_start', '')}-{p.get('residue_end', '')}, "
                 f"{p.get('n_residues', '')} residues, "
-                f"sheets {p.get('sheets', '')}"
+                f"active face: {p.get('active_face_residues', 'N/A')}"
             )
         lines.append("")
 

@@ -371,7 +371,7 @@ def run_druggability_confidence(
         confidence = assign_druggability_confidence(raw_druggability, norm_d)
 
         # Multi-source
-        n_sources = int(p.get("n_sources", 1))
+        n_sources = _safe_int(p.get("n_sources", "1")) or 1
         sources = p.get("sources", "")
         multi_source = n_sources >= CONSENSUS_MIN_SOURCES
 
@@ -396,12 +396,12 @@ def run_druggability_confidence(
             "druggability_confidence": confidence,
             "n_sources": n_sources,
             "sources": sources,
-            "multi_source_support": str(multi_source),
+            "multi_source_support": "true" if multi_source else "false",
             "mean_volume_A3": p.get("mean_volume_A3", ""),
             "n_residues": p.get("n_residues", ""),
             "ftmap_hotspot_count": ftmap_info.get("hotspot_count", ""),
             "ftmap_overlap_residues": ftmap_info.get("overlap_residues", ""),
-            "hotspot_support_available": str(bool(ftmap_info)),
+            "hotspot_support_available": "true" if ftmap_info else "false",
             "overall_druggability_tier": tier,
         })
 
@@ -410,15 +410,15 @@ def run_druggability_confidence(
         support_rows.append({
             "receptor_id": state,
             "pocket_id": pid,
-            "fpocket_support": str("fpocket" in tools),
+            "fpocket_support": "true" if "fpocket" in tools else "false",
             "fpocket_score": tools.get("fpocket", {}).get("score", ""),
             "fpocket_druggability": tools.get("fpocket", {}).get("druggability", ""),
-            "p2rank_support": str("p2rank" in tools),
+            "p2rank_support": "true" if "p2rank" in tools else "false",
             "p2rank_score": tools.get("p2rank", {}).get("score", ""),
             "p2rank_probability": tools.get("p2rank", {}).get("druggability", ""),
             "n_tools_supporting": len(tools),
-            "consensus_pocket": str(len(tools) >= CONSENSUS_MIN_SOURCES),
-            "ftmap_support": str(bool(ftmap_info)),
+            "consensus_pocket": "true" if len(tools) >= CONSENSUS_MIN_SOURCES else "false",
+            "ftmap_support": "true" if ftmap_info else "false",
             "ftmap_hotspot_count": ftmap_info.get("hotspot_count", ""),
         })
 
@@ -471,6 +471,13 @@ def _safe_float(val) -> Optional[float]:
         return float(val)
     except (ValueError, TypeError):
         return None
+
+
+def _safe_int(val) -> int:
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
 
 
 # ---------------------------------------------------------------------------

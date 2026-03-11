@@ -91,9 +91,12 @@ def parse_pose_blocks(pdbqt_path: Path) -> List[dict]:
             if line.startswith("REMARK VINA RESULT:"):
                 parts = line.split()
                 if len(parts) >= 6:
-                    current_affinity = float(parts[3])
-                    current_rmsd_lb = float(parts[4])
-                    current_rmsd_ub = float(parts[5])
+                    try:
+                        current_affinity = float(parts[3])
+                        current_rmsd_lb = float(parts[4])
+                        current_rmsd_ub = float(parts[5])
+                    except (ValueError, TypeError):
+                        continue
             if line.startswith(("ATOM", "HETATM")):
                 atom_name = line[12:16].strip()
                 if atom_name.upper().startswith("H"):
@@ -230,7 +233,7 @@ def build_pose_table_from_job_metadata(
             "raw_pose_file": "",
             "pocket_id": "",
             "contact_residues": "",
-            "n_contact_residues": "",
+            "n_contact_residues": 0,
             "candidate_pocket_id": job["pocket_id"],
             "round_id": job["seed_index"],
             "seed": job["seed_index"],

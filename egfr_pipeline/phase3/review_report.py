@@ -141,7 +141,11 @@ def build_report(
     # Job distribution by round
     by_round = defaultdict(int)
     for j in jobs:
-        by_round[int(j["seed_index"])] += 1
+        try:
+            seed_idx = int(j["seed_index"])
+        except (ValueError, TypeError):
+            continue
+        by_round[seed_idx] += 1
     lines.extend([
         "### Job Distribution by Round",
         "",

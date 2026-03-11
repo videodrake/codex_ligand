@@ -397,7 +397,7 @@ class TestDruggabilityConfidence:
         flags = _load(tmp_phase2 / "candidate_pocket_support_flags.csv")
         # At least one pocket should have both fpocket and p2rank
         has_consensus = any(
-            r["fpocket_support"] == "True" and r["p2rank_support"] == "True"
+            r["fpocket_support"] == "true" and r["p2rank_support"] == "true"
             for r in flags
         )
         assert has_consensus, "Merged fpocket+p2rank pocket should show consensus"
@@ -421,7 +421,7 @@ class TestDruggabilityConfidence:
         summary = _load(tmp_phase2 / "druggability_proposal_summary.csv")
         for r in summary:
             assert "ftmap_hotspot_count" in r
-            assert r["hotspot_support_available"] == "False"
+            assert r["hotspot_support_available"] == "false"
 
 
 # ===================================================================

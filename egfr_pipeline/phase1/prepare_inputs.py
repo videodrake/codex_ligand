@@ -698,6 +698,9 @@ def register_pilot_data(output_dir: Path) -> Path:
         },
     ]
 
+    if not pilot_entries:
+        print("  WARNING: No pilot entries to register")
+        return output_path
     fieldnames = list(pilot_entries[0].keys())
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
