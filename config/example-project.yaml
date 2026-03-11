@@ -1,73 +1,71 @@
-project_name: egfr_myo1d_vina
-output_root: ./output
-max_workers: 32
-mode: blind
-receptors:
-  - id: 3GT8_raw
-    source_type: raw_3GT8
-    pdb: input/receptors/3GT8_raw.pdb
-    pdbqt: input/receptors/3GT8_raw_receptor.pdbqt
-    chain: A
-  - id: 3GT8_cl38_48
-    source_type: md_cluster_38_48
-    pdb: input/receptors/3GT8_cl38_48.pdb
-    pdbqt: input/receptors/3GT8_cl38_48_receptor.pdbqt
-    chain: A
-  - id: 3GT8_cl85_100
-    source_type: md_cluster_85_100
-    pdb: input/receptors/3GT8_cl85_100.pdb
-    pdbqt: input/receptors/3GT8_cl85_100_receptor.pdbqt
-    chain: A
-ligands:
-  - id: "173940"
-    sdf: input/ligands/173940_ligand.sdf
-    pdbqt: input/ligands/173940_ligand.pdbqt
-  - id: "97806"
-    sdf: input/ligands/97806_ligand.sdf
-    pdbqt: input/ligands/97806_ligand.pdbqt
-  - id: VAX-C12_0
-    sdf: input/ligands/VAX-C12_0_ligand.sdf
-    pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
-vina:
-  mode: blind
-  exhaustiveness: 384        # blind docking on ~300-res kinase: high thoroughness per pose
-  n_poses: 100               # 3 receptors × 3 ligands × 100 = 900 poses total
-  padding: 5.0
-  min_box: 70.0
-postprocess:
-  parse_results: false
-  extract_contacts: false
-  contact_cutoff: 4.0        # atom-pair contact: 4Å = van der Waals + H-bond range
-  cluster_pockets: false
-  pocket_cutoff: 7.0         # iterative clustering radius: tighter than merge fallback
-  merge_by_residue: true
-  merge_jaccard: 0.25        # residue overlap merge: lower threshold catches sparse pockets
-  merge_overlap: 0.4         # overlap coefficient: slightly relaxed for partial contacts
-  merge_centroid_fallback: 8.0  # centroid fallback: covers full pocket diameter (~15Å)
-  cluster_max_iterations: 15    # more iterations for 900-pose convergence
-  min_pocket_size: 3         # ≥3 poses required to form a pocket (noise filtering)
-  keep_chain: false
-  summarize_pockets: false
-  compare_pockets: false
-  comparison_centroid_cutoff: 12.0  # cross-receptor match: tighter to avoid false positives
-  extract_ppi_residues: false
-  generate_report: false
 bootstrap:
-  n_replicates: 200          # 200 replicates for reliable stability statistics
+  n_replicates: 200
   sample_fraction: 0.8
   seed: 42
-
-experimental:
-  # known_binding_residues: [744, 752]
-  # known_non_binding_residues: [899, 950]
-  # source: "Kim et al. 2023"
-
+experimental: null
+ligands:
+- id: '173940'
+  pdbqt: input/ligands/173940_ligand.pdbqt
+  sdf: input/ligands/173940_ligand.sdf
+- id: '97806'
+  pdbqt: input/ligands/97806_ligand.pdbqt
+  sdf: input/ligands/97806_ligand.sdf
+- id: VAX-C12_0
+  pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
+  sdf: input/ligands/VAX-C12_0_ligand.sdf
+max_workers: 32
+mode: blind
+output_root: ./output
+postprocess:
+  cluster_max_iterations: 15
+  cluster_pockets: false
+  compare_pockets: false
+  comparison_centroid_cutoff: 12.0
+  contact_cutoff: 4.0
+  extract_contacts: false
+  extract_ppi_residues: false
+  generate_report: false
+  keep_chain: false
+  merge_by_residue: true
+  merge_centroid_fallback: 8.0
+  merge_jaccard: 0.25
+  merge_overlap: 0.4
+  min_pocket_size: 3
+  parse_results: false
+  pocket_cutoff: 7.0
+  summarize_pockets: false
 ppi:
-  pyrosetta_result_dirs:
-    # 3GT8_raw: /path/to/3GT8_raw/pyrosetta_results
-  afm_models:
-    # 3GT8_raw: /path/to/afm_model_3GT8_raw.pdb
+  afm_models: null
   afm_settings:
-    receptor_chain: A
-    partner_chain: B
     contact_cutoff: 8.0
+    partner_chain: B
+    receptor_chain: A
+  pyrosetta_result_dirs:
+    3GT8_raw:
+    - partner: MYO1D_TH1
+      path: /work4/hwang/onepack/codex_ligand/EGFR_dimer_TH1_wt/restored
+    - partner: MYO1D_beta
+      path: /work4/hwang/onepack/codex_ligand/EGFR_dimer_beta_meander_wt/restored
+project_name: egfr_myo1d_vina
+receptors:
+- chain: A
+  id: 3GT8_raw
+  pdb: input/receptors/3GT8_raw.pdb
+  pdbqt: input/receptors/3GT8_raw_receptor.pdbqt
+  source_type: raw_3GT8
+- chain: A
+  id: 3GT8_cl38_48
+  pdb: input/receptors/3GT8_cl38_48.pdb
+  pdbqt: input/receptors/3GT8_cl38_48_receptor.pdbqt
+  source_type: md_cluster_38_48
+- chain: A
+  id: 3GT8_cl85_100
+  pdb: input/receptors/3GT8_cl85_100.pdb
+  pdbqt: input/receptors/3GT8_cl85_100_receptor.pdbqt
+  source_type: md_cluster_85_100
+vina:
+  exhaustiveness: 384
+  min_box: 70.0
+  mode: blind
+  n_poses: 100
+  padding: 5.0
