@@ -16,7 +16,6 @@ set -u
 
 PRECHECK_STATUS_DIR="${PBS_O_WORKDIR}/output/pre_qsub_status"
 PRECHECK_STATUS_FILE="${PRECHECK_STATUS_DIR}/last_pass.json"
-TEST_CONDA_ENV="${TEST_CONDA_ENV:-codex-tests}"
 
 mkdir -p "${PRECHECK_STATUS_DIR}"
 rm -f "${PRECHECK_STATUS_FILE}"
@@ -39,10 +38,8 @@ echo "  Pre-Qsub Validation Lane"
 echo "  Started: $(date)"
 echo "  Node: $(hostname)"
 echo "  Cores: $(nproc)"
-echo "  TEST_CONDA_ENV: ${TEST_CONDA_ENV}"
+echo "  CONDA_ENV: pyrosetta"
 echo "============================================"
-
-export TEST_CONDA_ENV
 
 bash scripts/setup_test_env.sh
 bash scripts/run_pre_qsub_checks.sh

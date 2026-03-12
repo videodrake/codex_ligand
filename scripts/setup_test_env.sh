@@ -2,8 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TEST_CONDA_ENV="${TEST_CONDA_ENV:-codex-tests}"
-TEST_PYTHON_VERSION="${TEST_PYTHON_VERSION:-3.11}"
+CONDA_ENV_NAME="pyrosetta"
 
 if ! command -v conda >/dev/null 2>&1; then
   echo "conda command not found."
@@ -12,20 +11,40 @@ if ! command -v conda >/dev/null 2>&1; then
 fi
 
 eval "$(conda shell.bash hook)"
+conda activate "${CONDA_ENV_NAME}"
 
-if conda env list | awk '{print $1}' | grep -Fxq "${TEST_CONDA_ENV}"; then
-  echo "Updating existing conda test environment: ${TEST_CONDA_ENV}"
-else
-  echo "Creating conda test environment: ${TEST_CONDA_ENV}"
-  conda create -y -n "${TEST_CONDA_ENV}" "python=${TEST_PYTHON_VERSION}"
-fi
+python - <<'PY'
+import importlib
+import sys
 
-mapfile -t TEST_PACKAGES < "${ROOT_DIR}/requirements-test.txt"
-conda install -y -n "${TEST_CONDA_ENV}" "${TEST_PACKAGES[@]}"
+required = {
+    "pytest": "pytest",
+    "pyyaml": "yaml",
+    "numpy": "numpy",
+    "pandas": "pandas",
+    "scipy": "scipy",
+    "matplotlib": "matplotlib",
+}
+
+missing = []
+for package_name, module_name in required.items():
+    try:
+        importlib.import_module(module_name)
+    except Exception:
+        missing.append(package_name)
+
+if missing:
+    print("Missing required packages in the 'pyrosetta' conda environment:")
+    for name in missing:
+        print(f"  - {name}")
+    print("")
+    print("Install them manually before running pre-qsub checks.")
+    print("See: docs/server_environment_setup.md")
+    sys.exit(1)
+PY
 
 echo
-echo "Test environment is ready."
-echo "Activate with:"
-echo "  conda activate ${TEST_CONDA_ENV}"
+echo "Pre-qsub environment check passed."
+echo "Active conda environment: ${CONDA_ENV_NAME}"
 echo "Run pre-qsub checks with:"
 echo "  ${ROOT_DIR}/scripts/run_pre_qsub_checks.sh"

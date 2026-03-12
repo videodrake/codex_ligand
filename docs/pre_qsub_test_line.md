@@ -14,21 +14,18 @@ Catch the most common pre-submission failures early:
 
 This test line is intentionally lighter than a full production run. It does not launch heavy Vina, PyRosetta production docking, or MD production workflows.
 
-## 1. Create the test conda environment
+## 1. Verify the existing `pyrosetta` environment
 
 ```bash
 cd ~/codex_ligand
 bash scripts/setup_test_env.sh
 ```
 
-This creates or updates the `codex-tests` conda environment and installs the packages listed in [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt).
+This script does not create or modify an environment anymore.
+It assumes you already use the existing `pyrosetta` conda environment and only checks that the required test packages are installed.
 
-If you want to choose a different environment name:
-
-```bash
-cd ~/codex_ligand
-TEST_CONDA_ENV=my-test-env bash scripts/setup_test_env.sh
-```
+If the package check fails, install the missing packages manually in `pyrosetta` first.
+See [server_environment_setup.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/server_environment_setup.md).
 
 ## 2. Run the pre-qsub checks
 
@@ -78,7 +75,7 @@ If this line fails, fix the code first and do not spend cluster resources yet.
 ```bash
 git clone <repo-url>
 cd codex_ligand
-conda activate base
+conda activate pyrosetta
 bash scripts/setup_test_env.sh
 bash scripts/run_pre_qsub_checks.sh
 # if green, then proceed to qsub-based runs
@@ -120,9 +117,9 @@ qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
 
 ## 6. Current server baseline
 
-The repository no longer treats `.venv-tests` as the official server test path.
+The repository no longer treats `.venv-tests` or a separate test-only conda env as the official server test path.
 The current baseline is:
 
-- conda-managed test environment
-- default environment name: `codex-tests`
-- package install path driven by [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt)
+- shared production environment: `pyrosetta`
+- manual package installation by the user
+- package reference list: [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt)
