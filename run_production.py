@@ -24,11 +24,14 @@ Usage:
 """
 
 import argparse
+import configparser
 import csv
 import sys
 import time
 from pathlib import Path
 from typing import List, Optional
+
+from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
 
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
@@ -38,18 +41,22 @@ PPI_TARGETS = [
     {
         "name": "TH1",
         "config_ini": "config/ppi_prod_TH1.ini",
-        "input_pdb": "input/PPI/prepared/EGFR_dimer_TH1_wt.pdb",
+        "input_pdb": "input/PPI/prepared/EGFR_dimer_TH1.pdb",
         "mapping_csv": "input/PPI/prepared/EGFR_dimer_TH1_mapping.csv",
         "receptor_id": "3GT8_raw",
         "partner_name": "MYO1D_TH1",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
     },
     {
         "name": "beta-meander",
         "config_ini": "config/ppi_prod_beta_meander.ini",
-        "input_pdb": "input/PPI/prepared/EGFR_dimer_beta_meander_wt.pdb",
+        "input_pdb": "input/PPI/prepared/EGFR_dimer_beta_meander.pdb",
         "mapping_csv": "input/PPI/prepared/EGFR_dimer_beta_meander_mapping.csv",
         "receptor_id": "3GT8_raw",
         "partner_name": "MYO1D_beta",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
     },
 ]
 
@@ -111,10 +118,20 @@ def _csv_has_rows(path: Path) -> bool:
 
 def _ppi_docking_dir(target: dict) -> Optional[Path]:
     """PPI 도킹 결과 디렉토리 경로 반환."""
-    input_pdb = Path(target["input_pdb"])
+    config_path = REPO_ROOT / target["config_ini"]
+    if not config_path.exists():
+        return None
+
+    config = configparser.ConfigParser()
+    config.read(config_path, encoding="utf-8")
+
+    input_pdb_rel = config.get("Path", "input_pdb_name", fallback=target["input_pdb"])
+    input_pdb = REPO_ROOT / input_pdb_rel
     if not input_pdb.exists():
-        input_pdb = Path(target["input_pdb"].replace("_wt.pdb", ".pdb"))
-    return REPO_ROOT / input_pdb.stem
+        return None
+
+    root_name = build_output_root_name(config, str(input_pdb), input_pdb.stem)
+    return REPO_ROOT / root_name
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +329,11 @@ def phase3_ppi_postprocess():
         mapping_csv = target["mapping_csv"]
         receptor_id = target["receptor_id"]
         partner_name = target["partner_name"]
+        construct_type = target.get("construct_type", "full_kinase_domain")
+        orientation_validation_status = target.get(
+            "orientation_validation_status",
+            "not_available",
+        )
 
         input_pdb = Path(target["input_pdb"])
         if not input_pdb.exists():
@@ -333,6 +355,8 @@ def phase3_ppi_postprocess():
             mapping_csv=mapping_csv,
             receptor_id=receptor_id,
             partner_name=partner_name,
+            construct_type=construct_type,
+            orientation_validation_status=orientation_validation_status,
         )
 
 

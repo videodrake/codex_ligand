@@ -90,6 +90,43 @@ def is_project_config(config: dict) -> bool:
     return isinstance(config.get("receptors"), list) and bool(config.get("receptors"))
 
 
+def _candidate_project_source_paths(entry: dict, kind: str) -> List[Path]:
+    """Return possible source files that can be prepared into the configured PDBQT."""
+    pdbqt_path = Path(entry.get("pdbqt", "")) if entry.get("pdbqt") else None
+    candidates: List[Path] = []
+
+    if kind == "receptor":
+        if entry.get("pdb"):
+            candidates.append(Path(entry["pdb"]))
+        if pdbqt_path is not None:
+            stem = pdbqt_path.stem.replace("_receptor", "")
+            candidates.append(pdbqt_path.with_name(f"{stem}.pdb"))
+    else:
+        for key in ("sdf", "mol2", "pdb"):
+            if entry.get(key):
+                candidates.append(Path(entry[key]))
+        if pdbqt_path is not None:
+            stem = pdbqt_path.stem.replace("_ligand", "")
+            for suffix in (".sdf", ".mol2", ".pdb"):
+                candidates.append(pdbqt_path.with_name(f"{stem}{suffix}"))
+
+    deduped: List[Path] = []
+    seen = set()
+    for path in candidates:
+        resolved = str(path)
+        if resolved not in seen:
+            deduped.append(path)
+            seen.add(resolved)
+    return deduped
+
+
+def _resolve_project_source_path(entry: dict, kind: str) -> Optional[Path]:
+    for candidate in _candidate_project_source_paths(entry, kind):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def validate_project_config(config: dict) -> None:
     receptors = config.get("receptors")
     ligands = config.get("ligands")
@@ -107,19 +144,68 @@ def validate_project_config(config: dict) -> None:
         if not receptor.get("pdbqt"):
             raise ValueError(f"Missing receptor pdbqt path for {receptor.get('id')}")
         pdbqt_path = Path(receptor["pdbqt"])
-        if not pdbqt_path.exists():
-            raise FileNotFoundError(f"Receptor pdbqt file not found: {pdbqt_path}")
         pdb_path = receptor.get("pdb")
         if pdb_path and not Path(pdb_path).exists():
             raise FileNotFoundError(f"Receptor pdb file not found: {pdb_path}")
+        if not pdbqt_path.exists() and _resolve_project_source_path(receptor, "receptor") is None:
+            raise FileNotFoundError(
+                f"Receptor pdbqt file not found and no receptor source file is available: {pdbqt_path}"
+            )
 
     for ligand in ligands:
         ligand_id = ligand.get("id")
         ligand_path = ligand.get("pdbqt")
         if not ligand_id or not ligand_path:
             raise ValueError("Each ligand entry must include id and pdbqt.")
-        if not Path(ligand_path).exists():
-            raise FileNotFoundError(f"Ligand pdbqt file not found: {ligand_path}")
+        if not Path(ligand_path).exists() and _resolve_project_source_path(ligand, "ligand") is None:
+            raise FileNotFoundError(
+                f"Ligand pdbqt file not found and no ligand source file is available: {ligand_path}"
+            )
+
+
+def ensure_project_config_inputs_ready(config: dict) -> None:
+    """Prepare missing project-config PDBQT inputs from configured source files."""
+    for receptor in config.get("receptors", []):
+        pdbqt_path = Path(receptor["pdbqt"])
+        if pdbqt_path.exists():
+            continue
+
+        source_path = _resolve_project_source_path(receptor, "receptor")
+        if source_path is None:
+            raise FileNotFoundError(
+                f"Receptor pdbqt file not found and no receptor source file is available: {pdbqt_path}"
+            )
+
+        pdbqt_path.parent.mkdir(parents=True, exist_ok=True)
+        print(
+            f"[Config] Preparing receptor PDBQT for {receptor.get('id')}: "
+            f"{source_path} -> {pdbqt_path}"
+        )
+        if not prepare_receptor(source_path, pdbqt_path):
+            raise RuntimeError(
+                f"Failed to prepare receptor PDBQT for {receptor.get('id')}: {source_path}"
+            )
+
+    for ligand in config.get("ligands", []):
+        pdbqt_path = Path(ligand["pdbqt"])
+        if pdbqt_path.exists():
+            continue
+
+        source_path = _resolve_project_source_path(ligand, "ligand")
+        if source_path is None:
+            raise FileNotFoundError(
+                f"Ligand pdbqt file not found and no ligand source file is available: {pdbqt_path}"
+            )
+
+        pdbqt_path.parent.mkdir(parents=True, exist_ok=True)
+        print(
+            f"[Config] Preparing ligand PDBQT for {ligand.get('id')}: "
+            f"{source_path} -> {pdbqt_path}"
+        )
+        if not prepare_ligand(source_path, pdbqt_path):
+            raise RuntimeError(
+                f"Failed to prepare ligand PDBQT for {ligand.get('id')}: {source_path}"
+            )
 
 
 def apply_config_to_args(args, config: dict):
@@ -1873,6 +1959,8 @@ def main():
     if args.config:
         config = load_config(args.config)
         apply_config_to_args(args, config)
+        if is_project_config(config):
+            ensure_project_config_inputs_ready(config)
 
     # mode 필수 확인
     if args.mode is None:
@@ -2130,6 +2218,8 @@ def run_taskgroup12_main():
     if args.config:
         config = load_config(args.config)
         args = apply_config_to_args(args, config)
+        if is_project_config(config):
+            ensure_project_config_inputs_ready(config)
 
     if args.mode is None:
         print("[ERROR] --mode (blind/focused) is required")

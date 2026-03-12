@@ -158,6 +158,10 @@ def compare_across_states(
                 "residue_num": p.get("residue_num", ""),
                 "residue_name": p.get("residue_name", ""),
                 "lobe_label": p.get("lobe_label", ""),
+                "construct_type": p.get("construct_type", ""),
+                "orientation_validation_status": p.get(
+                    "orientation_validation_status", ""
+                ),
             }
 
     if not states_with_data:
@@ -216,6 +220,17 @@ def compare_across_states(
 
         is_hotspot_any = len(hotspot_states) > 0
         is_hotspot_all = len(hotspot_states) == n_states
+        construct_type = _collapse_metadata_value(
+            [state_data[st].get("construct_type", "") for st in present_states],
+            mixed_label="mixed_construct_type",
+        )
+        orientation_status = _collapse_metadata_value(
+            [
+                state_data[st].get("orientation_validation_status", "")
+                for st in present_states
+            ],
+            mixed_label="mixed_orientation_status",
+        )
 
         robustness_rows.append({
             "chain": chain,
@@ -229,8 +244,8 @@ def compare_across_states(
             "global_max_occupancy": round(global_max, 4),
             "is_hotspot_any_state": is_hotspot_any,
             "is_hotspot_all_present_states": is_hotspot_all,
-            "construct_type": "full_kinase_domain",
-            "orientation_validation_status": "orientation_validated",
+            "construct_type": construct_type,
+            "orientation_validation_status": orientation_status,
         })
 
     # Sort: receptor first, then by robustness (robust > moderate > specific),
@@ -262,6 +277,15 @@ def generate_comparison_report(
 ) -> Path:
     """Generate phase1_interface_comparison_report.md."""
     report_path = output_base / "phase1_interface_comparison_report.md"
+    construct_type = _collapse_metadata_value(
+        [row.get("construct_type", "") for row in robustness_rows],
+        mixed_label="mixed_construct_type",
+    )
+    orientation_status = _collapse_metadata_value(
+        [row.get("orientation_validation_status", "") for row in robustness_rows],
+        mixed_label="mixed_orientation_status",
+    )
+    evidence_line = _describe_orientation_evidence(orientation_status)
 
     lines = [
         "# Phase 1 Interface Comparison Report",
@@ -269,8 +293,8 @@ def generate_comparison_report(
         "## Multi-State Receptor-Side Patch Comparison",
         "",
         f"States compared: {', '.join(states)}",
-        f"Construct type: full_kinase_domain",
-        f"Evidence: orientation-validated PyRosetta models only",
+        f"Construct type: {construct_type or 'unknown'}",
+        f"Evidence: {evidence_line}",
         "",
     ]
 
@@ -368,13 +392,14 @@ def generate_comparison_report(
     lines.extend([
         "## Cross-State Numbering Consistency",
         "",
-        "All states use PDB numbering from 3GT8 crystal structure (699–1007).",
-        "MD cluster states (cl38_48, cl85_100) were trimmed to the same range",
-        "and chain X was renamed to chain A during TG 1.0 input preparation.",
+        "Cross-state comparison assumes the receptor inputs were normalized during",
+        "TG 1.0 input preparation to a shared 3GT8-derived numbering scheme and",
+        "a consistent receptor chain convention.",
         "",
-        "**No numbering mismatches expected.** If residue IDs differ between",
-        "states, this indicates genuinely different interface contacts, not",
-        "a numbering artifact.",
+        "Use the Phase 1 input validation outputs as the first authority on",
+        "numbering safety before interpreting residue differences across states.",
+        "If upstream validation reports a numbering or chain mismatch, treat",
+        "cross-state residue differences as potentially ambiguous until resolved.",
         "",
     ])
 
@@ -388,8 +413,7 @@ def generate_comparison_report(
         "  interaction sites that open only in certain MD-sampled states.",
         "- **N-lobe residues** (< 838) are newly detectable in Phase 1 due to",
         "  the full kinase domain receptor. Their presence/absence is informative.",
-        "- All evidence is from **orientation-validated** models only (face-flip",
-        "  artifacts excluded).",
+        f"- Orientation evidence status for this comparison: **{orientation_status or 'unknown'}**.",
         "",
     ])
 
@@ -409,6 +433,33 @@ def _safe_float(val: str) -> Optional[float]:
         return float(val)
     except (ValueError, TypeError):
         return None
+
+
+def _collapse_metadata_value(values: List[str], mixed_label: str) -> str:
+    """Collapse repeated metadata values without hiding disagreements."""
+    normalized = [value.strip() for value in values if value and value.strip()]
+    if not normalized:
+        return ""
+    unique_values = sorted(set(normalized))
+    if len(unique_values) == 1:
+        return unique_values[0]
+    return mixed_label
+
+
+def _describe_orientation_evidence(status: str) -> str:
+    """Render orientation evidence text for the comparison report."""
+    if status == "orientation_validated":
+        return "orientation-validated PyRosetta models only"
+    if status == "not_available":
+        return "orientation validation not available for the contributing states"
+    if status == "mixed_orientation_status":
+        return (
+            "mixed orientation validation status across contributing states "
+            "(see ppi_patch_state_robustness.csv)"
+        )
+    if status:
+        return status
+    return "orientation status unknown"
 
 
 def _write_csv(path: Path, rows: List[dict], columns: List[str]) -> None:

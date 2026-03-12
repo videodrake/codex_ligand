@@ -1,3 +1,7 @@
+> Status note (2026-03-12): Read `docs/current_pipeline_status.md` first.
+> Current active Phase 1 baseline is PyRosetta + LightDock.
+> AlphaFold-Multimer references in older planning language are historical or optional only.
+
 ## Context Summary
 - Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
 - Current Phase: Phase 0 (Refactored Project Brief)

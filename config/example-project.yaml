@@ -13,7 +13,7 @@ ligands:
 - id: VAX-C12_0
   pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
   sdf: input/ligands/VAX-C12_0_ligand.sdf
-max_workers: 32
+max_workers: 16
 mode: blind
 output_root: ./output
 postprocess:
@@ -35,6 +35,8 @@ postprocess:
   pocket_cutoff: 7.0
   summarize_pockets: false
 ppi:
+  # AFM fields remain for legacy compatibility only.
+  # Current active Phase 1 secondary validation uses LightDock.
   afm_models: null
   afm_settings:
     contact_cutoff: 8.0

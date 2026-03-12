@@ -1,0 +1,40 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N pre_qsub_checks
+#PBS -l nodes=1:ppn=4
+#PBS -l walltime=01:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/pre_qsub_checks.o
+#PBS -e ${PBS_O_WORKDIR}/pre_qsub_checks.e
+
+cd "$PBS_O_WORKDIR"
+
+PRECHECK_STATUS_DIR="${PBS_O_WORKDIR}/output/pre_qsub_status"
+PRECHECK_STATUS_FILE="${PRECHECK_STATUS_DIR}/last_pass.json"
+
+echo "============================================"
+echo "  Pre-Qsub Validation Lane"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "============================================"
+
+bash scripts/setup_test_env.sh
+bash scripts/run_pre_qsub_checks.sh
+
+mkdir -p "${PRECHECK_STATUS_DIR}"
+cat > "${PRECHECK_STATUS_FILE}" <<EOF
+{
+  "status": "passed",
+  "timestamp": "$(date -Iseconds)",
+  "host": "$(hostname)",
+  "pbs_job_id": "${PBS_JOBID}"
+}
+EOF
+
+echo "  Wrote precheck status: ${PRECHECK_STATUS_FILE}"
+
+echo ""
+echo "============================================"
+echo "  Pre-Qsub Checks Finished: $(date)"
+echo "============================================"

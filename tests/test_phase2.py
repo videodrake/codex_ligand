@@ -662,7 +662,7 @@ class TestPhase3Export:
 
         note = tmp_phase2 / "phase2_to_phase3_handoff_note.md"
         assert note.exists()
-        content = note.read_text()
+        content = note.read_text(encoding="utf-8")
         assert "Phase 3" in content
         assert "primary" in content
 
@@ -711,6 +711,7 @@ class TestDockingPriorityUnit:
 # TG 2.7: Review Report
 # ===================================================================
 
+@pytest.mark.reporting
 class TestReviewReport:
     """Tests for egfr_pipeline.phase2.review_report."""
 
@@ -731,14 +732,14 @@ class TestReviewReport:
         from egfr_pipeline.phase2.review_report import run_review_report
         path = run_review_report(tmp_phase2)
         assert path.exists()
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
         assert len(content) > 500
 
     def test_report_has_all_sections(self, tmp_phase2):
         self._setup(tmp_phase2)
         from egfr_pipeline.phase2.review_report import run_review_report
         path = run_review_report(tmp_phase2)
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
 
         sections = [
             "Executive Summary",
@@ -758,7 +759,7 @@ class TestReviewReport:
         self._setup(tmp_phase2)
         from egfr_pipeline.phase2.review_report import run_review_report
         path = run_review_report(tmp_phase2)
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
 
         merged = _load(tmp_phase2 / "candidate_pockets.csv")
         for p in merged:
@@ -821,7 +822,7 @@ class TestEndToEnd:
         run_phase3_export(d)
         run_review_report(d)
 
-        report = (d / "phase2_candidate_pocket_report.md").read_text()
+        report = (d / "phase2_candidate_pocket_report.md").read_text(encoding="utf-8")
         assert "state_specific_pocket" in report
 
     def test_idempotency(self, tmp_phase2):
@@ -834,14 +835,14 @@ class TestEndToEnd:
         run_patch_relationship(tmp_phase2)
         run_druggability_confidence(tmp_phase2)
 
-        first = (tmp_phase2 / "druggability_proposal_summary.csv").read_text()
+        first = (tmp_phase2 / "druggability_proposal_summary.csv").read_text(encoding="utf-8")
 
         # Re-run
         run_pocket_merge(tmp_phase2)
         run_patch_relationship(tmp_phase2)
         run_druggability_confidence(tmp_phase2)
 
-        second = (tmp_phase2 / "druggability_proposal_summary.csv").read_text()
+        second = (tmp_phase2 / "druggability_proposal_summary.csv").read_text(encoding="utf-8")
         assert first == second, "Pipeline should be deterministic"
 
 

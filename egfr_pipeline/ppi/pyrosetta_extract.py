@@ -33,9 +33,15 @@ def load_csv(path: Path) -> List[dict]:
 
 PPI_RESIDUE_FIELDS = [
     "receptor_id",
+    "partner_id",
     "source",
+    "chain",
     "residue_id",
     "residue_num",
+    "residue_name",
+    "lobe_label",
+    "construct_type",
+    "orientation_validation_status",
     "frequency_final_ranking",
     "frequency_cluster_summary",
     "n_models_final_ranking",
@@ -46,10 +52,15 @@ PPI_RESIDUE_FIELDS = [
 
 PPI_SUMMARY_FIELDS = [
     "receptor_id",
+    "partner_id",
     "source",
+    "construct_type",
+    "orientation_validation_status",
     "n_final_models",
     "n_clusters",
     "n_interface_residues",
+    "n_nlobe_interface_residues",
+    "n_clobe_interface_residues",
     "top_residues",
     "best_dg",
     "mean_dg",
@@ -74,16 +85,113 @@ def write_csv_rows(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
 # PyRosetta output parsers
 # ---------------------------------------------------------------------------
 
+NLOBE_CLOBE_BOUNDARY = 838
+
+
+def _parse_receptor_residue(raw: str) -> dict:
+    """Parse a receptor-side residue reference while preserving chain identity.
+
+    Restored PyRosetta outputs may contain receptor residues on both chain A and
+    chain B after EGFR dimer chain restoration. These should remain receptor-side
+    evidence, not be treated as partner residues.
+    """
+    normalized = normalize_residue_id(raw.strip(), keep_chain=True)
+    chain = ""
+    residue_id = normalized
+    if ":" in normalized:
+        chain, residue_id = normalized.split(":", 1)
+
+    resnum = extract_resnum(residue_id)
+    residue_name = ""
+    for idx, ch in enumerate(residue_id):
+        if ch.isdigit() or ch == "-":
+            residue_name = residue_id[:idx]
+            break
+    if not residue_name:
+        residue_name = residue_id
+
+    if resnum is None:
+        lobe_label = "unknown"
+    elif resnum < NLOBE_CLOBE_BOUNDARY:
+        lobe_label = "N-lobe"
+    else:
+        lobe_label = "C-lobe"
+
+    return {
+        "chain": chain,
+        "residue_id": residue_id,
+        "residue_num": resnum,
+        "residue_name": residue_name,
+        "lobe_label": lobe_label,
+    }
+
+
 def parse_binding_residues(raw: str) -> List[str]:
-    """Parse 'A:LEU819,A:ALA822' into normalized list ['LEU819', 'ALA822']."""
+    """Parse receptor-side residue refs while preserving restored chain IDs.
+
+    Example:
+      'A:LEU819,B:ASP855' -> ['A:LEU819', 'B:ASP855']
+    """
     if not raw or raw in ("None", "No_Chain_2", "Analysis_Failed"):
         return []
-    return [normalize_residue_id(r.strip()) for r in raw.split(",") if r.strip()]
+    return [
+        normalize_residue_id(r.strip(), keep_chain=True)
+        for r in raw.split(",")
+        if r.strip()
+    ]
+
+
+def _interface_csv_name(csv_path: str) -> str:
+    name = Path(csv_path).name
+    if name.endswith("_InterfaceEnergies.csv"):
+        return name
+    if name.endswith("_Energies.csv"):
+        return name.replace("_Energies.csv", "_InterfaceEnergies.csv")
+    return name
+
+
+def _resolve_interface_csv_path(result_dir: Path, csv_path: str) -> Optional[Path]:
+    """Resolve InterfaceEnergies CSV from a File_CSV value.
+
+    PyRosetta final_ranking.csv may store File_CSV as:
+      - a bare filename
+      - a relative path
+      - an absolute path
+    while InterfaceEnergies files often live under ``final_result/``.
+    """
+    if not csv_path:
+        return None
+
+    raw = Path(csv_path)
+    iface_name = _interface_csv_name(csv_path)
+    candidates = []
+
+    if raw.is_absolute():
+        candidates.append(raw.with_name(iface_name))
+    else:
+        candidates.append(result_dir / raw.with_name(iface_name))
+        candidates.append(result_dir / raw)
+
+    candidates.append(result_dir / iface_name)
+    candidates.append(result_dir / "final_result" / iface_name)
+
+    seen = set()
+    for candidate in candidates:
+        normalized = str(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def extract_pyrosetta_interface_residues(
     result_dir: Path,
     receptor_id: str,
+    partner_id: str = "",
+    construct_type: str = "full_kinase_domain",
+    orientation_validation_status: str = "not_available",
 ) -> Dict[str, object]:
     """Extract receptor-side interface residues from a PyRosetta result directory.
 
@@ -116,14 +224,20 @@ def extract_pyrosetta_interface_residues(
         # Try to read per-residue interface energies
         csv_path = row.get("File_CSV", "")
         if csv_path:
-            iface_csv = Path(csv_path).parent / Path(csv_path).name.replace("_Energies.csv", "_InterfaceEnergies.csv")
-            if iface_csv.exists():
+            iface_csv = _resolve_interface_csv_path(result_dir, csv_path)
+            if iface_csv is not None:
                 for erow in load_csv(iface_csv):
                     resid = erow.get("Residue_ID", "")
                     chain = erow.get("Chain", "")
                     delta_e = erow.get("DeltaE_total", "")
                     if chain == "A" and delta_e:
-                        norm = normalize_residue_id(f"{chain}:{erow.get('Residue_Name', '')}{resid}")
+                        residue_num = extract_resnum(resid)
+                        residue_name = normalize_residue_id(
+                            erow.get("Residue_Name", "")
+                        )
+                        if residue_num is None or not residue_name:
+                            continue
+                        norm = f"{chain}:{residue_name}{residue_num}"
                         try:
                             model_energies[norm].append(float(delta_e))
                         except ValueError:
@@ -141,20 +255,32 @@ def extract_pyrosetta_interface_residues(
 
     # --- Build per-residue summary rows ---
     residue_rows = []
+    n_nlobe = 0
+    n_clobe = 0
     for res in sorted(all_residues, key=lambda r: (extract_resnum(r) or 0, r)):
+        residue_info = _parse_receptor_residue(res)
         freq_final = residue_counter.get(res, 0)
         freq_cluster = cluster_residue_counter.get(res, 0)
         occupancy = freq_final / model_count if model_count > 0 else 0.0
         energies = model_energies.get(res, [])
         mean_delta_e = sum(energies) / len(energies) if energies else None
         min_delta_e = min(energies) if energies else None
-        resnum = extract_resnum(res)
+        if residue_info["lobe_label"] == "N-lobe":
+            n_nlobe += 1
+        elif residue_info["lobe_label"] == "C-lobe":
+            n_clobe += 1
 
         residue_rows.append({
             "receptor_id": receptor_id,
+            "partner_id": partner_id,
             "source": "pyrosetta_ppi",
-            "residue_id": res,
-            "residue_num": resnum if resnum is not None else "",
+            "chain": residue_info["chain"],
+            "residue_id": residue_info["residue_id"],
+            "residue_num": residue_info["residue_num"] if residue_info["residue_num"] is not None else "",
+            "residue_name": residue_info["residue_name"],
+            "lobe_label": residue_info["lobe_label"],
+            "construct_type": construct_type,
+            "orientation_validation_status": orientation_validation_status,
             "frequency_final_ranking": freq_final,
             "frequency_cluster_summary": freq_cluster,
             "n_models_final_ranking": model_count,
@@ -178,10 +304,15 @@ def extract_pyrosetta_interface_residues(
 
     summary = {
         "receptor_id": receptor_id,
+        "partner_id": partner_id,
         "source": "pyrosetta_ppi",
+        "construct_type": construct_type,
+        "orientation_validation_status": orientation_validation_status,
         "n_final_models": len(final_ranking),
         "n_clusters": len(cluster_summary),
         "n_interface_residues": len(all_residues),
+        "n_nlobe_interface_residues": n_nlobe,
+        "n_clobe_interface_residues": n_clobe,
         "top_residues": ";".join(
             r for r, _ in residue_counter.most_common(10)
         ),
@@ -261,12 +392,23 @@ def extract_pyrosetta_batch(
         for entry in entries:
             result_dir = Path(entry["path"])
             partner = entry.get("partner", "")
+            construct_type = entry.get("construct_type", "full_kinase_domain")
+            orientation_validation_status = entry.get(
+                "orientation_validation_status",
+                "not_available",
+            )
             if not result_dir.exists():
                 print(f"[WARN] PyRosetta result dir not found for {receptor_id}"
                       f"{f' ({partner})' if partner else ''}: {result_dir}")
                 continue
 
-            data = extract_pyrosetta_interface_residues(result_dir, receptor_id)
+            data = extract_pyrosetta_interface_residues(
+                result_dir,
+                receptor_id,
+                partner_id=partner,
+                construct_type=construct_type,
+                orientation_validation_status=orientation_validation_status,
+            )
 
             # Tag source with partner name for multi-PPI distinction
             source_tag = f"pyrosetta_ppi:{partner}" if partner else "pyrosetta_ppi"

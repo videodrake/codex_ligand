@@ -10,14 +10,21 @@
 # ============================================================
 # EGFR-MYO1D Production Pipeline (PBS)
 #
-# 사용법:
-#   qsub config/run_production.pbs                        # 자동 이어하기
-#   qsub -v MODE=force config/run_production.pbs          # 전부 재실행
-#   qsub -v MODE=from,FROM=4 config/run_production.pbs    # Phase 4부터
-#   qsub -v MODE=status config/run_production.pbs         # 상태만 확인
-#   qsub -v MODE=vina-only config/run_production.pbs      # Vina만 (Phase 1,4-7)
-#   qsub -v MODE=ppi-only config/run_production.pbs       # PPI만 (Phase 2-3)
-#   qsub -v MODE=post-only config/run_production.pbs      # 후처리만 (Phase 4-7)
+# Recommended safe submission flow:
+#   PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
+#   qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
+#
+# Direct submission examples:
+#   qsub config/run_production.pbs
+#   qsub -v MODE=force config/run_production.pbs
+#   qsub -v MODE=from,FROM=4 config/run_production.pbs
+#   qsub -v MODE=status config/run_production.pbs
+#   qsub -v MODE=vina-only config/run_production.pbs
+#   qsub -v MODE=ppi-only config/run_production.pbs
+#   qsub -v MODE=post-only config/run_production.pbs
+#
+# Explicit guard bypass (use intentionally):
+#   qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
 # ============================================================
 
 cd $PBS_O_WORKDIR
@@ -25,21 +32,31 @@ cd $PBS_O_WORKDIR
 source ~/.bashrc
 conda activate pyrosetta
 
-# 기본값
+# Defaults
 MODE=${MODE:-auto}
 FROM=${FROM:-0}
+SKIP_PRECHECK_GUARD=${SKIP_PRECHECK_GUARD:-0}
+PRECHECK_STATUS_FILE="${PBS_O_WORKDIR}/output/pre_qsub_status/last_pass.json"
 
 echo "============================================"
 echo "  EGFR-MYO1D Production Pipeline"
-echo "  Vina(256exh/50poses) + PPI(50K×2)"
+echo "  Vina(256exh/50poses) + PPI(50Kx2)"
 echo "  Started: $(date)"
 echo "  Node: $(hostname)"
 echo "  Cores: $(nproc)"
 echo "  MODE: $MODE"
 echo "  FROM: $FROM"
+echo "  PRECHECK_STATUS_FILE: $PRECHECK_STATUS_FILE"
 echo "============================================"
 
-# 모드별 분기
+# Route by mode
+if [[ "$MODE" != "status" && "$SKIP_PRECHECK_GUARD" != "1" ]]; then
+    python scripts/precheck_guard.py \
+        --workdir "$PBS_O_WORKDIR" \
+        --mode "$MODE" \
+        --skip-precheck-guard "$SKIP_PRECHECK_GUARD" || exit 1
+fi
+
 case "$MODE" in
     force)
         python run_production.py --force

@@ -1,3 +1,7 @@
+> Status note (2026-03-12): This technical document contains historical AFM references.
+> For current planning, use `docs/current_pipeline_status.md`, `docs/architecture.md`,
+> and the current code. The active Phase 1 secondary-validation path is LightDock.
+
 # EGFR-MYO1D 다중 방법론 결합 부위 탐색 파이프라인
 
 ## 기술 문서 (Technical Documentation)

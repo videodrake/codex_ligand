@@ -1,3 +1,7 @@
+> Status note (2026-03-12): This v2 task file is the closest historical task breakdown,
+> but current active secondary validation is LightDock. AFM should be treated as legacy optional support only.
+> Read `docs/current_pipeline_status.md` first.
+
 ## Context Summary
 - Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 1 Task Breakdown (v2 — Structural Input Upgrade)

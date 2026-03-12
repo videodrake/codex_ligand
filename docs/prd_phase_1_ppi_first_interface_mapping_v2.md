@@ -1,3 +1,7 @@
+> Status note (2026-03-12): This v2 PRD is closer to the active baseline, but AFM should still
+> be treated as legacy optional support only. The active Phase 1 secondary-validation path is LightDock.
+> Read `docs/current_pipeline_status.md` first.
+
 ## Context Summary
 - Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 1 PRD (v2 — Structural Input Upgrade)

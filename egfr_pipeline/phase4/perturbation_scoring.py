@@ -159,7 +159,12 @@ def apply_affinity_cap(
     bio_component = a1 * w["A1_ppi_interface"] + a4 * w["A4_state_robustness"]
     affinity_component = a2 * w["A2_druggability"] + a3 * w["A3_perturbation_relevance"]
 
-    max_affinity = cap_fraction * (bio_component + affinity_component)
+    if cap_fraction <= 0:
+        return round(bio_component, 4)
+    if cap_fraction >= 1:
+        return round(score, 4)
+
+    max_affinity = (cap_fraction / (1.0 - cap_fraction)) * bio_component
     capped_affinity = min(affinity_component, max_affinity)
 
     return round(bio_component + capped_affinity, 4)

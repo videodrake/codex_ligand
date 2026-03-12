@@ -65,6 +65,18 @@ Every Phase 1 run generates `pyrosetta_run_metadata.json` containing:
 }
 ```
 
+### Current Implementation Note
+
+The JSON example above reflects the intended Phase 1 v2 target state. The current repository implementation is narrower and currently emits:
+
+- `partner_id` values such as `MYO1D_beta_meander` or `MYO1D_TH1`
+- `partner_construct` labels that describe the actual prepared input, for example `legacy_beta_meander_960_1006`
+- explicit `receptor_chain_ids`, `partner_chain_ids`, and `numbering_system`
+- `n_cpus_requested` and `n_cpus_used` instead of a single `n_cpus`
+- `run_label`, `run_status`, and `input_validation_status`
+
+This means the current metadata is already traceable, but it does not yet represent the full extended-beta-meander target state described in the PRD.
+
 ### Key Fields for Downstream Traceability
 
 | Field | Purpose | Used by |
@@ -111,6 +123,28 @@ output/phase1_ppi/
 - **Pipeline level:** Standard pipeline output structure (unchanged)
 - **Consolidated:** `pyrosetta_decoy_scores.csv` merges all seeds
 
+### Current Implementation Note
+
+The directory example above is historical planning guidance, not the current code path. The current implementation writes one metadata-tagged run directory per execution, for example:
+
+```text
+EGFR_dimer_beta_meander__3GT8_raw__legacy_beta_meander_960_1006__full_kinase_domain__prod/
+|- config_snapshot.ini
+|- phase1_input_validation_report.json
+|- phase1_input_validation_summary.md
+|- pyrosetta_run_metadata.json
+|- pyrosetta_decoy_scores.csv
+|- filter_passed/
+|- cluster_results/
+`- final_result/
+```
+
+Current naming rule:
+
+- `<input_stem>__<receptor_id>__<partner_construct>__<construct_type>__<run_label>`
+
+This was added so test/prod runs do not overwrite each other when they share the same prepared input PDB.
+
 ---
 
 ## 4. Standardized Score Table (Task 1.1.5)
@@ -143,6 +177,32 @@ output/phase1_ppi/
 | Binding_Residues_B | str | ContactAnalysis | Partner interface residues |
 | key_contact_ratio | float | ContactAnalysis | Key residue contact fraction |
 | source_file | str | — | Provenance tracking |
+
+### Current Implementation Note
+
+The table above reflects the broader target schema. The current `pyrosetta_decoy_scores.csv` export in this repository already includes these practical baseline fields:
+
+- `decoy_id`
+- `source_file`
+- `receptor_id`
+- `partner_id`
+- `construct_type`
+- `receptor_construct`
+- `partner_construct`
+- `receptor_chain_ids`
+- `partner_chain_ids`
+- `total_score`
+- `I_sc`
+- `dG_separated`
+- `dSASA`
+- `sc_value`
+- `packstat`
+- `delta_unsatHbonds`
+- `nres_int`
+- `hbonds_int`
+- `L_RMSD`
+- `center_x`, `center_y`, `center_z`
+- `binding_residues_A`, `binding_residues_B`
 
 ### Note on I_sc
 

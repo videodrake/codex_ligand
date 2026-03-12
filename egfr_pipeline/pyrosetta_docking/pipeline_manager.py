@@ -26,6 +26,13 @@ from pyrosetta.rosetta.core.scoring import calpha_superimpose_pose
 
 from . import analysis, common, docking
 from .common import TOP_LEVEL_DIR
+from .metadata import (
+    build_decoy_score_rows,
+    build_input_validation_report,
+    build_input_validation_markdown,
+    build_output_root_name,
+    build_run_metadata,
+)
 
 # ---- Module Constants ---- #
 REPORT_WIDTH = 72
@@ -66,6 +73,7 @@ class PipelineManager:
 
         req_cpus = self.config.getint('System', 'n_cpus', fallback=1)
         real_cpus = multiprocessing.cpu_count()
+        self.requested_cpus = req_cpus
         self.n_cpus = min(req_cpus, real_cpus)
         self.chunksize = 1
 
@@ -78,7 +86,13 @@ class PipelineManager:
             self.input_pdb = os.path.abspath(self.config['Path']['input_pdb_name'])
 
         self.filename = os.path.basename(self.input_pdb)
-        self.root_dir = os.path.abspath(os.path.splitext(self.filename)[0])
+        self.root_dir = os.path.abspath(
+            build_output_root_name(
+                self.config,
+                self.input_pdb,
+                os.path.splitext(self.filename)[0],
+            )
+        )
 
         self.dir_cache = os.path.join(TOP_LEVEL_DIR, "relaxed_cache")
         os.makedirs(self.dir_cache, exist_ok=True)
@@ -95,6 +109,24 @@ class PipelineManager:
 
         self.stats = {}
         self.stage_times = {}
+        self.run_metadata = build_run_metadata(
+            config=self.config,
+            config_file=self.config_file,
+            input_pdb=self.input_pdb,
+            root_dir=self.root_dir,
+            filename=self.filename,
+            requested_cpus=self.requested_cpus,
+            used_cpus=self.n_cpus,
+            master_seed=self.master_seed,
+            dir_filter=self.dir_filter,
+            dir_cluster=self.dir_cluster,
+            dir_final=self.dir_final,
+        )
+        self.input_validation_report = build_input_validation_report(
+            config=self.config,
+            input_pdb=self.input_pdb,
+            run_metadata=self.run_metadata,
+        )
 
     # ------------------------------------------------------------------ #
     #  Logging
@@ -561,6 +593,54 @@ class PipelineManager:
                         f"min_dSASA={self.min_dSASA}, "
                         f"min_sc={self.min_sc_value}\n")
         self.progress_logger.info(f"    > [Config] Snapshot saved: {snap_path}")
+
+    def _save_run_metadata(self, status: str) -> None:
+        """Persist normalized run metadata for reproducibility and handoff."""
+        metadata = dict(self.run_metadata)
+        metadata["run_status"] = status
+        metadata["input_validation_status"] = self.input_validation_report.get("status", "")
+        metadata["stats"] = dict(self.stats)
+        metadata["stage_times"] = dict(self.stage_times)
+        metadata["resolved_cluster_threshold"] = getattr(self, "cluster_threshold", "")
+        metadata["resolved_cluster_top_n"] = getattr(self, "cluster_top_n", "")
+
+        out_path = os.path.join(self.root_dir, "pyrosetta_run_metadata.json")
+        with open(out_path, "w", encoding="utf-8") as handle:
+            json.dump(metadata, handle, indent=2, ensure_ascii=False)
+        self.stats["pyrosetta_run_metadata_path"] = out_path
+        self.progress_logger.info(f"    > [Output] Run metadata: {out_path}")
+
+    def _save_input_validation_report(self) -> None:
+        """Persist static Phase 1 input validation details before docking begins."""
+        json_path = os.path.join(self.root_dir, "phase1_input_validation_report.json")
+        with open(json_path, "w", encoding="utf-8") as handle:
+            json.dump(self.input_validation_report, handle, indent=2, ensure_ascii=False)
+        markdown_path = os.path.join(self.root_dir, "phase1_input_validation_summary.md")
+        with open(markdown_path, "w", encoding="utf-8") as handle:
+            handle.write(build_input_validation_markdown(self.input_validation_report))
+
+        self.stats["phase1_input_validation_report_path"] = json_path
+        self.stats["phase1_input_validation_summary_path"] = markdown_path
+
+        status = self.input_validation_report.get("status", "unknown")
+        self.progress_logger.info(
+            f"    > [Output] Input validation report ({status}): {json_path}"
+        )
+        self.progress_logger.info(
+            f"    > [Output] Input validation summary ({status}): {markdown_path}"
+        )
+        for warning in self.input_validation_report.get("warnings", []):
+            self.progress_logger.warning(f"    [Input Validation WARN] {warning}")
+
+    def _export_decoy_scores(self, fully_scored: List[Dict]) -> None:
+        """Write standardized full-scoring export for downstream review."""
+        out_path = os.path.join(self.root_dir, "pyrosetta_decoy_scores.csv")
+        rows = build_decoy_score_rows(fully_scored, self.run_metadata)
+        pd.DataFrame(rows).to_csv(out_path, index=False)
+        self.stats["pyrosetta_decoy_scores_path"] = out_path
+        self.progress_logger.info(
+            f"    > [Output] Standardized decoy scores: {out_path} ({len(rows)} rows)"
+        )
 
     # ------------------------------------------------------------------ #
     #  Experimental data correlation
@@ -3447,40 +3527,54 @@ function sortTable(th) {
             # Log all filter thresholds for transparency
             self._log_filter_thresholds()
 
+            self._save_input_validation_report()
             self._save_config_snapshot()
+            self._save_run_metadata("started")
 
             # Step 2: Global Docking
             docking_results = self._step2_global_docking(relaxed_pdb)
             if docking_results is None:
+                self._save_run_metadata("docking_failed")
                 return
 
             # Step 2.5: Fast Scoring & Filtering
             result = self._step2_5_scoring_filtering(docking_results, cache_path)
             cluster_candidates, constraints_dict = result
             if cluster_candidates is None:
+                self._save_run_metadata("filtering_failed")
                 return
 
             # Step 3: Full Scoring of filter survivors
             fully_scored = self._step3_full_scoring(cluster_candidates, cache_path, constraints_dict)
             if fully_scored is None:
+                self._save_run_metadata("full_scoring_failed")
                 return
+            self._export_decoy_scores(fully_scored)
+            self._save_run_metadata("full_scoring_completed")
 
             # Step 4: Clustering
             final_representatives = self._step4_clustering(fully_scored)
             if final_representatives is None:
+                self._save_run_metadata("clustering_failed")
                 return
 
             # Step 5: Selection & Save
             ranking_df, final_csv_path = self._step5_selection_and_save(final_representatives)
+            self._save_run_metadata("selection_completed")
 
             # Step 6: Visualization & Report
             self._step6_visualization(ranking_df, final_csv_path, overall_start_time)
+            self._save_run_metadata("completed")
 
             gc.collect()
 
         except Exception as e:
             self.internal_logger.critical(f"!!! CRITICAL UNHANDLED ERROR: {str(e)}")
             self.internal_logger.critical(traceback.format_exc())
+            try:
+                self._save_run_metadata("unhandled_error")
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

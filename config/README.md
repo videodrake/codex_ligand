@@ -1,53 +1,151 @@
-# config/ — 설정 파일 가이드
+# Config Guide
 
-## 어떤 config가 어떤 파이프라인용?
+## Status Note
 
-| 파일 | 파이프라인 | 형식 | 용도 |
-|------|-----------|------|------|
-| `example-project.yaml` | Vina 리간드 도킹 | YAML | 프로젝트 config 템플릿 |
-| `ppi_test_TH1.ini` | PyRosetta PPI | INI | TH1 테스트 (1K 모델, ~3-4시간) |
-| `ppi_test_beta_meander.ini` | PyRosetta PPI | INI | Beta-meander 테스트 (1K 모델) |
-| `ppi_prod_TH1.ini` | PyRosetta PPI | INI | TH1 프로덕션 (20K 모델, ~24-36시간) |
-| `ppi_prod_beta_meander.ini` | PyRosetta PPI | INI | Beta-meander 프로덕션 (20K 모델) |
-| `run_ppi_test.pbs` | PyRosetta PPI | PBS | HPC 테스트 배치 스크립트 |
-| `run_ppi_prod.pbs` | PyRosetta PPI | PBS | HPC 프로덕션 배치 스크립트 |
+Current documentation baseline:
 
-## 왜 형식이 다른가?
+- Phase 1 primary engine: PyRosetta
+- Phase 1 active secondary validation: LightDock
+- AFM parser code still exists, but AFM is not part of the active routine workflow
 
-- **Vina (YAML)**: 최신 통합 파이프라인. `egfr_pipeline/config.py`가 로딩 (JSON도 가능).
-- **PyRosetta (INI)**: v1.0부터 사용된 레거시 형식. `pipeline_manager.py`가 `configparser`로 직접 로딩.
-- 두 파이프라인은 **공유 설정값이 없음** — 별도 실행 환경 (Vina=로컬, PyRosetta=HPC PBS).
+Read [current_pipeline_status.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/current_pipeline_status.md) before using older planning notes.
 
-## 사용법
+This directory contains runtime configuration and PBS submission files for the
+current EGFR-MYO1D workflow.
+
+## What Lives Here
+
+| File | Type | Purpose |
+|------|------|---------|
+| `example-project.yaml` | YAML | Project-level Vina config example |
+| `full_test.yaml` | YAML | Full-pipeline test config |
+| `ppi_test_beta_meander.ini` | INI | PyRosetta PPI test config for beta-meander |
+| `ppi_test_TH1.ini` | INI | PyRosetta PPI test config for TH1 |
+| `ppi_prod_beta_meander.ini` | INI | PyRosetta PPI production config for beta-meander |
+| `ppi_prod_TH1.ini` | INI | PyRosetta PPI production config for TH1 |
+| `run_pre_qsub_checks.pbs` | PBS | Scheduler-side validation lane before production |
+| `run_production.pbs` | PBS | Main production pipeline submission |
+| `run_ppi_test.pbs` | PBS | PyRosetta PPI test submission |
+| `run_ppi_prod.pbs` | PBS | PyRosetta PPI production submission |
+| `run_full_test.pbs` | PBS | Full test submission helper |
+
+## Current Separation of Config Styles
+
+Two config styles are in use right now.
+
+- Vina and the unified CLI use YAML project configs.
+- Legacy PyRosetta PPI entrypoints still use INI configs.
+
+This split is intentional for the current repository state. Do not assume that
+all runtime paths share one config schema yet.
+
+## Vina / Unified CLI Usage
+
+Use YAML configs for the current project-level flow:
 
 ```bash
-# Vina — YAML config 지정
 python main.py vina --config config/example-project.yaml
 python main.py postprocess --config config/example-project.yaml
-
-# PyRosetta — INI config 지정 (인터랙티브 메뉴에서 선택)
-python main.py pyrosetta
-# 또는 직접:
-python -m egfr_pipeline.pyrosetta_docking.pipeline_manager config/ppi_test_TH1.ini input_PDB/C-lobe_TH1.pdb
-
-# PBS 배치
-qsub config/run_ppi_test.pbs
-qsub -v CONFIG_FILE=config/ppi_prod_TH1.ini config/run_ppi_prod.pbs
+python main.py validate
 ```
 
-## Config 섹션 참조
+The YAML model is where current project-wide settings belong:
+- receptor definitions
+- ligand definitions
+- Vina parameters
+- postprocess parameters
+- worker count
+- output root
 
-### Vina YAML (`example-project.yaml`)
-- `receptors` / `ligands`: 입력 구조 목록
-- `vina`: 도킹 파라미터 (exhaustiveness, n_poses, box)
-- `postprocess`: 후처리 단계 on/off 및 cutoff
-- `bootstrap`: 포켓 안정성 분석 파라미터
-- `experimental`: 실험 데이터 (known binding residues)
-- `ppi`: PyRosetta/AFM 결과 경로 (교차 검증용)
+## PyRosetta PPI Usage
 
-### PyRosetta INI (`ppi_*.ini`)
-- `[Path]` / `[System]` / `[Docking]`: 입력 및 실행 환경
-- `[FilterStage1]` / `[FilterStage2]`: v2.0 2-Pass 필터
-- `[MiniRefinement]`: Stage 1→2 사이 인터페이스 리패킹
-- `[Constraints]`: 제외 구역 / 핵심 잔기 (실험 데이터)
-- `[ExperimentalData]`: 알려진 결합 영역 (Jura 2009)
+PyRosetta PPI still uses INI configs and PBS wrappers.
+
+Interactive or direct run:
+
+```bash
+python main.py pyrosetta
+python -m egfr_pipeline.pyrosetta_docking.pipeline_manager config/ppi_test_TH1.ini
+```
+
+PBS test submission:
+
+```bash
+qsub config/run_ppi_test.pbs
+qsub -v CONFIG_FILE=config/ppi_test_TH1.ini config/run_ppi_test.pbs
+qsub -v RUN_MODE=both config/run_ppi_test.pbs
+```
+
+PBS production submission:
+
+```bash
+qsub config/run_ppi_prod.pbs
+qsub -v CONFIG_FILE=config/ppi_prod_TH1.ini config/run_ppi_prod.pbs
+qsub -v RUN_MODE=both config/run_ppi_prod.pbs
+```
+
+## Pre-Qsub Validation Lane
+
+Before heavy scheduler runs, use the precheck lane:
+
+```bash
+qsub config/run_pre_qsub_checks.pbs
+```
+
+On success, it writes:
+
+```bash
+output/pre_qsub_status/last_pass.json
+```
+
+`run_production.pbs` now checks for that success marker by default. The safest
+submission pattern is:
+
+```bash
+PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
+qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
+```
+
+If you intentionally need to bypass the guard:
+
+```bash
+qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
+```
+
+## Production Modes
+
+`run_production.pbs` forwards mode selection into `run_production.py`.
+
+Examples:
+
+```bash
+qsub config/run_production.pbs
+qsub -v MODE=force config/run_production.pbs
+qsub -v MODE=from,FROM=4 config/run_production.pbs
+qsub -v MODE=status config/run_production.pbs
+qsub -v MODE=vina-only config/run_production.pbs
+qsub -v MODE=ppi-only config/run_production.pbs
+qsub -v MODE=post-only config/run_production.pbs
+```
+
+## Notes on the INI Files
+
+The current `ppi_*.ini` files now carry explicit metadata fields used by the
+Phase 1 traceability path, including:
+- `receptor_id`
+- `partner_id`
+- `construct_type`
+- `receptor_construct`
+- `partner_construct`
+- chain IDs
+- numbering system
+
+They also use metadata-tagged output directory naming so test and production
+runs do not overwrite each other as easily.
+
+## Recommended Reading
+
+For operational details, also see:
+- [pre_qsub_test_line.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/pre_qsub_test_line.md)
+- [phase1_output_chain_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_output_chain_note.md)
+- [phase1_pyrosetta_execution_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_pyrosetta_execution_note.md)

@@ -45,6 +45,8 @@ NLOBE_CLOBE_BOUNDARY = 838
 # Output schemas
 CLUSTER_SUMMARY_COLUMNS = [
     "receptor_id",
+    "construct_type",
+    "orientation_validation_status",
     "cluster_id",
     "n_members_total",
     "n_members_orientation_valid",
@@ -67,6 +69,8 @@ CLUSTER_SUMMARY_COLUMNS = [
 
 HOTSPOT_COLUMNS = [
     "receptor_id",
+    "construct_type",
+    "orientation_validation_status",
     "cluster_id",
     "chain",                # A (receptor) or B (partner)
     "residue_id",           # e.g., "LEU819"
@@ -82,6 +86,8 @@ HOTSPOT_COLUMNS = [
 
 PATCH_TABLE_COLUMNS = [
     "receptor_id",
+    "construct_type",
+    "orientation_validation_status",
     "chain",
     "residue_id",
     "residue_num",
@@ -133,6 +139,12 @@ def compute_cluster_consensus(
 
     Returns (cluster_summaries, hotspot_rows, patch_rows).
     """
+    construct_type = _derive_construct_type(models, residues)
+    orientation_filter_applied = _has_orientation_filter(models)
+    orientation_validation_status = (
+        "orientation_validated" if orientation_filter_applied else "not_available"
+    )
+
     # --- Group models by cluster ---
     cluster_models = defaultdict(list)
     for m in models:
@@ -155,20 +167,14 @@ def compute_cluster_consensus(
     })
 
     # Count total orientation-valid models for global fraction
-    total_orient_valid = sum(
-        1 for m in models
-        if m.get("orientation_class", "") == "pass"
-    )
+    total_orient_valid = _count_consensus_models(models, orientation_filter_applied)
 
     for cid in sorted(cluster_models.keys()):
         members = cluster_models[cid]
         n_total = len(members)
 
         # Filter to orientation-validated
-        valid_members = [
-            m for m in members
-            if m.get("orientation_class", "") == "pass"
-        ]
+        valid_members = _select_consensus_members(members, orientation_filter_applied)
         n_valid = len(valid_members)
         pass_rate = n_valid / n_total if n_total > 0 else 0.0
 
@@ -248,6 +254,8 @@ def compute_cluster_consensus(
 
             hotspot_row = {
                 "receptor_id": receptor_id,
+                "construct_type": construct_type,
+                "orientation_validation_status": orientation_validation_status,
                 "cluster_id": cid,
                 "chain": chain,
                 "residue_id": rid,
@@ -298,6 +306,8 @@ def compute_cluster_consensus(
 
         cluster_summaries.append({
             "receptor_id": receptor_id,
+            "construct_type": construct_type,
+            "orientation_validation_status": orientation_validation_status,
             "cluster_id": cid,
             "n_members_total": n_total,
             "n_members_orientation_valid": n_valid,
@@ -335,6 +345,8 @@ def compute_cluster_consensus(
 
         patch_rows.append({
             "receptor_id": receptor_id,
+            "construct_type": construct_type,
+            "orientation_validation_status": orientation_validation_status,
             "chain": chain,
             "residue_id": rid,
             "residue_num": info["residue_num"],
@@ -368,6 +380,53 @@ def _safe_float(val: str) -> Optional[float]:
         return float(val)
     except (ValueError, TypeError):
         return None
+
+
+def _has_orientation_filter(models: List[dict]) -> bool:
+    """Return True when non-empty orientation labels are available."""
+    if not models:
+        return False
+    if "orientation_class" not in models[0]:
+        return False
+    return any((m.get("orientation_class", "") or "").strip() for m in models)
+
+
+def _select_consensus_members(
+    members: List[dict],
+    orientation_filter_applied: bool,
+) -> List[dict]:
+    """Select models that contribute to consensus.
+
+    If orientation filtering is available, only pass models contribute.
+    Otherwise, all members contribute as a backward-compatible fallback.
+    """
+    if not orientation_filter_applied:
+        return list(members)
+    return [m for m in members if m.get("orientation_class", "") == "pass"]
+
+
+def _count_consensus_models(
+    models: List[dict],
+    orientation_filter_applied: bool,
+) -> int:
+    """Count the models contributing to occupancy denominators."""
+    if not orientation_filter_applied:
+        return len(models)
+    return sum(1 for m in models if m.get("orientation_class", "") == "pass")
+
+
+def _derive_construct_type(models: List[dict], residues: List[dict]) -> str:
+    """Derive construct_type from upstream tables without hiding mismatches."""
+    values = {
+        row.get("construct_type", "").strip()
+        for row in [*models, *residues]
+        if row.get("construct_type", "").strip()
+    }
+    if not values:
+        return ""
+    if len(values) == 1:
+        return next(iter(values))
+    return "mixed_construct_type"
 
 
 def _mean_field(rows: List[dict], field: str) -> Optional[float]:
@@ -414,9 +473,16 @@ def process_state(
         print(f"  No residue table for {state_name}")
         return False
 
-    # Check orientation columns exist
-    if "orientation_class" not in models[0]:
-        print(f"  WARNING: orientation_class not in models table for {state_name}")
+    orientation_filter_applied = _has_orientation_filter(models)
+
+    # Check orientation labels exist
+    if not orientation_filter_applied:
+        if "orientation_class" not in models[0]:
+            print(f"  WARNING: orientation_class not in models table for {state_name}")
+        else:
+            print(
+                f"  WARNING: orientation_class labels missing/empty in models table for {state_name}"
+            )
         print(f"  Run orientation filter with --merge first.")
         print(f"  Proceeding without orientation filtering (all models used).")
 

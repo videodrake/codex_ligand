@@ -68,6 +68,8 @@ LIGHTDOCK_DEFAULTS = {
 LIGHTDOCK_INTERFACE_COLUMNS = [
     "model_id",
     "receptor_id",
+    "construct_type",
+    "orientation_validation_status",
     "swarm_id",
     "pose_rank",
     "scoring_value",
@@ -82,6 +84,8 @@ LIGHTDOCK_INTERFACE_COLUMNS = [
 LIGHTDOCK_MODEL_SUMMARY_COLUMNS = [
     "model_id",
     "receptor_id",
+    "construct_type",
+    "orientation_validation_status",
     "swarm_id",
     "pose_rank",
     "scoring_value",
@@ -96,6 +100,8 @@ LIGHTDOCK_MODEL_SUMMARY_COLUMNS = [
 
 CONVERGENCE_COLUMNS = [
     "receptor_id",
+    "construct_type",
+    "orientation_validation_status",
     "chain",
     "residue_id",
     "residue_num",
@@ -106,7 +112,7 @@ CONVERGENCE_COLUMNS = [
     "pyrosetta_max_occupancy",
     "lightdock_frequency",  # Fraction of top LightDock models with this residue
     "convergence_class",    # convergent / pyrosetta_only / lightdock_only
-    "method_agreement",     # both / single
+    "method_agreement",     # both / pyrosetta_only / lightdock_only
 ]
 
 NLOBE_CLOBE_BOUNDARY = 838
@@ -284,6 +290,10 @@ def extract_lightdock_interfaces(
         print(f"  No ranked poses found in {rank_file}")
         return None, None
 
+    lightdock_metadata = _load_lightdock_metadata(state_dir)
+    construct_type = lightdock_metadata.get("construct_type", "")
+    orientation_validation_status = "not_available"
+
     print(f"  Found {len(ranked_poses)} ranked poses")
 
     interface_rows = []
@@ -313,6 +323,8 @@ def extract_lightdock_interfaces(
             interface_rows.append({
                 "model_id": model_id,
                 "receptor_id": state_name,
+                "construct_type": construct_type,
+                "orientation_validation_status": orientation_validation_status,
                 "swarm_id": swarm_id,
                 "pose_rank": pose_rank,
                 "scoring_value": score,
@@ -328,6 +340,8 @@ def extract_lightdock_interfaces(
             interface_rows.append({
                 "model_id": model_id,
                 "receptor_id": state_name,
+                "construct_type": construct_type,
+                "orientation_validation_status": orientation_validation_status,
                 "swarm_id": swarm_id,
                 "pose_rank": pose_rank,
                 "scoring_value": score,
@@ -342,6 +356,8 @@ def extract_lightdock_interfaces(
         model_rows.append({
             "model_id": model_id,
             "receptor_id": state_name,
+            "construct_type": construct_type,
+            "orientation_validation_status": orientation_validation_status,
             "swarm_id": swarm_id,
             "pose_rank": pose_rank,
             "scoring_value": score,
@@ -490,6 +506,7 @@ def compute_cross_method_convergence(
     # Load LightDock interface data (from TG 1.4.2)
     lightdock_dir = state_dir / "lightdock"
     lightdock_residues = _load_lightdock_residues(lightdock_dir)
+    lightdock_metadata = _load_lightdock_metadata(lightdock_dir)
 
     if not pyrosetta_patches and not lightdock_residues:
         print(f"  No data for convergence analysis ({state_name})")
@@ -513,16 +530,25 @@ def compute_cross_method_convergence(
             method_agreement = "both"
         elif in_pyrosetta:
             convergence_class = "pyrosetta_only"
-            method_agreement = "single"
+            method_agreement = "pyrosetta_only"
         else:
             convergence_class = "lightdock_only"
-            method_agreement = "single"
+            method_agreement = "lightdock_only"
 
         # Get metadata from whichever source has it
         meta = pyro or light or {}
+        construct_type = (
+            meta.get("construct_type", "")
+            or lightdock_metadata.get("construct_type", "")
+        )
+        orientation_validation_status = meta.get(
+            "orientation_validation_status", ""
+        ) or "not_available"
 
         convergence_rows.append({
             "receptor_id": state_name,
+            "construct_type": construct_type,
+            "orientation_validation_status": orientation_validation_status,
             "chain": chain,
             "residue_id": rid,
             "residue_num": meta.get("residue_num", ""),
@@ -582,8 +608,24 @@ def _load_pyrosetta_patches(state_dir: Path) -> Dict[Tuple[str, str], dict]:
                 "residue_name": row.get("residue_name", ""),
                 "lobe_label": row.get("lobe_label", ""),
                 "max_occupancy": row.get("max_occupancy", ""),
+                "construct_type": row.get("construct_type", ""),
+                "orientation_validation_status": row.get(
+                    "orientation_validation_status", ""
+                ),
             }
     return result
+
+
+def _load_lightdock_metadata(lightdock_dir: Path) -> Dict[str, str]:
+    """Load LightDock run metadata when available."""
+    path = lightdock_dir / "lightdock_run_metadata.json"
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    return {
+        "construct_type": str(data.get("construct_type", "") or ""),
+    }
 
 
 def _load_lightdock_residues(lightdock_dir: Path) -> Dict[Tuple[str, str], dict]:

@@ -100,6 +100,7 @@ SOURCE_SUMMARY_COLUMNS = [
 FPOCKET_OUT_SUFFIX = "_out"      # e.g., receptor_3GT8_raw_out/
 FPOCKET_INFO_FILE = "*_info.txt"
 FPOCKET_POCKET_PDB_PATTERN = "pocket{n}_atm.pdb"
+FPOCKET_POCKET_PDB_ZERO_PAD_PATTERN = "pocket{n:04d}_atm.pdb"
 
 # P2Rank output structure
 P2RANK_PREDICTIONS_CSV = "predictions.csv"
@@ -294,11 +295,12 @@ def parse_fpocket_output(
     results = []
 
     for i, stats in enumerate(pocket_stats, start=1):
-        pocket_pdb = pockets_dir / f"pocket{i}_atm.pdb"
+        pocket_num = stats.get("pocket_num") or i
+        pocket_pdb = _resolve_fpocket_pocket_pdb(pockets_dir, pocket_num)
         residues = []
         coords = []
 
-        if pocket_pdb.exists():
+        if pocket_pdb is not None:
             residues, coords = _parse_pocket_pdb(pocket_pdb)
 
         # Compute centroid from alpha sphere centers or pocket atoms
@@ -347,6 +349,18 @@ def parse_fpocket_output(
         })
 
     return results
+
+
+def _resolve_fpocket_pocket_pdb(pockets_dir: Path, pocket_num: int) -> Optional[Path]:
+    """Resolve fpocket pocket PDB path across padded and unpadded variants."""
+    candidates = [
+        pockets_dir / FPOCKET_POCKET_PDB_PATTERN.format(n=pocket_num),
+        pockets_dir / FPOCKET_POCKET_PDB_ZERO_PAD_PATTERN.format(n=pocket_num),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _parse_fpocket_info(info_path: Path) -> List[dict]:

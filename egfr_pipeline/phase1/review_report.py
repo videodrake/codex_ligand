@@ -131,6 +131,14 @@ def _build_report(
     partner_meta: List[dict],
 ) -> List[str]:
     """Build the full Phase 1 review report."""
+    construct_type = _collapse_metadata_value(
+        [row.get("construct_type", "") for row in robustness],
+        mixed_label="mixed_construct_type",
+    )
+    orientation_status = _collapse_metadata_value(
+        [row.get("orientation_validation_status", "") for row in robustness],
+        mixed_label="mixed_orientation_status",
+    )
 
     lines = [
         "# Phase 1 Interface Report",
@@ -160,10 +168,10 @@ def _build_report(
     lines.extend(_section_lightdock(state_summaries))
 
     # Section 7: Evidence Hierarchy
-    lines.extend(_section_evidence_hierarchy())
+    lines.extend(_section_evidence_hierarchy(orientation_status))
 
     # Section 8: Downstream Handoff
-    lines.extend(_section_handoff())
+    lines.extend(_section_handoff(construct_type, orientation_status))
 
     lines.extend([
         "---",
@@ -381,6 +389,10 @@ def _section_lightdock(state_summaries) -> List[str]:
     lines = [
         "## 6. LightDock Secondary Validation",
         "",
+        "LightDock remains secondary evidence only.",
+        "Its raw support tables currently use `orientation_validation_status = not_available`",
+        "until an equivalent LightDock orientation-aware filter path exists.",
+        "",
     ]
 
     any_convergence = False
@@ -426,7 +438,7 @@ def _section_lightdock(state_summaries) -> List[str]:
     return lines
 
 
-def _section_evidence_hierarchy() -> List[str]:
+def _section_evidence_hierarchy(orientation_status: str) -> List[str]:
     return [
         "## 7. Evidence Hierarchy",
         "",
@@ -436,23 +448,29 @@ def _section_evidence_hierarchy() -> List[str]:
         "| Secondary | LightDock validation | Method-independence check | Independent validation |",
         "| Auxiliary | AlphaFold-Multimer | Structural context (if available) | Optional supplement |",
         "",
-        "Primary evidence (PyRosetta, orientation-validated) is the sole basis for",
+        (
+            "Primary evidence (PyRosetta; orientation status: "
+            f"{_describe_orientation_status(orientation_status)}) is the sole basis for"
+        ),
         "receptor-side patch definitions handed to Phase 2. Secondary and auxiliary",
         "evidence increase confidence but do not replace primary evidence.",
         "",
     ]
 
 
-def _section_handoff() -> List[str]:
+def _section_handoff(construct_type: str, orientation_status: str) -> List[str]:
     return [
         "## 8. Downstream Handoff to Phase 2",
         "",
         "The patch reference file `phase1_downstream_patch_reference.csv` contains:",
         "",
-        "- All receptor-side residues observed in orientation-validated models",
+        "- Receptor-side residues summarized from the current cross-state comparison output",
         "- Robustness classification (robust / moderate / state_specific)",
-        "- `construct_type = full_kinase_domain`",
-        "- `orientation_validation_status = orientation_validated`",
+        f"- `construct_type` preserved from upstream consensus: `{construct_type or 'unknown'}`",
+        (
+            "- `orientation_validation_status` preserved from upstream consensus: "
+            f"`{orientation_status or 'unknown'}`"
+        ),
         "- Method agreement status (PyRosetta / LightDock / both)",
         "- Confidence classification (high / medium / low)",
         "",
@@ -528,8 +546,8 @@ def _build_patch_reference(
             "chain": chain,
             "lobe_label": r.get("lobe_label", ""),
             "evidence_source": "primary",
-            "construct_type": "full_kinase_domain",
-            "orientation_validation_status": "orientation_validated",
+            "construct_type": r.get("construct_type", ""),
+            "orientation_validation_status": r.get("orientation_validation_status", ""),
             "robustness_class": rob_class,
             "n_states_present": n_states,
             "states_present": r.get("states_present", ""),
@@ -550,6 +568,28 @@ def _build_patch_reference(
     ))
 
     return rows
+
+
+def _collapse_metadata_value(values: List[str], mixed_label: str) -> str:
+    """Collapse repeated metadata values without hiding disagreements."""
+    normalized = [value.strip() for value in values if value and value.strip()]
+    if not normalized:
+        return ""
+    unique_values = sorted(set(normalized))
+    if len(unique_values) == 1:
+        return unique_values[0]
+    return mixed_label
+
+
+def _describe_orientation_status(status: str) -> str:
+    """Render a readable orientation-status label for the report."""
+    if status == "orientation_validated":
+        return "orientation validated"
+    if status == "not_available":
+        return "not available"
+    if status == "mixed_orientation_status":
+        return "mixed across contributing states"
+    return status or "unknown"
 
 
 # ---------------------------------------------------------------------------

@@ -1,3 +1,7 @@
+> Historical document: superseded by the current LightDock-based Phase 1 baseline.
+> Read `docs/current_pipeline_status.md` and `docs/prd_phase_1_ppi_first_interface_mapping_v2.md` first.
+> Do not use this file as the default planning baseline for new work.
+
 ## Context Summary
 - Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 1 PRD

@@ -1,3 +1,6 @@
+> Status note (2026-03-12): Read `docs/current_pipeline_status.md` first.
+> Vina remains active, but current Phase 1 secondary validation uses LightDock, not AFM.
+
 # AutoDock Vina Docking Pipeline - Manual
 
 > **Deprecation Notice**: 이전 버전의 `run_docking.py` 단독 실행은 더 이상 지원되지 않습니다.

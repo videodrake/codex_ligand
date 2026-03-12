@@ -190,7 +190,15 @@ def execute_single_job(job: dict) -> dict:
     ligand_pdbqt = output_dir / f"{ligand_path.stem}.pdbqt"
     if ligand_path.suffix.lower() != ".pdbqt":
         try:
-            prepare_ligand(str(ligand_path), str(ligand_pdbqt))
+            prepared = prepare_ligand(str(ligand_path), str(ligand_pdbqt))
+            if prepared is False or not ligand_pdbqt.exists():
+                return {
+                    "job_id": job["job_id"],
+                    "status": "error",
+                    "error_message": "Ligand preparation failed: no PDBQT produced",
+                    "n_poses": 0,
+                    "best_affinity_kcal": "",
+                }
         except Exception as e:
             return {
                 "job_id": job["job_id"],

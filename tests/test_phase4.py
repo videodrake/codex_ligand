@@ -287,7 +287,7 @@ class TestEvidenceIngestion:
         from egfr_pipeline.phase4.evidence_ingestion import run_evidence_ingestion
         e = tmp_phase4
         run_evidence_ingestion(e["phase1"], e["phase2"], e["phase3"], e["phase4"])
-        text = (e["phase4"] / "phase4_evidence_validation.md").read_text()
+        text = (e["phase4"] / "phase4_evidence_validation.md").read_text(encoding="utf-8")
         assert "PASS" in text or "CAUTION" in text
         assert "0 errors" in text
 
@@ -602,7 +602,7 @@ class TestStateInterpretation:
 
     def test_accessibility_note_created(self, tmp_phase4):
         out = _run_phase4_pipeline(tmp_phase4)
-        note = (out / "phase4_accessibility_note.md").read_text()
+        note = (out / "phase4_accessibility_note.md").read_text(encoding="utf-8")
         assert "State-Robustness" in note
 
 
@@ -610,6 +610,7 @@ class TestStateInterpretation:
 # TG 4.5: Review Output
 # ===================================================================
 
+@pytest.mark.reporting
 class TestReviewOutput:
     """Tests for TG 4.5 review tables."""
 
@@ -639,6 +640,7 @@ class TestReviewOutput:
 # TG 4.6: Final Report
 # ===================================================================
 
+@pytest.mark.reporting
 class TestFinalReport:
     """Tests for TG 4.6 integrated report."""
 
@@ -649,7 +651,7 @@ class TestFinalReport:
 
     def test_report_sections(self, tmp_phase4):
         out = _run_phase4_pipeline(tmp_phase4)
-        text = (out / "integrated_phase4_report.md").read_text()
+        text = (out / "integrated_phase4_report.md").read_text(encoding="utf-8")
         assert "Executive Summary" in text
         assert "Why Affinity Alone" in text
         assert "Scoring Framework" in text
@@ -660,7 +662,7 @@ class TestFinalReport:
 
     def test_report_mentions_all_pockets(self, tmp_phase4):
         out = _run_phase4_pipeline(tmp_phase4)
-        text = (out / "integrated_phase4_report.md").read_text()
+        text = (out / "integrated_phase4_report.md").read_text(encoding="utf-8")
         assert "3GT8_raw_PKT01" in text
         assert "3GT8_raw_PKT02" in text
         assert "3GT8_raw_PKT03" in text
@@ -670,6 +672,7 @@ class TestFinalReport:
 # TG 4.7: Presentation Summary
 # ===================================================================
 
+@pytest.mark.reporting
 class TestPresentationSummary:
     """Tests for TG 4.7 presentation layer."""
 
@@ -683,7 +686,7 @@ class TestPresentationSummary:
 
     def test_brief_markdown(self, tmp_phase4):
         out = _run_phase4_pipeline(tmp_phase4)
-        brief = (out / "phase4_top_candidates_brief.md").read_text()
+        brief = (out / "phase4_top_candidates_brief.md").read_text(encoding="utf-8")
         assert "Top Candidates Brief" in brief
         assert "Ligand Coverage Matrix" in brief
 
@@ -781,9 +784,9 @@ class TestEndToEnd:
     def test_idempotent(self, tmp_phase4):
         """Running pipeline twice produces same output."""
         out1 = _run_phase4_pipeline(tmp_phase4)
-        scores1 = (out1 / "perturbation_candidate_table.csv").read_text()
+        scores1 = (out1 / "perturbation_candidate_table.csv").read_text(encoding="utf-8")
         out2 = _run_phase4_pipeline(tmp_phase4)
-        scores2 = (out2 / "perturbation_candidate_table.csv").read_text()
+        scores2 = (out2 / "perturbation_candidate_table.csv").read_text(encoding="utf-8")
         assert scores1 == scores2
 
     def test_orthosteric_beats_irrelevant(self, tmp_phase4):
