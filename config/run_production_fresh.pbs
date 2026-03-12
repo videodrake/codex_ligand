@@ -1,0 +1,67 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N PROD_fresh
+#PBS -l nodes=node05:ppn=32
+#PBS -l walltime=999:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/production_fresh.o
+#PBS -e ${PBS_O_WORKDIR}/production_fresh.e
+
+# ============================================================
+# EGFR-MYO1D Full Fresh Production Pipeline (PBS)
+#
+# Purpose:
+#   - start from a clean output state
+#   - rerun all production phases sequentially from the beginning
+#   - preserve the existing pre-qsub guard requirement
+#
+# Recommended usage:
+#   qsub config/run_pre_qsub_checks.pbs
+#   qsub config/run_production_fresh.pbs
+#
+# Or safely chain them:
+#   PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
+#   qsub -W depend=afterok:${PRECHECK_JOB} config/run_production_fresh.pbs
+#
+# Guard bypass (only if intentional):
+#   qsub -v SKIP_PRECHECK_GUARD=1 config/run_production_fresh.pbs
+# ============================================================
+
+set -eo pipefail
+
+cd $PBS_O_WORKDIR
+
+set +u
+source ~/.bashrc
+set -u
+conda activate pyrosetta
+
+SKIP_PRECHECK_GUARD=${SKIP_PRECHECK_GUARD:-0}
+PRECHECK_STATUS_FILE="${PBS_O_WORKDIR}/output/pre_qsub_status/last_pass.json"
+
+echo "============================================"
+echo "  EGFR-MYO1D Fresh Production Pipeline"
+echo "  Clean outputs + rerun all phases"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "  PRECHECK_STATUS_FILE: $PRECHECK_STATUS_FILE"
+echo "============================================"
+
+python scripts/precheck_guard.py \
+    --workdir "$PBS_O_WORKDIR" \
+    --mode "force" \
+    --skip-precheck-guard "$SKIP_PRECHECK_GUARD"
+
+echo ""
+echo "[1/2] Removing previous production outputs"
+python scripts/reset_production_outputs.py --execute
+
+echo ""
+echo "[2/2] Running full production from Phase 1"
+python run_production.py --force
+
+echo ""
+echo "============================================"
+echo "  Finished: $(date)"
+echo "============================================"
