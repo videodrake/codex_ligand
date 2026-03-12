@@ -2,15 +2,23 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV_DIR="${ROOT_DIR}/.venv-tests"
+TEST_CONDA_ENV="${TEST_CONDA_ENV:-codex-tests}"
 
-if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
-  echo "Missing test virtualenv at ${VENV_DIR}"
-  echo "Run: ${ROOT_DIR}/scripts/setup_test_env.sh"
+if ! command -v conda >/dev/null 2>&1; then
+  echo "conda command not found."
+  echo "Load your conda setup first, then rerun this script."
   exit 1
 fi
 
-source "${VENV_DIR}/bin/activate"
+eval "$(conda shell.bash hook)"
+
+if ! conda env list | awk '{print $1}' | grep -Fxq "${TEST_CONDA_ENV}"; then
+  echo "Missing conda test environment: ${TEST_CONDA_ENV}"
+  echo "Run: TEST_CONDA_ENV=${TEST_CONDA_ENV} ${ROOT_DIR}/scripts/setup_test_env.sh"
+  exit 1
+fi
+
+conda activate "${TEST_CONDA_ENV}"
 
 export PYTHONUTF8=1
 

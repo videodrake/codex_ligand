@@ -7,22 +7,44 @@
 #PBS -o ${PBS_O_WORKDIR}/pre_qsub_checks.o
 #PBS -e ${PBS_O_WORKDIR}/pre_qsub_checks.e
 
+set -euo pipefail
+
 cd "$PBS_O_WORKDIR"
+source ~/.bashrc
 
 PRECHECK_STATUS_DIR="${PBS_O_WORKDIR}/output/pre_qsub_status"
 PRECHECK_STATUS_FILE="${PRECHECK_STATUS_DIR}/last_pass.json"
+TEST_CONDA_ENV="${TEST_CONDA_ENV:-codex-tests}"
+
+mkdir -p "${PRECHECK_STATUS_DIR}"
+rm -f "${PRECHECK_STATUS_FILE}"
+
+write_failed_status() {
+cat > "${PRECHECK_STATUS_FILE}" <<EOF
+{
+  "status": "failed",
+  "timestamp": "$(date -Iseconds)",
+  "host": "$(hostname)",
+  "pbs_job_id": "${PBS_JOBID}"
+}
+EOF
+}
+
+trap 'write_failed_status' ERR
 
 echo "============================================"
 echo "  Pre-Qsub Validation Lane"
 echo "  Started: $(date)"
 echo "  Node: $(hostname)"
 echo "  Cores: $(nproc)"
+echo "  TEST_CONDA_ENV: ${TEST_CONDA_ENV}"
 echo "============================================"
+
+export TEST_CONDA_ENV
 
 bash scripts/setup_test_env.sh
 bash scripts/run_pre_qsub_checks.sh
 
-mkdir -p "${PRECHECK_STATUS_DIR}"
 cat > "${PRECHECK_STATUS_FILE}" <<EOF
 {
   "status": "passed",
@@ -31,6 +53,8 @@ cat > "${PRECHECK_STATUS_FILE}" <<EOF
   "pbs_job_id": "${PBS_JOBID}"
 }
 EOF
+
+trap - ERR
 
 echo "  Wrote precheck status: ${PRECHECK_STATUS_FILE}"
 

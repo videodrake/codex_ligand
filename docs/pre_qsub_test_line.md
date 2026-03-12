@@ -14,14 +14,21 @@ Catch the most common pre-submission failures early:
 
 This test line is intentionally lighter than a full production run. It does not launch heavy Vina, PyRosetta production docking, or MD production workflows.
 
-## 1. Create the test virtual environment
+## 1. Create the test conda environment
 
 ```bash
 cd ~/codex_ligand
 bash scripts/setup_test_env.sh
 ```
 
-This creates `.venv-tests` and installs the packages listed in [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt).
+This creates or updates the `codex-tests` conda environment and installs the packages listed in [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt).
+
+If you want to choose a different environment name:
+
+```bash
+cd ~/codex_ligand
+TEST_CONDA_ENV=my-test-env bash scripts/setup_test_env.sh
+```
 
 ## 2. Run the pre-qsub checks
 
@@ -71,6 +78,7 @@ If this line fails, fix the code first and do not spend cluster resources yet.
 ```bash
 git clone <repo-url>
 cd codex_ligand
+conda activate base
 bash scripts/setup_test_env.sh
 bash scripts/run_pre_qsub_checks.sh
 # if green, then proceed to qsub-based runs
@@ -109,3 +117,12 @@ If you intentionally need to bypass the guard, do it explicitly:
 ```bash
 qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
 ```
+
+## 6. Current server baseline
+
+The repository no longer treats `.venv-tests` as the official server test path.
+The current baseline is:
+
+- conda-managed test environment
+- default environment name: `codex-tests`
+- package install path driven by [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt)

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -25,7 +26,23 @@ def validate_precheck_status(
         return True, f"Precheck guard bypassed (mode={mode}, skip={skip_precheck_guard})."
 
     if status_file.exists():
-        return True, f"Found pre-qsub success marker: {status_file}"
+        try:
+            payload = json.loads(status_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False, (
+                "[ERROR] Invalid pre-qsub status marker (JSON decode failed):\n"
+                f"        {status_file}"
+            )
+
+        status = payload.get("status")
+        if status == "passed":
+            return True, f"Found pre-qsub success marker: {status_file}"
+
+        return False, (
+            "[ERROR] Pre-qsub status marker exists but is not marked as passed:\n"
+            f"        {status_file}\n"
+            f"        status={status!r}"
+        )
 
     lines = [
         "[ERROR] Missing pre-qsub success marker:",

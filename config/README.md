@@ -112,6 +112,14 @@ If you intentionally need to bypass the guard:
 qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
 ```
 
+The current server-side baseline for this lane is a conda test environment.
+By default the scripts use:
+
+- environment name: `codex-tests`
+- package list: [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt)
+
+If you need a different name, pass `TEST_CONDA_ENV` when running the setup or PBS job.
+
 ## Production Modes
 
 `run_production.pbs` forwards mode selection into `run_production.py`.

@@ -27,3 +27,14 @@ def test_validate_precheck_status_accepts_existing_marker(tmp_path: Path):
 
     assert ok is True
     assert "Found pre-qsub success marker" in message
+
+
+def test_validate_precheck_status_rejects_failed_marker(tmp_path: Path):
+    status_dir = tmp_path / "output" / "pre_qsub_status"
+    status_dir.mkdir(parents=True, exist_ok=True)
+    (status_dir / "last_pass.json").write_text('{"status":"failed"}', encoding="utf-8")
+
+    ok, message = validate_precheck_status(tmp_path, mode="auto", skip_precheck_guard="0")
+
+    assert ok is False
+    assert "not marked as passed" in message
