@@ -7,10 +7,12 @@
 #PBS -o ${PBS_O_WORKDIR}/pre_qsub_checks.o
 #PBS -e ${PBS_O_WORKDIR}/pre_qsub_checks.e
 
-set -euo pipefail
+set -eo pipefail
 
 cd "$PBS_O_WORKDIR"
+set +u
 source ~/.bashrc
+set -u
 
 PRECHECK_STATUS_DIR="${PBS_O_WORKDIR}/output/pre_qsub_status"
 PRECHECK_STATUS_FILE="${PRECHECK_STATUS_DIR}/last_pass.json"
