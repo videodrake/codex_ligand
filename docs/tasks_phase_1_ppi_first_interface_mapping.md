@@ -3,7 +3,7 @@
 > Do not use this file as the default task baseline for new work.
 
 ## Context Summary
-- Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
+- Project: EGFR-MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 1 Task Breakdown
 - Purpose: Convert the Phase 1 PRD into implementation-facing tasks for receptor-side MYO1D interface mapping
 - Primary Engine: PyRosetta global docking
@@ -13,7 +13,7 @@
 ---
 
 # Task Breakdown
-## Phase 1: PPI-First Interface Mapping
+## Phase 1: PPI-first Interface Mapping
 
 This document breaks Phase 1 into implementation-facing task groups. The purpose of this phase is to define the receptor-side MYO1D attachment patch in a reproducible, structured, and reviewable format before any ligand-pocket prioritization begins.
 
@@ -31,7 +31,7 @@ Each task group below includes:
 
 # Task Group 1.0: Receptor and Partner Input Validation
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Validate that receptor structures and MYO1D partner inputs are complete, comparable, and suitable for PPI-first interface mapping.
@@ -81,7 +81,7 @@ Depends on the repository/document baseline and existing receptor input availabi
 
 # Task Group 1.1: PyRosetta Global Docking Standardization
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Standardize PyRosetta global docking execution and output handling so receptor-side interface evidence can be extracted reproducibly.
@@ -135,7 +135,7 @@ Depends on Task Group 1.0.
 
 # Task Group 1.2: Receptor-Side Interface Residue Extraction
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Extract receptor-side and partner-side interface residues from PyRosetta models in a structured, reusable format.
@@ -143,7 +143,7 @@ Extract receptor-side and partner-side interface residues from PyRosetta models 
 ## Main Tasks
 
 ### 1.2.1 Define interface extraction rule
-- Choose and document the receptor–partner contact rule
+- Choose and document the receptor?-partner contact rule
 - Keep receptor-side and partner-side residues separate
 - Keep residue string formatting consistent across outputs
 
@@ -180,7 +180,7 @@ Depends on Task Group 1.1.
 
 # Task Group 1.3: Cluster-Level Interface Consensus
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Aggregate receptor-side interface evidence across PyRosetta clusters to identify stable receptor-side interface patches and hotspot residues.
@@ -231,7 +231,7 @@ Depends on Task Group 1.2.
 
 # Task Group 1.4: Auxiliary AlphaFold-Multimer Support
 **Priority:** Should-Have  
-**Zone:** 🟡 Yellow
+**Zone:** ??? Yellow
 
 ## Objective
 Standardize AFM outputs as auxiliary receptor-side interface evidence that can be compared with PyRosetta but does not replace it.
@@ -282,7 +282,7 @@ Depends on availability of AFM outputs and can proceed in parallel after Task Gr
 
 # Task Group 1.5: Multi-State Interface Patch Comparison
 **Priority:** Must-Have  
-**Zone:** 🟡 Yellow
+**Zone:** ??? Yellow
 
 ## Objective
 Compare receptor-side interface patches across the three receptor states to determine which receptor-side residues or patches are state-robust and which are state-specific.
@@ -326,7 +326,7 @@ Depends on Task Group 1.3 and, if used, Task Group 1.4.
 
 # Task Group 1.6: Phase 1 Review Report
 **Priority:** Should-Have  
-**Zone:** 🟡 Yellow
+**Zone:** ??? Yellow
 
 ## Objective
 Generate a readable Phase 1 review package that summarizes receptor-side MYO1D attachment evidence before moving into pocket proposal.
@@ -370,13 +370,13 @@ Depends on Task Groups 1.3, 1.4, and 1.5.
 
 If Phase 1 is implemented incrementally, the recommended order is:
 
-1. **Task Group 1.0** — receptor and partner input validation  
-2. **Task Group 1.1** — PyRosetta execution standardization  
-3. **Task Group 1.2** — receptor-side interface residue extraction  
-4. **Task Group 1.3** — cluster-level interface consensus  
-5. **Task Group 1.5** — multi-state interface patch comparison  
-6. **Task Group 1.4** — auxiliary AFM support  
-7. **Task Group 1.6** — Phase 1 review report
+1. **Task Group 1.0** ??receptor and partner input validation  
+2. **Task Group 1.1** ??PyRosetta execution standardization  
+3. **Task Group 1.2** ??receptor-side interface residue extraction  
+4. **Task Group 1.3** ??cluster-level interface consensus  
+5. **Task Group 1.5** ??multi-state interface patch comparison  
+6. **Task Group 1.4** ??auxiliary AFM support  
+7. **Task Group 1.6** ??Phase 1 review report
 
 ### Why this order
 - You must validate receptor and partner inputs before interface mapping.
@@ -390,5 +390,6 @@ If Phase 1 is implemented incrementally, the recommended order is:
 
 ## Korean Summary
 
-이 문서는 Phase 1을 구현 단위로 쪼갠 task 문서다. 핵심은 ligand보다 먼저 **MYO1D가 EGFR 어디에 붙는지 receptor-side patch를 정의하는 것**이다. 주요 흐름은 입력 검증 → PyRosetta 실행 표준화 → interface residue 추출 → cluster-level hotspot → receptor 상태 간 비교 → AFM 보조 증거 → Phase 1 요약 보고서 순서다.
+??문서??Phase 1??구현 ??위???쪼갠 task 문서?? ??심?? ligand보다 먼?? **MYO1D가 EGFR ??디??붙는지 receptor-side patch????*의??는 ???*??다. 주요 ??름?? ?...력 검?????PyRosetta ??행 ????????interface residue 추출 ??cluster-level hotspot ??receptor ??태 ???비교 ??AFM 보조 증거 ??Phase 1 ?-약 보고????서??
+
 

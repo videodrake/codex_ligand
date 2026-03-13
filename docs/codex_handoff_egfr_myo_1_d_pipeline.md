@@ -1,5 +1,5 @@
 # CODEX HANDOFF
-## EGFR–MYO1D Pipeline
+## EGFR-MYO1D Pipeline
 
 ---
 
@@ -23,7 +23,7 @@ Detailed planning belongs in the phase-specific documents listed below.
 
 ## 2. Project in one sentence
 
-This repository supports an **EGFR–MYO1D interface-centric perturbation discovery pipeline** whose goal is to first define the receptor-side MYO1D attachment patch on EGFR, and then identify ligandable pockets that may disrupt that attachment directly or indirectly.
+This repository supports an **EGFR-MYO1D interface-centric perturbation discovery pipeline** whose goal is to first define the receptor-side MYO1D attachment patch on EGFR, and then identify ligandable pockets that may disrupt that attachment directly or indirectly.
 
 ---
 
@@ -33,21 +33,21 @@ The project is **no longer organized around a Vina-first pocket search**.
 
 The current active scientific framing is:
 
-1. **Phase 1 — PPI-first interface mapping**  
+1. **Phase 1 ??PPI-first interface mapping**  
    Define the receptor-side MYO1D attachment patch.
 
-2. **Phase 2 — Pocket proposal and druggability mapping**  
+2. **Phase 2 ??Pocket proposal and druggability mapping**  
    Enumerate candidate ligandable pockets and classify them relative to the Phase 1 patch.
 
-3. **Phase 3 — Diversity-aware pocket-guided docking**  
+3. **Phase 3 ??Diversity-aware pocket-guided docking**  
    Replace naive repeated giant-box blind docking with diversity-aware docking guided by candidate pockets.
 
-4. **Phase 4 — Perturbation relevance scoring**  
+4. **Phase 4 ??Perturbation relevance scoring**  
    Rank pockets and ligand-supported sites by their likelihood of disrupting MYO1D attachment.
 
 This means the project should always be interpreted as:
 
-> **PPI-first → pocket proposal → diversity-aware docking → perturbation relevance**
+> **PPI-first ??pocket proposal ??diversity-aware docking ??perturbation relevance**
 
 not as:
 
@@ -157,18 +157,18 @@ Codex should read these active documents in the following order.
 
 ### 8.1 Entry documents
 1. `README.md`
-2. `docs/project-context.md`
+2. `docs/project_context.md`
 3. `docs/runbook.md`
 
 ### 8.2 Active planning documents
-4. `docs/brief-egfr-myo1d-pipeline-v2.md`
-5. `docs/prd-phase1-ppi-first-interface-mapping.md`
-6. `docs/tasks-phase1-ppi-first-interface-mapping.md`
-7. `docs/prd-phase2-pocket-proposal-and-druggability-mapping.md`
-8. `docs/prd-phase3-diversity-aware-pocket-guided-docking.md`
-9. `docs/prd-phase4-perturbation-relevance-scoring.md`
+4. `docs/brief_egfr_myo_1_d_pipeline_v_2.md`
+5. `docs/prd_phase_1_ppi_first_interface_mapping_v2.md`
+6. `docs/tasks_phase_1_ppi_first_interface_mapping_v2.md`
+7. `docs/prd_phase_2_pocket_proposal_and_druggability_mapping.md`
+8. `docs/prd_phase_3_diversity_aware_pocket_guided_docking.md`
+9. `docs/prd_phase_4_perturbation_relevance_scoring.md`
 
-If phase-specific task files for Phases 2–4 exist later, those should be read after the corresponding phase PRDs.
+If phase-specific task files for Phases 2?? exist later, those should be read after the corresponding phase PRDs.
 
 ---
 
@@ -242,13 +242,13 @@ This repository should now be understood as having two document layers:
 ### A. Master/index documents
 These explain the repository and how to work in it.
 - `README.md`
-- `docs/project-context.md`
+- `docs/project_context.md`
 - `docs/runbook.md`
-- `CODEX_HANDOFF_EGFR_MYO1D_PIPELINE.md`
+- `docs/codex_handoff_egfr_myo_1_d_pipeline_v2.md`
 
 ### B. Active scientific planning documents
 These contain the real project logic.
-- `docs/brief-egfr-myo1d-pipeline-v2.md`
+- `docs/brief_egfr_myo_1_d_pipeline_v_2.md`
 - phase-specific PRDs
 - phase-specific task files
 
@@ -273,26 +273,28 @@ If there is ambiguity, Codex should prefer:
 
 ---
 
-## 14. Korean summary (간단 요약)
+## 14. Korean summary (간단 ?-약)
 
-이 문서는 Codex용 **최종 마스터 handoff 문서**다.
+??문서??Codex??**최종 마스??handoff 문서**??
 
-핵심 내용은 다음과 같다.
+??심 ??용?? ??음???같다.
 
-- 이 프로젝트는 이제 **Vina-first**가 아니라 **PPI-first / 4-phase 구조**다.
-- 최신 active 흐름은:
+- ????로??트????제 **Vina-first**가 ??니??**PPI-first / 4-phase 구조**??
+- 최신 active ??름??:
   1. MYO1D receptor-side patch 규명
-  2. candidate pocket 제안
+  2. candidate pocket ??안
   3. diversity-aware docking
   4. perturbation relevance ranking
-- AlphaFold-Multimer는 core에서 제외한다.
-- beta-meander를 primary input으로 사용한다.
-- TH1은 main blind input이 아니라 plausibility check용이다.
-- sheet 8/9는 primary active face, sheet 12는 support face로 본다.
-- orientation-aware docking과 face-flip filtering이 필수다.
-- LightDock를 독립 보조 검증축으로 사용한다.
-- 새 계산 결과가 기존 보고서 라벨보다 우선한다.
-- 현재 Codex workspace는 실제 서버와 다르므로, 성능 검증은 서버에서 해야 한다.
+- AlphaFold-Multimer??core??서 ??외??다.
+- beta-meander???primary input??로 ??용??다.
+- TH1?? main blind input????니??plausibility check??이??
+- sheet 8/9??primary active face, sheet 12??support face???본다.
+- orientation-aware docking???face-flip filtering????수??
+- LightDock????...립 보조 검증축??로 ??용??다.
+- ??계산 결과가 기존 보고????벨보다 ??선??다.
+- ??재 Codex workspace????제 ??버?? ??르므??? ??능 검증?? ??버??서 ??야 ??다.
 
-이 문서는 **짧은 인덱스 문서**로 유지하고, 실제 내용은 phase별 PRD/task 문서를 읽는 구조로 운용한다.
+??문서??**짧?? ??덱??문서**???? ????고, ??제 ??용?? phase???PRD/task 문서?????는 구조?????용??다.
+
+
 

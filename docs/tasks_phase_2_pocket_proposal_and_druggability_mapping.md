@@ -2,7 +2,7 @@
 - Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 2 Task Breakdown
 - Purpose: Convert the Phase 2 PRD into implementation-facing tasks for candidate pocket proposal and druggability mapping
-- Upstream Dependency: Phase 1 must provide a machine-readable receptor-side patch reference
+- Upstream Dependency: Phase 1 must provide a machine-readable receptor-side patch reference rooted in PyRosetta primary mapping, with LightDock secondary validation support and AFM only as optional legacy auxiliary context if present
 - Key Principle: Pocket discovery is not the goal by itself; candidate pockets must be classified by relevance to the MYO1D receptor-side attachment patch
 
 ---
@@ -33,31 +33,37 @@ Each task group below includes:
 **Zone:** 🟢 Green
 
 ## Objective
-Load and validate the machine-readable receptor-side patch reference produced by Phase 1 so that pocket relevance can be anchored to a biologically defined interface patch.
+Load and validate the machine-readable receptor-side patch reference produced by Phase 1, rooted in PyRosetta primary mapping with LightDock secondary validation support, so that pocket relevance can be anchored to a biologically defined interface patch.
 
 ## Main Tasks
 
 ### 2.0.1 Phase 1 patch reference ingestion
-- Read the Phase 1 downstream patch reference file.
-- Preserve receptor_id, patch_id, hotspot residues, patch centroid, robustness label, and confidence class.
+- Read the Phase 1 downstream patch reference file rooted in PyRosetta primary mapping and annotated with LightDock secondary validation support when available.
+- Preserve receptor_id, patch_id, hotspot residues, patch centroid, robustness label, confidence class, `construct_type`, and `orientation_validation_status`.
 
 ### 2.0.2 Patch-reference validation
 - Confirm that each receptor state has a corresponding patch reference.
 - Confirm residue numbering and chain labels remain interpretable.
 - Confirm that Phase 1 confidence labels are present.
+- Confirm `construct_type` is present and traceable for structured v2 handoffs.
+- Confirm `orientation_validation_status` is preserved as a source-dependent field rather than silently dropped.
 
 ### 2.0.3 Patch reference standardization
 - Convert Phase 1 patch reference into a stable internal format that Phase 2 tools can consume without ambiguity.
+- Keep compatibility mode explicit while legacy and skipped-filter runs remain in circulation: `orientation_validation_status = not_available` should warn, not auto-fail, during ingestion.
 
 ## Subtasks
-- Define patch reference schema for Phase 2 ingestion.
+- Define patch reference schema for Phase 2 ingestion, including `construct_type` and `orientation_validation_status`.
 - Add validation rules for missing or malformed patch fields.
 - Add compatibility checks between receptor metadata and patch metadata.
+- Add compatibility warnings for legacy or skipped-filter handoffs that still emit `orientation_validation_status = not_available`.
 
 ## Test Tasks
 - Confirm the patch reference file can be loaded for all three receptor states.
 - Confirm receptor IDs and patch IDs remain traceable.
 - Confirm malformed or incomplete patch references trigger warnings or errors.
+- Confirm structured handoffs with calibrated orientation classes pass ingestion cleanly.
+- Confirm legacy-compatible handoffs with `orientation_validation_status = not_available` emit a validation warning instead of failing silently.
 
 ## Dependencies
 Depends on Phase 1 completion.

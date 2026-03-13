@@ -1,178 +1,173 @@
 # Runbook
 
-## EGFR-MYO1D Pipeline
+Last updated: 2026-03-13
 
-This runbook is the operator-facing execution guide for the current repository.
-It describes how the project is expected to be run and interpreted today.
+This document is the operator-facing run procedure for the current repository. Use it to understand what order to run things in, which checkpoints matter, and when to stop or escalate. For exact commands, use [manual_execution.md](manual_execution.md). For the current baseline summary, use [current_pipeline_status.md](current_pipeline_status.md). For artifact meaning, use [output_artifact_map.md](output_artifact_map.md).
 
-## 1. Current Operating Baseline
+## Operating Frame
 
-Use this runbook together with:
+Run this repository with the current baseline in mind:
 
-1. `docs/current_pipeline_status.md`
-2. `README.md`
-3. `docs/architecture.md`
-4. `config/README.md`
+| Topic | Operational rule |
+|------|------|
+| Receptor states | Treat `3GT8_raw`, `3GT8_cl38_48`, and `3GT8_cl85_100` as the fixed comparison set |
+| Ligand workflow center | Routine ligand evidence is Vina-centered |
+| Phase 1 primary evidence | PyRosetta |
+| Phase 1 secondary validation | LightDock |
+| AFM | Legacy optional only; do not include it in routine execution unless explicitly re-enabled |
+| Runtime environment | Production and pre-qsub lanes reuse the shared `pyrosetta` conda environment |
+| Worker policy | Treat `max_workers = 16` as the routine safe operating bound |
 
-Current active baseline:
+## Interpretation Start Point
 
-- Vina-centered ligand workflow
-- PyRosetta-centered Phase 1 PPI workflow
-- LightDock as the active secondary Phase 1 validation axis
-- MD as a downstream stability gate
+When a production run has completed, start with `output/{project}/step_index.md`.
 
-AlphaFold-Multimer is not part of the active routine workflow.
+Recommended reading order:
 
-## 2. Fixed Inputs
+1. `output/{project}/step_index.md`
+2. `output/{project}/step6_report/project_report.txt`
+3. `output/{project}/step5_verdict/valid_sites.csv`
+4. `output/{project}/step4_vina_postprocess/vina_pocket_table.csv`
+5. `output/{project}/step3_ppi_postprocess/ppi_pyrosetta_residues.csv`
 
-Current receptor states:
+Canonical runtime outputs remain under `output/{project}/` and remain the source of truth. The step folders are a derived interpretation view that can be regenerated from canonical outputs.
 
-- `3GT8_raw`
-- `3GT8_cl38_48`
-- `3GT8_cl85_100`
+## Reference Output Layout
 
-Current ligand set is defined in `config/example-project.yaml`.
-
-PPI input structures live under `input/PPI/`.
-
-## 3. Worker Policy
-
-The server may expose 32 CPU cores, but routine safe operation should assume 16
-workers unless there is explicit reason to go higher.
-
-Treat 16 as the normal operating upper bound.
-
-## 4. Normal Execution Paths
-
-### Local or interactive orchestration
-
-- `python main.py`
-- `python main.py vina -c config/example-project.yaml`
-- `python main.py postprocess -c config/example-project.yaml`
-- `python main.py verdict -c config/example-project.yaml`
-- `python main.py report -c config/example-project.yaml`
-- `python main.py validate -c config/example-project.yaml`
-
-### PyRosetta / server-side
-
-- `qsub config/run_ppi_test.pbs`
-- `qsub config/run_ppi_prod.pbs`
-
-### Production orchestration
-
-- `qsub config/run_pre_qsub_checks.pbs`
-- `qsub config/run_production.pbs`
-
-Safest submission pattern:
-
-```bash
-PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
-qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
+```text
+output/egfr_myo1d_vina/
+  vina_pose_table.csv
+  vina_pocket_table.csv
+  vina_drug_pocket_map.csv
+  ppi_pyrosetta_residues.csv
+  ppi_pyrosetta_summary.csv
+  valid_sites.csv
+  cross_method_agreement.csv
+  combined_residue_evidence.csv
+  project_report.txt
+  step_index.md
+  current_run_manifest.json
+  step1_vina_raw/
+  step2_ppi_raw/
+  step3_ppi_postprocess/
+  step4_vina_postprocess/
+  step5_verdict/
+  step6_report/
+  step7_validate/
 ```
 
-## 5. Execution Order
+## Before You Run
 
-### A. Pre-qsub validation
+Confirm these conditions before submitting heavier work:
 
-Run the lightweight validation lane before heavy server work.
+1. The active config is the intended project config, normally `config/example-project.yaml` or a direct derivative.
+2. The three receptor states are present and still mapped explicitly.
+3. Required ligands and prepared inputs are available for the intended lane.
+4. AFM-dependent fields are not being treated as active requirements.
+5. Worker count does not exceed the routine safe bound without an explicit reason.
+6. You know whether you are running the routine Vina-centered baseline, a Phase 1-focused branch, or both.
 
-Outputs:
+If you need the exact shell or PBS commands for these checks, use [manual_execution.md](manual_execution.md).
+
+## Standard Operator Sequence
+
+### 1. Run Pre-qsub Validation First
+
+Always run the lightweight precheck lane before the heavier production submission path.
+
+Required checkpoint:
 
 - `output/pre_qsub_status/last_pass.json`
 
-### B. Vina docking
+If the precheck does not pass, stop and fix the configuration, input registration, or environment issue before moving on.
 
-Run docking for the three receptor states against the configured ligand set.
+### 2. Choose The Execution Lane
 
-Main output family:
+Pick the run lane that matches the task instead of assuming every run should execute the full repository.
 
-- raw docking pose files under the project output root
+| Lane | Use when | Primary outputs to review first |
+|------|------|------|
+| Routine baseline lane | You need the current default ligand-facing evidence flow | `output/egfr_myo1d_vina/results/valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` |
+| Phase 1 lane | You need receptor-side interface evidence or Phase 2 handoff material | `output/phase1_ppi/phase1_downstream_patch_reference.csv`, `phase1_interface_report.md` |
+| Combined review lane | You need routine baseline outputs plus current Phase 1 evidence for interpretation | Routine baseline result files plus the Phase 1 handoff and review artifacts |
 
-### C. Vina postprocess
+For the exact command surface of each lane, use [manual_execution.md](manual_execution.md).
 
-Run:
+### 3. Submit Heavy Work In A Safe Order
 
-- pose parsing
-- contact extraction
-- pocket clustering
-- pocket summarization
-- cross-receptor comparison
-- optional bootstrap
+The default safe pattern is:
 
-Main outputs:
+1. Run pre-qsub validation.
+2. Submit the production lane only after precheck success.
+3. Run or review the Phase 1 PyRosetta branch when receptor-side evidence is required.
+4. Run LightDock only as the secondary validation path for Phase 1, not as a replacement for PyRosetta.
+5. Run verdict, report, and validate after the routine baseline outputs are available.
 
-- `vina_pose_table.csv`
-- `vina_pocket_table.csv`
-- `vina_drug_pocket_map.csv`
-- `vina_pocket_comparison.csv`
-- `vina_pocket_bootstrap.csv` (optional)
+Important rule:
 
-### D. Phase 1 PyRosetta branch
+- Do not treat the scientific Phase 1-4 documents as proof that the whole repository should always run in a single unified end-to-end chain.
 
-Run PyRosetta PPI workflow and preserve traceable outputs by receptor state and
-partner construct.
+## Required Checkpoints
 
-Main outputs include:
+Review these checkpoints before moving to interpretation.
 
-- `pyrosetta_run_metadata.json`
-- `pyrosetta_decoy_scores.csv`
-- `phase1_input_validation_report.json`
-- `phase1_input_validation_summary.md`
-- `ppi_pyrosetta_residues.csv`
-- `ppi_pyrosetta_summary.csv`
-- `ppi_cluster_summary.csv`
-- `ppi_hotspot_residues.csv`
-- `ppi_interface_patch_table.csv`
+| Stage | Required checkpoint | Stop condition |
+|------|------|------|
+| Precheck | `output/pre_qsub_status/last_pass.json` exists and reflects a pass | Missing or failed precheck |
+| Routine Vina postprocess | Core Vina tables are populated | Missing pose or pocket summary tables |
+| Routine integration | `valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` exist | Final decision files missing or obviously stale |
+| Phase 1 PyRosetta | Phase 1 residue, patch, and review outputs exist | No structured Phase 1 exports for downstream use |
+| Phase 1 LightDock | Cross-method convergence outputs exist when LightDock was requested | LightDock run incomplete but being cited as supporting evidence |
 
-### E. LightDock secondary validation
+For exact file names and which ones are handoff artifacts, use [output_artifact_map.md](output_artifact_map.md).
 
-Use LightDock as the active independent secondary validation axis for Phase 1.
+## Step Folder Mode Semantics
 
-Current LightDock outputs include:
+`run_production.py` keeps step-folder behavior aligned with canonical phase semantics:
 
-- `lightdock_run_metadata.json`
-- `lightdock_interface_support_table.csv`
-- `lightdock_model_summary.csv`
-- `cross_method_convergence.csv`
+- `--status`: read-only for the step layer. It reports canonical phase status and derived step status without regenerating step folders, `step_index.md`, or `current_run_manifest.json`.
+- `--from N`: reruns canonical phases `N` and above. Earlier step folders remain untouched, while steps `N` through `7` are treated as stale until rebuilt.
+- `--only N[,M]`: rebuilds only the explicitly selected phases and matching step folders. Unselected steps are left unchanged.
+- `--force`: reruns the selected scope even when canonical outputs already exist and refreshes the matching derived step views.
+- Fresh run: there is no dedicated fresh-run flag in `run_production.py`. Use `python scripts/reset_production_outputs.py --execute` to clear the old project output root before a clean production rerun. This removes the step folders and root step files together with the canonical project outputs.
 
-LightDock remains secondary evidence only. LightDock-only residues should not
-be treated as primary patch truth without PyRosetta support.
+Operational cautions:
 
-### F. MD stability gate
+- Step folders are additive derived views, not replacements for canonical files.
+- `step2_ppi_raw/` records PyRosetta raw run paths and metadata, but it does not duplicate large raw directories.
 
-Use MD outputs to classify stability before advancing to stronger downstream
-interpretation.
+## Interpretation Rules During Operation
 
-### G. Integration and reporting
+- Preserve receptor-state separation in every review step.
+- Treat PyRosetta as the primary Phase 1 structural evidence layer.
+- Treat LightDock as independent secondary validation, not as standalone primary truth.
+- Treat AFM as inactive unless the user explicitly asks to re-enable it.
+- Treat `verdict`, `report`, and `validate` as the routine final interpretation layer for the default baseline.
+- Do not promote advanced Phase 4 perturbation outputs as the default final layer unless the task is explicitly Phase 4-oriented.
 
-Run:
+## Common Operator Mistakes
 
-- `python main.py verdict -c config/example-project.yaml`
-- `python main.py report -c config/example-project.yaml`
-- `python main.py validate -c config/example-project.yaml`
+- Running with historical AFM expectations even though AFM is not in the routine baseline.
+- Assuming production stage numbers and scientific Phase 1-4 numbers mean the same thing.
+- Treating pointer stub files in `output/egfr_myo1d_vina/` as the actual payload files.
+- Running more than 16 workers by default because the machine exposes more cores.
+- Collapsing the three receptor states too early in summaries or handoff interpretation.
 
-Main outputs:
+## When To Stop And Escalate
 
-- `cross_method_agreement.csv`
-- `valid_sites.csv`
-- `vina_consensus_sites.csv`
-- `project_report.txt`
-- `combined_residue_evidence.csv`
+Stop and resolve the issue before continuing if any of these are true:
 
-## 6. Interpretation Rules
+- pre-qsub validation fails
+- receptor state registration is incomplete or ambiguous
+- the run depends on AFM inputs that are currently unset
+- LightDock is being cited without PyRosetta support in a context that expects primary evidence
+- the expected result files are missing but downstream interpretation is already starting
+- output files appear to be stale pointers rather than current payloads
 
-- Preserve receptor-state separation
-- do not hard-code historical site names
-- trust newly generated structured outputs over old residue labels
-- treat LightDock as supporting method-independence evidence
-- treat AFM as inactive unless explicitly re-enabled
+## Use These Docs Next
 
-## 7. Common Failure Mode To Avoid
-
-The main documentation failure to avoid is using older AFM-heavy planning notes
-as if they were the active baseline.
-
-Current rule:
-
-- use LightDock for active Phase 1 secondary validation
-- do not plan normal execution around AFM
+- [manual_execution.md](manual_execution.md): exact commands and execution surfaces
+- [architecture.md](architecture.md): data-flow map and handoff structure
+- [data_inventory.md](data_inventory.md): physical input and output locations
+- [output_artifact_map.md](output_artifact_map.md): artifact meaning, priority, and downstream consumption
+- [current_vs_plan_matrix.md](current_vs_plan_matrix.md): current implementation gaps relative to the 4-phase plan

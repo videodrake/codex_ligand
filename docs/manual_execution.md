@@ -1,214 +1,189 @@
-# Execution Manual
-## EGFR-MYO1D Pipeline
+﻿# Execution Manual
 
 Last updated: 2026-03-12
 
-## Status Note
+This document is the command reference for the current repository. Use it when you need the exact shell entry points, PBS submission paths, or the quickest way to run a specific lane. For operator sequencing, stop/go rules, and interpretation boundaries, use [runbook.md](runbook.md). For config field meaning, use [../config/README.md](../config/README.md).
 
-This manual reflects the current active baseline:
+## Baseline Assumptions For Command Use
 
-- Vina-centered ligand workflow
-- PyRosetta-centered Phase 1 PPI workflow
-- LightDock as the active secondary Phase 1 validation axis
-- MD as a downstream stability gate
+These command examples assume the current baseline:
 
-AlphaFold-Multimer is not part of the active routine workflow.
-AFM parser code may still exist in the repository, but it should be treated as
-legacy optional support only.
+- the fixed receptor set is `3GT8_raw`, `3GT8_cl38_48`, and `3GT8_cl85_100`
+- routine ligand work is Vina-centered
+- Phase 1 primary evidence is PyRosetta
+- Phase 1 secondary validation is LightDock
+- AFM is legacy optional and inactive unless explicitly re-enabled
+- production and pre-qsub lanes reuse the shared `pyrosetta` conda environment
+- `max_workers = 16` is the routine safe default
 
-## 0. Environment
+## Environment Entry
 
-Recommended server-side environment:
+Recommended server-side baseline:
 
 ```bash
 cd ~/codex_ligand
 conda activate pyrosetta
 ```
 
-Minimal packages for local validation:
+Important note:
+
+- do not assume a separate test-only conda environment is the current baseline
+
+## Config Entry Point
+
+Use the project config explicitly unless you are intentionally targeting another config file.
 
 ```bash
-pip install pyyaml numpy pandas scipy matplotlib pytest
+config/example-project.yaml
 ```
 
-Optional packages:
+Recommended pattern:
 
 ```bash
-pip install vina rdkit
-pip install MDAnalysis
+python main.py -c config/example-project.yaml <command>
 ```
 
-## 1. Project Config
+Important: `-c/--config` is a top-level `main.py` option and must be placed before the subcommand.
 
-Use `config/example-project.yaml` as the baseline project config.
+## Interactive Entry Surface
 
-Important points:
+Open the interactive entry surface:
 
-- routine safe worker baseline is 16
-- receptor states are fixed to the three active states
-- ligand list is config-driven
-- PyRosetta result directories are tracked under `ppi.pyrosetta_result_dirs`
-- AFM config fields may still appear, but they are not part of the active default workflow
+```bash
+python main.py
+```
 
-## 2. Recommended Reading Before Running
+Use this when you want to inspect the available command surface from the current CLI.
 
-1. `docs/current_pipeline_status.md`
-2. `README.md`
-3. `docs/architecture.md`
-4. `docs/runbook.md`
-5. `config/README.md`
+## Main CLI Commands
 
-For Phase 1:
+These are the primary current commands exposed by `main.py`.
 
-6. `docs/phase1_pyrosetta_execution_note.md`
-7. `docs/phase1_ppi_handoff_note.md`
-8. `docs/phase1_lightdock_validation_note.md`
-9. `docs/phase1_output_chain_note.md`
+| Command | Use when | Primary output area |
+|------|------|------|
+| `python main.py -c config/example-project.yaml vina` | Run docking for the configured receptors and ligands | project raw docking output root |
+| `python main.py -c config/example-project.yaml postprocess` | Parse poses, summarize pockets, and compare receptor states | `output/egfr_myo1d_vina/vina/` |
+| `python main.py -c config/example-project.yaml pyrosetta` | Run the PyRosetta Phase 1 branch | PyRosetta result directories plus current PPI exports |
+| `python main.py -c config/example-project.yaml ppi-postprocess` | Rebuild or extract current PPI postprocess outputs | PPI export areas referenced by the routine baseline |
+| `python main.py -c config/example-project.yaml verdict` | Generate the routine site-judgment layer | `output/egfr_myo1d_vina/results/valid_sites.csv` |
+| `python main.py -c config/example-project.yaml report` | Generate the routine text and combined evidence report | `output/egfr_myo1d_vina/results/project_report.txt` |
+| `python main.py -c config/example-project.yaml validate` | Run validation on the current output state | validation outputs and checks |
+| `python main.py -c config/example-project.yaml full` | Run the default integrated CLI path | current routine baseline output tree |
 
-## 3. Pre-qsub Validation
+Important interpretation:
 
-Before heavy server submission:
+- `full` is still aligned to the routine Vina-centered baseline
+- it should not be read as proof that the scientific Phase 1 -> 2 -> 3 -> 4 plan is the single default end-to-end path
+
+## Routine Command Sequences
+
+### Minimal Routine Baseline Sequence
+
+Use this when you want the standard current ligand-facing evidence path.
+
+```bash
+python main.py -c config/example-project.yaml vina
+python main.py -c config/example-project.yaml postprocess
+python main.py -c config/example-project.yaml verdict
+python main.py -c config/example-project.yaml report
+python main.py -c config/example-project.yaml validate
+```
+
+Primary review files after this lane:
+
+- `output/egfr_myo1d_vina/results/valid_sites.csv`
+- `output/egfr_myo1d_vina/results/cross_method_agreement.csv`
+- `output/egfr_myo1d_vina/results/project_report.txt`
+
+### Phase 1-Focused Sequence
+
+Use this when receptor-side patch evidence is the main target.
+
+```bash
+python main.py -c config/example-project.yaml pyrosetta
+python main.py -c config/example-project.yaml ppi-postprocess
+```
+
+Primary review files after this lane:
+
+- `output/phase1_ppi/phase1_downstream_patch_reference.csv`
+- `output/phase1_ppi/phase1_interface_report.md`
+
+### Fast Single-Command Path
+
+Use this when the default integrated CLI path is appropriate.
+
+```bash
+python main.py -c config/example-project.yaml full
+```
+
+Review the same routine baseline result files listed above after completion.
+
+## PBS Submission Paths
+
+These are the current server-oriented submission entry points.
+
+### Precheck Lane
 
 ```bash
 qsub config/run_pre_qsub_checks.pbs
 ```
 
-Success marker:
+Expected checkpoint:
 
 ```text
 output/pre_qsub_status/last_pass.json
 ```
 
-Safest chained submission:
+### Production Lane
+
+```bash
+qsub config/run_production.pbs
+```
+
+### Safe Chained Submission
+
+Use this when you want production to wait for precheck success.
 
 ```bash
 PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
 qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
 ```
 
-## 4. Main Command Paths
+### PyRosetta PBS Paths
 
-### Interactive
-
-```bash
-python main.py
-```
-
-### Non-interactive
-
-```bash
-python main.py vina -c config/example-project.yaml
-python main.py postprocess -c config/example-project.yaml
-python main.py verdict -c config/example-project.yaml
-python main.py report -c config/example-project.yaml
-python main.py validate -c config/example-project.yaml
-python main.py full -c config/example-project.yaml
-```
-
-### PyRosetta / PBS
+Use these when the current environment and cluster setup expects the dedicated PyRosetta submission scripts.
 
 ```bash
 qsub config/run_ppi_test.pbs
 qsub config/run_ppi_prod.pbs
 ```
 
-## 5. Current Execution Order
+## Output Orientation By Command
 
-### Step 1. Precheck
+Use this table when you need to jump from a command to the first output location to inspect.
 
-Run the lightweight validation lane.
+| Command family | Look here first |
+|------|------|
+| `vina`, `postprocess` | `output/egfr_myo1d_vina/vina/` |
+| `verdict`, `report`, `validate`, `full` | `output/egfr_myo1d_vina/results/` |
+| `pyrosetta`, `ppi-postprocess` | `output/phase1_ppi/` and current registered PPI result directories |
+| pre-qsub PBS | `output/pre_qsub_status/` |
+| advanced scientific phases | `output/phase2_pockets/`, `output/phase3_docking/`, `output/phase4_perturbation/` only when those lanes are explicitly in scope |
 
-### Step 2. Vina docking
+## Common Command Mistakes
 
-Generate raw docking poses for the three receptor states and configured ligands.
+- forgetting `-c config/example-project.yaml` and accidentally relying on an unintended config path
+- assuming `full` means the entire scientific 4-phase plan now runs by default
+- running AFM-dependent work even though AFM is not active in the baseline config
+- treating machine core count as permission to exceed the routine safe worker bound of 16
+- reviewing pointer stub files in `output/egfr_myo1d_vina/` instead of the actual payload directories
 
-### Step 3. Vina postprocess
+## Use These Docs Next
 
-Run:
+- [runbook.md](runbook.md): run order, checkpoints, and escalation rules
+- [../config/README.md](../config/README.md): config semantics and field meaning
+- [output_artifact_map.md](output_artifact_map.md): what the major artifacts mean
+- [data_inventory.md](data_inventory.md): where the inputs and outputs physically live
 
-- parse
-- contacts
-- cluster
-- summarize
-- compare
-- bootstrap (optional)
 
-Main outputs:
-
-- `vina_pose_table.csv`
-- `vina_pocket_table.csv`
-- `vina_drug_pocket_map.csv`
-- `vina_pocket_comparison.csv`
-- `vina_pocket_bootstrap.csv` (optional)
-
-### Step 4. PyRosetta Phase 1
-
-Run the PyRosetta PPI workflow and preserve receptor/partner metadata.
-
-Main outputs:
-
-- `pyrosetta_run_metadata.json`
-- `pyrosetta_decoy_scores.csv`
-- `phase1_input_validation_report.json`
-- `phase1_input_validation_summary.md`
-- `ppi_pyrosetta_residues.csv`
-- `ppi_pyrosetta_summary.csv`
-- `ppi_cluster_summary.csv`
-- `ppi_hotspot_residues.csv`
-- `ppi_interface_patch_table.csv`
-
-### Step 5. LightDock secondary validation
-
-Use LightDock for independent secondary validation of Phase 1 patch evidence.
-
-Main outputs:
-
-- `lightdock_run_metadata.json`
-- `lightdock_interface_support_table.csv`
-- `lightdock_model_summary.csv`
-- `cross_method_convergence.csv`
-
-Important rule:
-
-- LightDock remains secondary evidence only
-- LightDock-only residues should not be promoted as primary Phase 2 patch truth by themselves
-
-### Step 6. MD stability gate
-
-Use MD outputs to classify state stability before stronger downstream claims.
-
-### Step 7. Integration
-
-Run:
-
-```bash
-python main.py verdict -c config/example-project.yaml
-python main.py report -c config/example-project.yaml
-python main.py validate -c config/example-project.yaml
-```
-
-Main outputs:
-
-- `cross_method_agreement.csv`
-- `valid_sites.csv`
-- `vina_consensus_sites.csv`
-- `project_report.txt`
-- `combined_residue_evidence.csv`
-
-## 6. Interpretation Rules
-
-- preserve receptor-state separation
-- do not hard-code old site labels
-- trust current structured outputs over historical residue labels
-- treat LightDock as the active secondary validation path
-- treat AFM as inactive unless explicitly re-enabled
-
-## 7. Common Mistake To Avoid
-
-Do not use older AFM-heavy documents as the current execution baseline.
-
-If there is any conflict:
-
-1. trust `docs/current_pipeline_status.md`
-2. trust the current code
-3. trust the current LightDock notes over older AFM-oriented prose

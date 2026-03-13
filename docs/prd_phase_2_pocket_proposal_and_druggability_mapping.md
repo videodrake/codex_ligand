@@ -23,9 +23,15 @@ The goal is to enumerate candidate pockets first, then determine whether they ar
 - or acting as possible allosteric modulators.
 
 ## Inputs
-- Phase 1 receptor-side interface patch outputs
+- Phase 1 receptor-side interface patch outputs rooted in PyRosetta primary mapping, with LightDock secondary validation support and AFM only as optional legacy auxiliary context if present
 - Three receptor-state structures
 - Pocket proposal tools and/or externally supplied pocket predictions
+
+## Phase 1 Handoff Contract
+- The structured Phase 1 handoff into Phase 2 should preserve `construct_type` and `orientation_validation_status` in the machine-readable patch reference.
+- Current operational default: Phase 2 remains in compatibility mode while legacy and skipped-filter runs still exist.
+- `construct_type` should be validated and carried through normalization because downstream pocket interpretation depends on the receptor construct context.
+- `orientation_validation_status` should be preserved as-is. Calibrated classes (`pass`, `fail`, `ambiguous`) are preferred, but `not_available` is still allowed for legacy or skipped-filter runs and must surface as a compatibility warning rather than a silent normalization.
 
 ## Core Requirements
 
@@ -71,6 +77,8 @@ As the researcher, I want to enumerate candidate ligandable pockets before runni
 - [ ] Each candidate pocket is classified relative to the Phase 1 PPI patch.
 - [ ] Candidate pockets are stored in a machine-readable file.
 - [ ] Pocket catalogs remain receptor-specific and are not mixed globally.
+- [ ] Phase 1 patch handoff validation preserves `construct_type` and `orientation_validation_status`.
+- [ ] Compatibility-mode ingestion reports when `orientation_validation_status` is `not_available` instead of treating it as an automatic failure.
 
 ## Primary Outputs
 - `candidate_pockets.csv`

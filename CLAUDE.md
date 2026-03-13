@@ -22,9 +22,9 @@ common.py                  # 유틸리티: PyRosetta 초기화, Pose<->String �
 config.ini                 # 기본 설정 (1K 모델, 테스트용) - v2.0 필터 포함
 config_100k.ini            # 프로덕션 설정 (100K 모델) - v2.0 필터 포함
 config_20k.ini             # 중간 설정 (20K 모델)
-run_v1.pbs                 # PBS 배치 (v1.0, input_PDB/ 순차처리)
-run_v2_test.pbs            # PBS 배치 (v2.0 테스트, 단일 PDB)
-check_filter_v2_compat.py  # v2.0 메트릭 호환성 점검 (서버 배포 전)
+config/run_ppi_prod.pbs    # PBS 배치 (현재 프로덕션 PPI 실행 진입점)
+config/run_ppi_test.pbs    # PBS 배치 (현재 테스트 PPI 실행 진입점)
+config/run_pre_qsub_checks.pbs  # 사전 검증 PBS 진입점
 check_improvements_compat.py # v1.0 개선사항 호환성 점검
 input_PDB/                 # 입력 PDB 파일 (EGFR_TH1, EGFR_beta, C-lobe_TH1, C-lobe_beta)
 ```
@@ -67,22 +67,22 @@ input_PDB/                 # 입력 PDB 파일 (EGFR_TH1, EGFR_beta, C-lobe_TH1,
 ```bash
 # 직접 실행
 conda activate pyrosetta
-python pipeline_manager.py config.ini input_PDB/EGFR_TH1.pdb
+python main.py -c config/example-project.yaml pyrosetta
 
 # PBS 배치 - v1.0 (input_PDB/ 전체 순차 처리)
-qsub run_v1.pbs
-qsub -v CONFIG_FILE=config_100k.ini run_v1.pbs
+qsub config/run_ppi_prod.pbs
+qsub config/run_pre_qsub_checks.pbs
 
 # PBS 배치 - v2.0 테스트 (단일 PDB, 기본: C-lobe_beta)
-qsub run_v2_test.pbs
-qsub -v INPUT_PDB=input_PDB/EGFR_TH1.pdb run_v2_test.pbs
-qsub -v CONFIG_FILE=config_100k.ini,INPUT_PDB=input_PDB/C-lobe_TH1.pdb run_v2_test.pbs
+qsub config/run_ppi_test.pbs
+python main.py -c config/example-project.yaml ppi-postprocess
+PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
 
 # PBS 배치 - v2.0 전체 PDB 처리
-qsub -v INPUT_PDB=ALL run_v2_test.pbs
+qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
 
 # 호환성 점검 (서버 배포 전)
-python check_filter_v2_compat.py
+python main.py -c config/example-project.yaml validate
 ```
 
 ## 출력 디렉토리 구조

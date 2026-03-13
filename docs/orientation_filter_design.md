@@ -1,4 +1,4 @@
-# Orientation-Aware Filtering: Algorithm Design Document
+﻿# Orientation-Aware Filtering: Algorithm Design Document
 
 ## Version: 1.0
 ## Date: 2026-03
@@ -8,23 +8,23 @@
 
 ## 1. Problem Statement
 
-The MYO1D beta-meander is a flat, thin β-sheet ribbon (5 consecutive β-strands, sheets 8–12). When used as a docking partner in global blind docking against the EGFR kinase domain, this geometry creates a systematic vulnerability: the structure can land on the receptor in two fundamentally different orientations that are energetically distinguishable but not always separable by simple residue contact counting.
+The MYO1D beta-meander is a flat, thin 棺-sheet ribbon (5 consecutive 棺-strands, sheets 8??2). When used as a docking partner in global blind docking against the EGFR kinase domain, this geometry creates a systematic vulnerability: the structure can land on the receptor in two fundamentally different orientations that are energetically distinguishable but not always separable by simple residue contact counting.
 
 **Correct orientation:** The active face of sheets 8 and 9 (the experimentally validated binding surface) packs against the receptor. The functional side chains of the validated residues make direct contacts with the receptor surface.
 
 **Flipped orientation:** The back face of the beta-meander faces the receptor. Sheet 8/9 residues may still register as "in contact" because backbone atoms or edge-on contacts can form non-specific interactions, but the functional side chains point into solvent rather than toward the receptor.
 
-The pilot docking campaign (C-lobe fragment, 1M decoys) used a contact-count filter (sheet 8+9 residues ≥ 3 in contact) but did not include an orientation check. This means some accepted poses may have been face-flipped artifacts where the correct residues were in proximity but in the wrong geometric configuration.
+The pilot docking campaign (C-lobe fragment, 1M decoys) used a contact-count filter (sheet 8+9 residues ??3 in contact) but did not include an orientation check. This means some accepted poses may have been face-flipped artifacts where the correct residues were in proximity but in the wrong geometric configuration.
 
 ---
 
 ## 2. Why Contact Counting Alone Fails
 
-In a β-sheet, side chains alternate above and below the sheet plane. For a β-meander with 5 consecutive strands, this means:
+In a 棺-sheet, side chains alternate above and below the sheet plane. For a 棺-meander with 5 consecutive strands, this means:
 - One face has the side chains of even-numbered positions (relative to strand register)
 - The other face has the side chains of odd-numbered positions
 
-When the sheet is thin (only 5 strands wide, ~15–20 Å across), the distance between the two faces is only about 5–7 Å. A contact cutoff of 8–10 Å (standard in interface analysis) can capture residues from both faces simultaneously. Therefore, a residue can appear "in contact" whether its side chain faces toward or away from the receptor.
+When the sheet is thin (only 5 strands wide, ~15??0 횇 across), the distance between the two faces is only about 5?? 횇. A contact cutoff of 8??0 횇 (standard in interface analysis) can capture residues from both faces simultaneously. Therefore, a residue can appear "in contact" whether its side chain faces toward or away from the receptor.
 
 Additionally, backbone hydrogen bonds can form from either face, creating non-specific but energetically favorable contacts that inflate interface metrics without reflecting biologically meaningful binding.
 
@@ -36,20 +36,20 @@ Additionally, backbone hydrogen bonds can form from either face, creating non-sp
 
 The filter computes two vectors and their dot product:
 
-1. **Active-face normal vector:** The outward-pointing normal of the sheet 8/9 plane, oriented toward the active face using a Cα→Cβ probe.
+1. **Active-face normal vector:** The outward-pointing normal of the sheet 8/9 plane, oriented toward the active face using a C慣?묬棺 probe.
 
 2. **Receptor-direction vector:** A vector from the sheet 8/9 centroid toward the receptor interface centroid (receptor residues near the active face).
 
 The dot product of these two vectors gives the orientation score:
-- Positive → active face points toward receptor (PASS)
-- Negative → active face points away from receptor (FAIL)
-- Near zero → edge-on contact (AMBIGUOUS)
+- Positive ??active face points toward receptor (PASS)
+- Negative ??active face points away from receptor (FAIL)
+- Near zero ??edge-on contact (AMBIGUOUS)
 
 ### 3.2 Step-by-step
 
-**Step 1: Collect active-face Cα coordinates**
+**Step 1: Collect active-face C慣 coordinates**
 
-Extract Cα coordinates for all sheet 8 and sheet 9 residues:
+Extract C慣 coordinates for all sheet 8 and sheet 9 residues:
 - Sheet 8: VAL961, VAL962, ASN963, VAL964
 - Sheet 9: VAL968, GLN969, CYS970, SER971, LEU972
 
@@ -57,7 +57,7 @@ These 9 residues define the active face of the beta-meander.
 
 **Step 2: Compute sheet-plane normal via PCA**
 
-Apply principal component analysis (PCA) to the 9 Cα positions. The two largest principal components span the sheet plane; the smallest principal component is the plane normal.
+Apply principal component analysis (PCA) to the 9 C慣 positions. The two largest principal components span the sheet plane; the smallest principal component is the plane normal.
 
 PCA is preferred over a simple cross product of two chosen vectors because:
 - It uses all available data points, not just two arbitrarily selected pairs
@@ -67,16 +67,16 @@ PCA is preferred over a simple cross product of two chosen vectors because:
 **Step 3: Orient the normal toward the active face**
 
 The PCA normal has an ambiguous sign (pointing toward one face or the other). To resolve this:
-- Compute the Cα→Cβ vector for **multiple** active-face residues (default: VAL962, VAL964, SER971 — spanning both sheets 8 and 9)
-- For each probe, check whether the dot product of (normal) · (Cα→Cβ) is positive or negative
+- Compute the C慣?묬棺 vector for **multiple** active-face residues (default: VAL962, VAL964, SER971 ??spanning both sheets 8 and 9)
+- For each probe, check whether the dot product of (normal) 쨌 (C慣?묬棺) is positive or negative
 - Take a majority vote: if more probes indicate flipping is needed, flip the normal
 - This multi-probe consensus is more robust than a single-residue probe because it averages out rotamer-dependent noise and is not vulnerable to any single residue's local geometry being atypical
-- Falls back to single-probe (VAL962) if only one probe residue has valid Cα/Cβ coordinates
+- Falls back to single-probe (VAL962) if only one probe residue has valid C慣/C棺 coordinates
 
 **Step 4: Compute receptor-direction vector**
 
 Instead of using the entire receptor centroid (which may be far from the contact area), compute a local receptor centroid:
-- Find all receptor Cα atoms within 10 Å of any active-face Cα
+- Find all receptor C慣 atoms within 10 횇 of any active-face C慣
 - Compute the centroid of these receptor contact residues
 - The receptor-direction vector goes from the sheet 8/9 centroid toward this receptor contact centroid
 
@@ -87,14 +87,14 @@ This localized approach ensures the orientation test reflects the actual contact
 ```
 orientation_score = dot(active_face_normal, receptor_direction)
 
-if |score| < 0.15:     → ambiguous (edge-on contact)
-elif score > 0:         → pass (active face toward receptor)
-else:                   → fail (active face away from receptor)
+if |score| < 0.15:     ??ambiguous (edge-on contact)
+elif score > 0:         ??pass (active face toward receptor)
+else:                   ??fail (active face away from receptor)
 ```
 
 ### 3.3 Why this approach is scientifically robust
 
-1. **Grounded in β-sheet geometry.** The alternating side-chain pattern of β-sheets is a fundamental structural property. The Cα→Cβ vector reliably indicates which face a side chain belongs to.
+1. **Grounded in 棺-sheet geometry.** The alternating side-chain pattern of 棺-sheets is a fundamental structural property. The C慣?묬棺 vector reliably indicates which face a side chain belongs to.
 
 2. **PCA-based plane fitting.** Avoids arbitrary vector choices. Works even if the sheet is slightly twisted or curved (common in real beta-meanders).
 
@@ -111,11 +111,11 @@ else:                   → fail (active face away from receptor)
 ### 4.1 Experimentally validated functional sheets
 
 From Ko et al.:
-- **8th β-sheet:** Alanine substitution abolished decoy function → functionally essential
-- **9th β-sheet:** Alanine substitution abolished decoy function → functionally essential
-- **10th β-sheet:** Alanine substitution had roughly the same decoy function as wild-type → not essential for binding
-- **11th β-sheet:** Same as 10th → not essential for binding
-- **12th β-sheet:** Alanine substitution abolished decoy function → functionally essential
+- **8th 棺-sheet:** Alanine substitution abolished decoy function ??functionally essential
+- **9th 棺-sheet:** Alanine substitution abolished decoy function ??functionally essential
+- **10th 棺-sheet:** Alanine substitution had roughly the same decoy function as wild-type ??not essential for binding
+- **11th 棺-sheet:** Same as 10th ??not essential for binding
+- **12th 棺-sheet:** Alanine substitution abolished decoy function ??functionally essential
 
 ### 4.2 Structural interpretation for filtering
 
@@ -137,11 +137,11 @@ All residue numbers are MYO1D numbering (no offset):
 |-------|----------|------|
 | 8 | 961, 962, 963, 964 | Active face (primary) |
 | 9 | 968, 969, 970, 971, 972 | Active face (primary) |
-| 10 | ~977–980 | Neutral (not essential per experiment) |
-| 11 | ~985–988 | Neutral (not essential per experiment) |
-| 12 | ~993–997 | Structural support (essential but role TBD) |
+| 10 | ~977??80 | Neutral (not essential per experiment) |
+| 11 | ~985??88 | Neutral (not essential per experiment) |
+| 12 | ~993??97 | Structural support (essential but role TBD) |
 
-Sheet 10–12 boundaries are approximate and should be refined with the actual structure.
+Sheet 10??2 boundaries are approximate and should be refined with the actual structure.
 
 ---
 
@@ -160,9 +160,9 @@ Expected outcomes:
 
 ### 5.2 Synthetic face-flip test
 
-Generate a face-flipped version of a known PASS structure by rotating the beta-meander 180° around the strand axis. Apply the filter:
-- Original → should PASS
-- Flipped → should FAIL
+Generate a face-flipped version of a known PASS structure by rotating the beta-meander 180째 around the strand axis. Apply the filter:
+- Original ??should PASS
+- Flipped ??should FAIL
 
 This provides a positive/negative control pair.
 
@@ -188,13 +188,13 @@ After running new full-kinase-domain docking:
 
 ```
 Task 1.1: PyRosetta docking
-    ↓
+    ??
 Task 1.2: Interface residue extraction (all models)
-    ↓
-★ Task 1.2A: Orientation filter (this algorithm) ← HERE
-    ↓
+    ??
+??Task 1.2A: Orientation filter (this algorithm) ??HERE
+    ??
 Task 1.3: Cluster consensus (orientation-validated models only)
-    ↓
+    ??
 Task 1.5: Multi-state comparison
 ```
 
@@ -207,8 +207,8 @@ Task 1.5: Multi-state comparison
 | filename | str | PDB filename |
 | orientation_score | float | Dot product (-1 to +1) |
 | orientation_class | str | pass / fail / ambiguous / error codes |
-| n_active_face_ca | int | Number of active-face Cα found |
-| n_back_face_ca | int | Number of back-face Cα found |
+| n_active_face_ca | int | Number of active-face C慣 found |
+| n_back_face_ca | int | Number of back-face C慣 found |
 | sheet_centroid | str | [x, y, z] of sheet 8/9 centroid |
 | normal_vector | str | [x, y, z] of active-face normal |
 | receptor_direction | str | [x, y, z] toward receptor contact centroid |
@@ -225,9 +225,9 @@ Task 1.5: Multi-state comparison
 
 ## 7. Limitations and Caveats
 
-1. **Multi-probe consensus residue availability.** The multi-probe approach (VAL962, VAL964, SER971) requires at least 2 of 3 residues to have valid Cα/Cβ coordinates. If the docked structure has missing atoms in these residues, the consensus degrades to single-probe or fails. Mitigation: these residues are core β-sheet residues unlikely to have missing atoms in properly prepared structures.
+1. **Multi-probe consensus residue availability.** The multi-probe approach (VAL962, VAL964, SER971) requires at least 2 of 3 residues to have valid C慣/C棺 coordinates. If the docked structure has missing atoms in these residues, the consensus degrades to single-probe or fails. Mitigation: these residues are core 棺-sheet residues unlikely to have missing atoms in properly prepared structures.
 
-2. **Rigid-body assumption.** The filter assumes the beta-meander maintains its β-sheet geometry during docking. If the sheet is distorted (e.g., by Rosetta flexible backbone moves), the PCA-based plane fitting may be less accurate. Mitigation: for standard RosettaDock rigid-body docking, this assumption holds well.
+2. **Rigid-body assumption.** The filter assumes the beta-meander maintains its 棺-sheet geometry during docking. If the sheet is distorted (e.g., by Rosetta flexible backbone moves), the PCA-based plane fitting may be less accurate. Mitigation: for standard RosettaDock rigid-body docking, this assumption holds well.
 
 3. **Threshold sensitivity.** The ambiguous band (0.15) is a starting value. It should be calibrated using the retroactive pilot validation and the synthetic flip test. The threshold may need adjustment after examining the actual score distribution.
 
@@ -235,16 +235,15 @@ Task 1.5: Multi-state comparison
 
 ---
 
-## 8. Korean Summary (간단 요약)
+## 8. Plain-Language Summary
 
-이 문서는 beta-meander의 face-flip 감지를 위한 orientation filter 알고리즘을 정의한다.
+This design adds an orientation filter so face-flipped beta-meander poses do not pass contact-only gates.
 
-핵심 원리:
-- β-sheet의 곁사슬은 sheet 평면 위아래로 교대 배치됨
-- Sheet 8/9의 active face가 receptor를 향하는지 반대로 뒤집혔는지를 판별
-- PCA로 sheet 평면 법선벡터를 구하고, Cα→Cβ probe로 active face 방향을 결정
-- 법선벡터와 receptor 방향 벡터의 dot product가 양수면 PASS, 음수면 FAIL
-- 0 근처는 AMBIGUOUS로 분류하여 수동 검토
+Core logic:
+- Fit an active-face normal from sheet 8/9 CA atoms using PCA.
+- Orient that normal with CA->CB probes from active-face residues.
+- Compare it with a local receptor-direction vector built from nearby receptor CA atoms.
+- Classify from the dot product as pass, fail, or ambiguous.
 
-기존 contact count 필터만으로는 face-flip을 감지할 수 없다. 이 필터는 contact count와 독립적이며 보완적이다.
+This is complementary to contact counting: contact counts capture proximity, while orientation scoring captures geometric correctness.
 

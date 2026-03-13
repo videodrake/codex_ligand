@@ -1,119 +1,129 @@
-# EGFR-MYO1D Pipeline
+﻿# EGFR-MYO1D Pipeline (`codex_ligand`)
 
-This repository is a research pipeline for EGFR-MYO1D state-comparison work.
-It combines a Vina-centered ligand workflow with a PyRosetta-centered Phase 1
-PPI workflow across three fixed EGFR receptor states:
+This workspace contains the active EGFR-MYO1D state-comparison pipeline. The routine baseline is Vina-centered ligand analysis with Phase 1 PPI evidence from PyRosetta and secondary validation support from LightDock.
 
-- `3GT8_raw`
-- `3GT8_cl38_48`
-- `3GT8_cl85_100`
+## What This README Covers
 
-## Current Baseline
+- what this workspace is
+- where to start reading
+- how to run main commands
+- where outputs are written
 
-The current active baseline is:
+For deep scientific or architecture detail, use `docs/`.
 
-- Vina-centered ligand evidence for pocket and pose analysis
-- PyRosetta as the primary Phase 1 PPI engine
-- LightDock as the active secondary Phase 1 validation axis
-- MD as a downstream stability gate
+## Quick Onboarding
 
-Important clarification:
+Read in this order:
 
-- AlphaFold-Multimer is not part of the active routine workflow
-- `egfr_pipeline/ppi/afm_extract.py` still exists as a legacy optional parser
-- do not plan new work around AFM unless the user explicitly asks to re-enable it
+1. [docs/onboarding/README.md](docs/onboarding/README.md)
+2. [docs/AI_START_HERE.md](docs/AI_START_HERE.md)
+3. [docs/current_pipeline_status.md](docs/current_pipeline_status.md)
+4. [docs/first_time_environment_setup.md](docs/first_time_environment_setup.md)
+5. [docs/runbook.md](docs/runbook.md)
+6. [docs/manual_execution.md](docs/manual_execution.md)
+7. [config/README.md](config/README.md)
+8. [output/README.md](output/README.md)
 
-## Read First
+## Current Output Reading Order
 
-Before using or extending the project, read these files in order:
+For production runs driven by `run_production.py` or `qsub config/run_production.pbs`, start interpretation at `output/{project}/step_index.md`.
 
-1. [docs/current_pipeline_status.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/current_pipeline_status.md)
-2. [docs/project_context.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/project_context.md)
-3. [docs/architecture.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/architecture.md)
-4. [docs/runbook.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/runbook.md)
-5. [config/README.md](/Users/admin/Desktop/hwang/codex/codex_ligand/config/README.md)
+Recommended reading order:
 
-For Phase 1 PPI details, then read:
+1. `output/{project}/step_index.md`
+2. `output/{project}/step6_report/project_report.txt`
+3. `output/{project}/step5_verdict/valid_sites.csv`
+4. `output/{project}/step4_vina_postprocess/vina_pocket_table.csv`
+5. `output/{project}/step3_ppi_postprocess/ppi_pyrosetta_residues.csv`
 
-6. [docs/phase1_pyrosetta_execution_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_pyrosetta_execution_note.md)
-7. [docs/phase1_ppi_handoff_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_ppi_handoff_note.md)
-8. [docs/phase1_lightdock_validation_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_lightdock_validation_note.md)
-9. [docs/phase1_output_chain_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_output_chain_note.md)
+Canonical runtime outputs remain under the existing project root. The `step1_vina_raw/` through `step7_validate/` folders are derived interpretation views that can be regenerated from canonical outputs; they do not replace the root artifacts.
 
-## Main Entry Points
+## Repository Layout
 
-- `python main.py`
-- `python main.py vina -c config/example-project.yaml`
-- `python main.py postprocess -c config/example-project.yaml`
-- `python main.py verdict -c config/example-project.yaml`
-- `python main.py report -c config/example-project.yaml`
-- `python main.py validate -c config/example-project.yaml`
-- `python main.py pyrosetta`
-- `qsub config/run_pre_qsub_checks.pbs`
-- `qsub config/run_production.pbs`
+- `main.py`: Unified CLI entry point.
+- `egfr_pipeline/`: Core implementation package.
+- `config/`: YAML, INI, and PBS wrappers.
+- `docs/`: Onboarding, runbooks, architecture, and phase plans.
+- `input/`: Receptor and ligand inputs.
+- `output/`: Baseline and phase-separated outputs.
+- `tests/`: Validation and test suite.
+- `scripts/`: Utility scripts used by workflows.
 
-## Repository Structure
+## Command Quickstart
 
-Key folders:
+Run from `codex_ligand/` after activating the expected environment.
 
-- `egfr_pipeline/vina/`: docking, pose parsing, contacts, pocket clustering, summaries, comparison
-- `egfr_pipeline/pyrosetta_docking/`: PyRosetta Phase 1 docking and scoring
-- `egfr_pipeline/phase1/`: Phase 1 consensus, cross-state comparison, LightDock validation, review report
-- `egfr_pipeline/ppi/`: PPI preparation and residue extraction
-- `egfr_pipeline/md/`: MD analysis helpers
-- `config/`: YAML configs, INI configs, PBS submission files
-- `input/`: receptor, ligand, and PPI inputs
-- `output/`: generated outputs
-- `tests/`: test suite including the pre-qsub lane
+Prerequisites:
 
-## Inputs
+- `conda activate pyrosetta`
+- main config: `config/example-project.yaml`
+- run precheck before production or heavy submissions
 
-Current active inputs include:
+```bash
+python main.py --help
+python main.py -c config/example-project.yaml validate --help
+qsub config/run_pre_qsub_checks.pbs
+```
 
-- receptors: `input/receptors/*.pdb`
-- ligands: `input/ligands/*.sdf` and matching PDBQT files
-- PPI inputs: `input/PPI/`
-- project config: `config/example-project.yaml`
+Routine baseline lane (execution order):
 
-## Core Outputs
+```bash
+python main.py -c config/example-project.yaml vina
+python main.py -c config/example-project.yaml postprocess
+python main.py -c config/example-project.yaml verdict
+python main.py -c config/example-project.yaml report
+python main.py -c config/example-project.yaml validate
+```
 
-Vina/postprocess outputs:
+Additional commands:
 
-- `vina_pose_table.csv`
-- `vina_pocket_table.csv`
-- `vina_drug_pocket_map.csv`
-- `vina_pocket_comparison.csv`
-- `vina_pocket_bootstrap.csv` (optional)
+```bash
+python main.py -c config/example-project.yaml pyrosetta
+python main.py -c config/example-project.yaml md
+python main.py -c config/example-project.yaml ppi-postprocess
+python main.py -c config/example-project.yaml full
+```
 
-Phase 1 / PPI outputs:
+`md` opens the MD analysis submenu; the downstream analysis tools still take their own CLI arguments after that entry point.
 
-- `ppi_pyrosetta_residues.csv`
-- `ppi_pyrosetta_summary.csv`
-- `ppi_cluster_summary.csv`
-- `ppi_hotspot_residues.csv`
-- `ppi_interface_patch_table.csv`
-- `ppi_patch_cross_state_comparison.csv`
-- `ppi_patch_state_robustness.csv`
-- `cross_method_convergence.csv`
-- `phase1_downstream_patch_reference.csv`
+Scheduler wrappers:
 
-Final integration outputs:
+```bash
+qsub config/run_pre_qsub_checks.pbs
+qsub config/run_production.pbs
+```
 
-- `cross_method_agreement.csv`
-- `valid_sites.csv`
-- `vina_consensus_sites.csv`
-- `project_report.txt`
-- `combined_residue_evidence.csv`
+Expected output checkpoints after the routine baseline lane:
 
-## Operating Notes
+- `output/egfr_myo1d_vina/step_index.md`
+- `output/egfr_myo1d_vina/vina_pose_table.csv`
+- `output/egfr_myo1d_vina/vina_pocket_table.csv`
+- `output/egfr_myo1d_vina/valid_sites.csv`
+- `output/egfr_myo1d_vina/project_report.txt`
 
-- The main server has 32 CPU cores, but the routine operating baseline is 16 workers.
-- Keep receptor states separated in all outputs.
-- Do not hard-code legacy site names or old residue labels into logic.
-- Treat old AFM-centric docs as historical unless they explicitly say otherwise.
+## Output Entry Points
 
-## Historical Note
+- `output/{project}/step_index.md`: First human-readable entry point for completed production runs.
+- [output/README.md](output/README.md): Output root index.
+- [output/phase1_ppi/README.md](output/phase1_ppi/README.md)
+- [output/phase2_pockets/README.md](output/phase2_pockets/README.md)
+- [output/phase3_docking/README.md](output/phase3_docking/README.md)
+- [output/phase4_perturbation/README.md](output/phase4_perturbation/README.md)
 
-Some older documents still contain AFM-centered or AFM-available language.
-Those documents are retained for historical context, but the current active
-Phase 1 secondary validation path is LightDock.
+Routine baseline project output root:
+
+- `output/egfr_myo1d_vina/`
+
+## Documentation Indexes
+
+- [docs/README.md](docs/README.md): Full docs index.
+- [docs/onboarding/README.md](docs/onboarding/README.md): New-contributor package.
+- [config/README.md](config/README.md): Config semantics and wrapper roles.
+
+## Current Baseline Guardrails
+
+- Treat AFM as legacy optional unless explicitly re-enabled.
+- Keep the three receptor states separated in interpretation and reporting.
+- Treat `max_workers = 16` as the safe routine operating bound.
+- Prefer active code/config over older prose when conflicts appear.
+

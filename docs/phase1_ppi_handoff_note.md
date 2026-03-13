@@ -1,13 +1,20 @@
 # Phase 1 PPI Handoff Note
 
-This note captures the current repository baseline for the PyRosetta-to-downstream residue handoff.
+This note captures the current repository baseline for the legacy
+PyRosetta-postprocess handoff tables under `output/egfr_myo1d_vina/ppi/`.
 
-## Current CSVs
+## Scope and relationship to sibling docs
+
+- This file documents legacy handoff tables: `ppi_pyrosetta_residues.csv` and `ppi_pyrosetta_summary.csv`.
+- For the structured Phase 1 branch under `output/phase1_ppi/`, read `docs/phase1_output_chain_note.md` first.
+- For phase-wide artifact meaning and priority, read `docs/output_artifact_map.md`.
+
+## Legacy postprocess CSVs (routine baseline)
 
 - `ppi_pyrosetta_residues.csv`
 - `ppi_pyrosetta_summary.csv`
 
-## Current residue-table baseline
+## Legacy residue-table baseline
 
 `ppi_pyrosetta_residues.csv` currently includes:
 
@@ -28,7 +35,7 @@ This note captures the current repository baseline for the PyRosetta-to-downstre
 - `mean_interface_delta_e`
 - `best_interface_delta_e`
 
-## Current summary-table baseline
+## Legacy summary-table baseline
 
 `ppi_pyrosetta_summary.csv` currently includes:
 
@@ -47,8 +54,13 @@ This note captures the current repository baseline for the PyRosetta-to-downstre
 - `mean_dg`
 - `best_dsasa`
 
-## Important note
+## Orientation field contract across both paths
 
-`orientation_validation_status` is present as a handoff field, but in the current postprocess path it is usually populated as `not_available`.
+`orientation_validation_status` is present in both legacy and structured Phase 1 contracts so downstream readers can use one field name.
 
-This is intentional. The orientation-aware filtering stage has not yet been wired into the current PyRosetta postprocess pipeline, so the repository now preserves the field contract without pretending the evidence already exists.
+Interpretation by source:
+
+- Legacy postprocess path (`output/egfr_myo1d_vina/ppi/`): value is usually `not_available`.
+- Structured Phase 1 path (`output/phase1_ppi/`): value is expected to reflect orientation filtering output (`pass`, `fail`, or `ambiguous`) when the orientation module is run.
+
+This split is intentional and should not be treated as a contradiction.

@@ -1,10 +1,10 @@
-> Status note (2026-03-12): This v2 PRD is closer to the active baseline, but AFM should still
+> Status note (2026-03-12): This v2 PRD is the active Phase 1 PRD for the current baseline, but AFM should still
 > be treated as legacy optional support only. The active Phase 1 secondary-validation path is LightDock.
-> Read `docs/current_pipeline_status.md` first.
+> Use this PRD for Phase 1 target design details, and use `docs/current_pipeline_status.md` for current operational status.
 
 ## Context Summary
-- Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
-- Current Subphase: Phase 1 PRD (v2 — Structural Input Upgrade)
+- Project: EGFR-MYO1D interface-centric perturbation discovery pipeline
+- Current Subphase: Phase 1 PRD (v2 - Structural Input Upgrade)
 - Purpose: Define the receptor-side MYO1D attachment patch before any pocket-level ligand prioritization
 - Primary Engine: PyRosetta global docking
 - Supporting Engine: LightDock (independent secondary validation)
@@ -13,7 +13,7 @@
 
 ---
 
-# PRD — Phase 1: PPI-First Interface Mapping (v2)
+# PRD ??Phase 1: PPI-first Interface Mapping (v2)
 
 ## Goal
 Identify and prioritize the **EGFR receptor-side MYO1D attachment patch** across the three receptor states, using structurally adequate inputs that minimize known fragment-docking artifacts.
@@ -39,7 +39,7 @@ Phase 1 now explicitly requires:
 - **Full kinase domain** (~280 residues, covering both N-lobe and C-lobe) as the receptor input
 - **Extended beta-meander** (starting from ~residue 955 instead of 962) as the partner input
 - **Orientation-aware filtering** as a mandatory filtering step, not an optional future improvement
-- **Pilot data preservation** — existing C-lobe fragment results are retained as reference/pilot data for comparison, not discarded
+- **Pilot data preservation** ??existing C-lobe fragment results are retained as reference/pilot data for comparison, not discarded
 
 ---
 
@@ -51,28 +51,28 @@ Phase 1 now explicitly requires:
   - 3GT8_cl38_48 (full kinase domain)
   - 3GT8_cl85_100 (full kinase domain)
 - **Residue range caution:** The exact residue range depends on the numbering system used:
-  - 3GT8 PDB numbering: ~681–990 (as deposited in PDB)
-  - UniProt numbering (P00533): PDB + 24, yielding ~705–1014 (including C-terminal tail)
-  - PPI fragment numbering (legacy): offset −16 from PDB
-  - The active kinase core (excluding C-terminal tail) spans approximately UniProt 696–979
+  - 3GT8 PDB numbering: ~681??90 (as deposited in PDB)
+  - UniProt numbering (P00533): PDB + 24, yielding ~705??014 (including C-terminal tail)
+  - PPI fragment numbering (legacy): offset ??6 from PDB
+  - The active kinase core (excluding C-terminal tail) spans approximately UniProt 696??79
   - **All documents must explicitly declare which numbering system is in use.** Cross-referencing between systems must use the verified conversion formulas (see PyRosetta_PPI_Handoff numbering section).
 - The full kinase domain includes both N-lobe and C-lobe, preserving:
   - N-lobe steric occlusion during docking (not just post-hoc filtering)
   - hinge region conformational context
   - activation loop influence on C-lobe surface accessibility
   - realistic electrostatic landscape across the entire receptor surface
-- **Activation loop note:** 3GT8 has a disordered activation loop (residues ~831–852, UniProt numbering) that was previously restored using SwissModel for the Vina docking receptor. The same loop modeling approach or an equivalent must be applied for the full kinase domain preparation. An unresolved activation loop creates an artificial surface cavity that can attract docking poses to a non-physiological site.
+- **Activation loop note:** 3GT8 has a disordered activation loop (residues ~831??52, UniProt numbering) that was previously restored using SwissModel for the Vina docking receptor. The same loop modeling approach or an equivalent must be applied for the full kinase domain preparation. An unresolved activation loop creates an artificial surface cavity that can attract docking poses to a non-physiological site.
 
 ### Partner inputs (upgraded)
-- Primary partner: **extended beta-meander** (~residue 955–1006)
-  - Extends at least 7 residues N-terminal to the current construct (962–1006)
+- Primary partner: **extended beta-meander** (~residue 955??006)
+  - Extends at least 7 residues N-terminal to the current construct (962??006)
   - Eliminates VAL962 N-terminal artifact
-  - Preserves all 5 beta-sheets (8th–12th) with additional upstream context
+  - Preserves all 5 beta-sheets (8th??2th) with additional upstream context
 - TH1 domain: plausibility envelope check only, not primary search input
 - AlphaFold-Multimer: auxiliary structural evidence only, not core workflow
 
 ### Pilot data (historical reference only)
-- Existing C-lobe fragment × beta-meander(962–1006) results exist as historical records.
+- Existing C-lobe fragment × beta-meander(962??006) results exist as historical records.
 - These are retained for optional methodological comparison but carry known systematic artifacts.
 - Legacy site labels and residue assignments are historical reference material only and must not constrain interpretation of new results.
 
@@ -88,10 +88,10 @@ For each of the three receptor states, prepare a full kinase domain structure su
 - Numbering system (PDB vs UniProt) declared and conversion recorded
 
 ### Feature 2. Extended beta-meander partner preparation
-Prepare the extended beta-meander construct (~955–1006) with:
+Prepare the extended beta-meander construct (~955??006) with:
 - At least 7 additional residues upstream of the current 962 start
 - Structural integrity confirmed (no broken backbone, reasonable geometry)
-- Sheet boundaries (8th–12th) explicitly annotated
+- Sheet boundaries (8th??2th) explicitly annotated
 - Active face (sheets 8, 9) and structural support face (sheet 12) documented
 
 ### Feature 3. Orientation-aware filtering (mandatory)
@@ -143,13 +143,13 @@ As the researcher, I want to define the receptor-side MYO1D attachment patch usi
 
 ## Acceptance Criteria
 - [ ] Full kinase domain structures are prepared and validated for all three receptor states.
-- [ ] Extended beta-meander (~955–1006) is prepared and validated.
+- [ ] Extended beta-meander (~955??006) is prepared and validated.
 - [ ] Orientation-aware filtering is implemented and applied to all surviving models.
 - [ ] Receptor-side interface residues are extracted for PyRosetta models that pass orientation filtering.
 - [ ] Cluster-level receptor-side residue occupancy can be computed from orientation-validated models.
 - [ ] The three receptor states can be compared at the receptor-side patch level.
 - [ ] LightDock secondary validation is available for convergence comparison.
-- [ ] Pilot data comparison shows which prior conclusions are stable vs artifact-dependent. *(optional — new results stand on their own)*
+- [ ] Pilot data comparison shows which prior conclusions are stable vs artifact-dependent. *(optional ??new results stand on their own)*
 - [ ] A standardized Phase 1 interface summary file is generated with all required fields.
 - [ ] Old site labels are not treated as fixed truth.
 - [ ] The extended beta-meander construct eliminates N-terminal truncation artifacts. Any residue's significance is assessed fresh from the new data, not by comparison to pilot results.
@@ -170,7 +170,7 @@ As the researcher, I want to define the receptor-side MYO1D attachment patch usi
 - MD simulation (deferred to post-Phase-1 validation, but recognized as needed before Phase 2 commitment)
 
 ## Open Questions (updated from v1)
-- ~~Which MYO1D construct should be treated as the primary docking partner?~~ → **Resolved: extended beta-meander (~955–1006)**
+- ~~Which MYO1D construct should be treated as the primary docking partner?~~ ??**Resolved: extended beta-meander (~955??006)**
 - What minimum cluster occupancy threshold should define a receptor-side hotspot?
 - What geometric criterion defines an acceptable sheet 8/9 face orientation?
 - How should the orientation filter handle ambiguous edge cases?
@@ -178,19 +178,21 @@ As the researcher, I want to define the receptor-side MYO1D attachment patch usi
 - What C-terminal tail handling policy should be adopted for the full kinase domain receptor? (include tail, exclude tail, or test both)
 
 ## Deferred but recognized needs
-- **MD validation (100–200 ns)** of top cluster representatives from the full-kinase-domain docking is recognized as scientifically necessary before committing to Phase 2. It is not part of Phase 1's core implementation but should be planned as a Phase 1→2 gate.
+- **MD validation (100??00 ns)** of top cluster representatives from the full-kinase-domain docking is recognized as scientifically necessary before committing to Phase 2. It is not part of Phase 1's core implementation but should be planned as a Phase 1?? gate.
 
 ---
 
-## Korean Summary (간단 요약)
+## Korean Summary (간단 ?-약)
 
-이 Phase의 목표는 ligand보다 먼저 **MYO1D가 EGFR 어디에 붙는지 receptor-side patch를 정의하는 것**이다.
+??Phase??목표??ligand보다 먼?? **MYO1D가 EGFR ??디??붙는지 receptor-side patch????*의??는 ???*??다.
 
-v2의 핵심 변경:
-- **Receptor를 C-lobe fragment(45 res)에서 전장 kinase domain(~280 res)으로 업그레이드**한다. N-lobe가 도킹 과정에서 steric occlusion과 electrostatic landscape에 직접 영향을 미치기 때문이다.
-- **Beta-meander를 ~955부터 시작하도록 N-terminal 확장**한다. VAL962 말단 artifact를 제거하기 위함이다.
-- **Orientation-aware filtering을 필수화**한다. Beta-meander의 얇은 β-sheet 구조는 face-flip이 쉽게 발생하므로, sheet 8/9의 active face가 receptor를 향하고 있는지 기하학적으로 검증해야 한다.
-- 기존 C-lobe fragment 결과는 **역사적 참고용으로만 보존**한다. 새 결과의 해석을 제약하는 데 사용하지 않는다.
-- LightDock를 독립 보조 검증축으로 사용한다.
-- MD validation은 Phase 1 core에는 포함하지 않지만, Phase 2 진입 전 gate로 인식한다.
+v2????심 변???
+- **Receptor???C-lobe fragment(45 res)??서 ??장 kinase domain(~280 res)??로 ?...그??이??*??다. N-lobe가 ??킹 과정??서 steric occlusion???electrostatic landscape??직접 ??향??미치?????문??다.
+- **Beta-meander???~955부????작??도???N-terminal ?*장**??다. VAL962 말단 artifact?????거??기 ??함??다.
+- **Orientation-aware filtering????수??*??다. Beta-meander?????? β-sheet 구조??face-flip????게 발생??????? sheet 8/9??active face가 receptor?????하?????는지 기하??적??로 검증해????다.
+- 기존 C-lobe fragment 결과??**??????참고??으로만 보존**??다. ??결과????석????약??는 ????용???? ??는??
+- LightDock????...립 보조 검증축??로 ??용??다.
+- MD validation?? Phase 1 core??는 ??함???? ??????? Phase 2 진입 ??gate?????식??다.
+
+
 

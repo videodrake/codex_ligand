@@ -92,7 +92,7 @@
 2. **설정 파일:** `config_10k.ini` 준비 (위 내용 참조).
 3. **실행:**
 ```bash
-python pipeline_manager.py config_10k.ini
+python main.py -c config/example-project.yaml pyrosetta
 
 ```
 

@@ -22,7 +22,7 @@ to
 - candidate-pocket-guided docking with explicit search-budget control.
 
 ## Inputs
-- Candidate pocket catalog from Phase 2
+- Receptor-state-specific Phase 2 candidate pocket catalog with machine-readable patch-relationship classification and druggability annotations
 - Receptor metadata
 - Ligand metadata
 - Existing Vina execution machinery

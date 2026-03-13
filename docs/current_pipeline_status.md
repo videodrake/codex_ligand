@@ -1,107 +1,108 @@
 # Current Pipeline Status
 
-Last updated: 2026-03-12
+Last updated: 2026-03-13
 
-This is the canonical current-state document for the repository.
-If any older document disagrees with this file, use this file plus the current
-code as the source of truth.
+This is a short derived summary of the repository's current baseline. Use it for quick orientation, not as the only source of truth. For onboarding order and conflict resolution, start with [AI_START_HERE.md](AI_START_HERE.md). For plan-vs-implementation gaps, use [current_vs_plan_matrix.md](current_vs_plan_matrix.md).
 
-## Active Scientific Baseline
+## Current Summary
 
-The repository currently operates as a state-comparison pipeline for the
-EGFR-MYO1D project.
+The repository currently behaves as an EGFR-MYO1D state-comparison pipeline with a Vina-centered routine ligand workflow and a PyRosetta-centered Phase 1 PPI branch. The active receptor ensemble is fixed to three states, LightDock is the active secondary validation path for Phase 1, AFM is legacy optional only, and routine final integration still flows through `verdict`, `report`, and `validate` rather than the advanced Phase 4 perturbation stack.
 
-The active receptor ensemble is fixed to exactly three receptor states:
+## Current Interpretation Path
 
-- `3GT8_raw`
-- `3GT8_cl38_48`
-- `3GT8_cl85_100`
+For completed production runs, start at `output/{project}/step_index.md`.
 
-The active workflow is:
+The current interpretation order is:
 
-1. Vina-centered ligand docking and postprocessing
-2. PyRosetta-centered Phase 1 PPI mapping
-3. LightDock secondary validation for Phase 1
-4. MD-based stability gate
-5. verdict / report / validate integration
+1. `step_index.md`
+2. `step6_report/project_report.txt`
+3. `step5_verdict/valid_sites.csv`
+4. `step4_vina_postprocess/vina_pocket_table.csv`
+5. `step3_ppi_postprocess/ppi_pyrosetta_residues.csv`
 
-## Evidence Hierarchy
+Canonical runtime outputs remain under `output/{project}/` and stay the source of truth. The step folders are a derived view layered on top of those canonical outputs; they are additive, not a migration.
 
-Current evidence roles are:
+## Active Baseline
+
+| Topic | Current state |
+|------|------|
+| Receptor states | `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100` |
+| Routine ligand evidence | Vina docking and Vina postprocess outputs |
+| Phase 1 primary evidence | PyRosetta |
+| Phase 1 active secondary validation | LightDock |
+| AFM status | Legacy optional parser only, inactive unless explicitly re-enabled |
+| Runtime environment baseline | Shared `pyrosetta` conda environment |
+| Routine worker policy | Treat `max_workers = 16` as the safe routine operating bound |
+
+## Current Default Execution Surface
+
+The default code-facing workflow currently centers on:
+
+- `python main.py vina`
+- `python main.py postprocess`
+- `python main.py pyrosetta`
+- `python main.py verdict`
+- `python main.py report`
+- `python main.py validate`
+- `python main.py full`
+- `qsub config/run_pre_qsub_checks.pbs`
+- `qsub config/run_production.pbs`
+
+Important interpretation:
+
+- The default `full` flow is still Vina-centered.
+- The refactored scientific Phase 1-4 stack exists in code and outputs, but it is not yet the single default orchestration path for routine runs.
+
+## Current Evidence Hierarchy
 
 - Primary ligand evidence: Vina pose and pocket outputs
 - Primary Phase 1 PPI evidence: PyRosetta
 - Secondary independent Phase 1 validation: LightDock
 - Downstream stability gate: MD
-- Final integration layer: verdict, report, validate
+- Current routine final integration: `verdict`, `report`, and `validate`
 
-## AFM Status
+## What Is Not The Routine Baseline
 
-AlphaFold-Multimer is not part of the active routine workflow.
+- AFM is not part of the active routine workflow.
+- The advanced `output/phase2_pockets/`, `output/phase3_docking/`, and `output/phase4_perturbation/` trees should not be assumed to drive the default CLI path unless the user explicitly works on those phases.
+- `valid_sites.csv` is the routine baseline judgment table; it is not the same thing as the advanced Phase 4 perturbation-ranking outputs.
 
-Important implications:
+## Current Output Checkpoints
 
-- `egfr_pipeline/ppi/afm_extract.py` still exists in the repository
-- some older docs still mention AFM
-- AFM must be treated as a legacy optional parser, not as an active planning baseline
-- new implementation or interpretation work must not assume AFM is required
+If you need the current baseline outputs first, open:
 
-Unless the user explicitly asks to revive AFM support, future work should use:
+1. `output/egfr_myo1d_vina/step_index.md`
+2. `output/egfr_myo1d_vina/step6_report/project_report.txt`
+3. `output/egfr_myo1d_vina/step5_verdict/valid_sites.csv`
 
-- PyRosetta as the primary Phase 1 engine
-- LightDock as the active secondary validation axis
+If you need the canonical files behind that derived view, open:
 
-## Current Document Priority
+1. `output/egfr_myo1d_vina/vina_pocket_table.csv`
+2. `output/egfr_myo1d_vina/valid_sites.csv`
+3. `output/egfr_myo1d_vina/project_report.txt`
 
-Read documents in this order:
+If you need the current structured Phase 1 handoff first, open:
 
-1. `docs/current_pipeline_status.md`
-2. `README.md`
-3. `docs/project_context.md`
-4. `docs/architecture.md`
-5. `docs/runbook.md`
-6. `config/README.md`
-7. `docs/phase1_pyrosetta_execution_note.md`
-8. `docs/phase1_ppi_handoff_note.md`
-9. `docs/phase1_lightdock_validation_note.md`
-10. `docs/phase1_output_chain_note.md`
+1. `output/phase1_ppi/phase1_downstream_patch_reference.csv`
+2. `output/phase1_ppi/phase1_interface_report.md`
 
-## Historical Documents
+For a fuller artifact map, use [output_artifact_map.md](output_artifact_map.md).
 
-The following classes of documents may contain older AFM-oriented assumptions:
+## Use These Docs Next
 
-- `docs/prd_phase_1_ppi_first_interface_mapping.md`
-- `docs/tasks_phase_1_ppi_first_interface_mapping.md`
-- `docs/manual_execution.md`
-- `docs/EGFR_MYO1D_Pipeline_Technical_Document.md`
-- other earlier planning notes that mention AFM as a normal part of Phase 1
+- [AI_START_HERE.md](AI_START_HERE.md): onboarding order, source-of-truth hierarchy, and conflict rules
+- [data_inventory.md](data_inventory.md): current input and output inventory
+- [current_vs_plan_matrix.md](current_vs_plan_matrix.md): where current implementation still diverges from the 4-phase plan
+- [output_artifact_map.md](output_artifact_map.md): what each major artifact means and which files are handoff files
+- [glossary_and_assumptions.md](glossary_and_assumptions.md): project-specific vocabulary, numbering, chain, and field semantics
+- [architecture.md](architecture.md): current data flow
+- [runbook.md](runbook.md): operator-facing execution procedure
 
-These files are kept for history and context, not as the default planning
-baseline.
+## Interpretation Rule
 
-## Current Code Reality
+When you need a quick rule for current work:
 
-What is currently true in code:
-
-- Vina branch is active and structured under `egfr_pipeline/vina/`
-- PyRosetta Phase 1 execution is active under `egfr_pipeline/pyrosetta_docking/`
-- Phase 1 downstream integration and review are active under `egfr_pipeline/phase1/`
-- LightDock integration exists under `egfr_pipeline/phase1/lightdock_validation.py`
-- AFM extraction code exists but is not the active secondary-validation path
-- pre-qsub validation and production guard flow are implemented
-
-## Operating Constraints
-
-- Routine worker baseline: 16
-- Do not infer production performance from the local Codex workspace
-- Keep outputs traceable by receptor state, ligand, and construct metadata
-- Do not let legacy labels outrank newly generated structured outputs
-
-## Rule For Future AI Agents
-
-When in doubt:
-
-1. trust current code over stale prose
-2. trust this file over older planning docs
-3. treat AFM as inactive unless explicitly requested
-4. treat LightDock as the active Phase 1 secondary validation path
+1. Trust active code and active config over stale prose.
+2. Treat this file as a quick summary, not as the document that overrides all others.
+3. Treat AFM as inactive unless explicitly requested.
+4. Treat LightDock as the active Phase 1 secondary validation path.

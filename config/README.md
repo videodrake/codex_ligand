@@ -1,158 +1,212 @@
 # Config Guide
 
-## Status Note
+Last updated: 2026-03-12
 
-Current documentation baseline:
+This document explains the meaning of the configuration files in this directory. It is not the operator run sequence and it is not the command reference. Use [../docs/AI_START_HERE.md](../docs/AI_START_HERE.md) for onboarding order, [../docs/runbook.md](../docs/runbook.md) for execution procedure, and [../docs/manual_execution.md](../docs/manual_execution.md) for exact commands.
 
-- Phase 1 primary engine: PyRosetta
-- Phase 1 active secondary validation: LightDock
-- AFM parser code still exists, but AFM is not part of the active routine workflow
+## Current Config Baseline
 
-Read [current_pipeline_status.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/current_pipeline_status.md) before using older planning notes.
+Read the files here with the current project baseline in mind:
 
-This directory contains runtime configuration and PBS submission files for the
-current EGFR-MYO1D workflow.
+| Topic | Current config interpretation |
+|------|------|
+| Receptor ensemble | Exactly three receptor states are the active baseline |
+| Routine ligand workflow | Vina-centered |
+| Phase 1 primary evidence | PyRosetta |
+| Phase 1 secondary validation | LightDock |
+| AFM fields | Legacy compatibility only unless explicitly re-enabled |
+| Runtime environment | Production and pre-qsub lanes reuse the shared `pyrosetta` conda environment |
+| Worker policy | `max_workers = 16` is the routine safe bound |
 
-## What Lives Here
+## What Lives In This Directory
 
-| File | Type | Purpose |
-|------|------|---------|
-| `example-project.yaml` | YAML | Project-level Vina config example |
-| `full_test.yaml` | YAML | Full-pipeline test config |
-| `ppi_test_beta_meander.ini` | INI | PyRosetta PPI test config for beta-meander |
-| `ppi_test_TH1.ini` | INI | PyRosetta PPI test config for TH1 |
-| `ppi_prod_beta_meander.ini` | INI | PyRosetta PPI production config for beta-meander |
-| `ppi_prod_TH1.ini` | INI | PyRosetta PPI production config for TH1 |
-| `run_pre_qsub_checks.pbs` | PBS | Scheduler-side validation lane before production |
-| `run_production.pbs` | PBS | Main production pipeline submission |
-| `run_ppi_test.pbs` | PBS | PyRosetta PPI test submission |
-| `run_ppi_prod.pbs` | PBS | PyRosetta PPI production submission |
-| `run_full_test.pbs` | PBS | Full test submission helper |
+| File group | Purpose |
+|------|------|
+| `example-project.yaml` | Main project-level YAML config for the current routine baseline |
+| `full_test.yaml` | Auxiliary test-oriented YAML config, not the default baseline |
+| `ppi_test_*.ini` | PyRosetta Phase 1 test configs |
+| `ppi_prod_*.ini` | PyRosetta Phase 1 production configs |
+| `run_pre_qsub_checks.pbs` | Scheduler wrapper for the lightweight precheck lane |
+| `run_production.pbs` | Scheduler wrapper for the routine production lane |
+| `run_production_fresh.pbs` | Fresh production rerun wrapper when prior production outputs must be discarded |
+| `run_ppi_test.pbs` | Scheduler wrapper for PyRosetta Phase 1 test submission |
+| `run_ppi_prod.pbs` | Scheduler wrapper for PyRosetta Phase 1 production submission |
+| `run_full_test.pbs` | Auxiliary full-test submission helper |
 
-## Current Separation of Config Styles
+## Config Surfaces And Their Roles
 
-Two config styles are in use right now.
+Three config surfaces coexist in the current repository.
 
-- Vina and the unified CLI use YAML project configs.
-- Legacy PyRosetta PPI entrypoints still use INI configs.
+| Surface | Scope | What it controls |
+|------|------|------|
+| YAML | Project-wide routine configuration | receptor list, ligand list, Vina settings, postprocess settings, worker policy, output root, registered PyRosetta result directories |
+| INI | PyRosetta Phase 1 job configuration | receptor/partner metadata, construct metadata, chain mapping, run-specific output naming, PyRosetta job options |
+| PBS | Submission-time wrapper configuration | environment activation, scheduler resources, precheck guard behavior, mode forwarding into production scripts |
 
-This split is intentional for the current repository state. Do not assume that
-all runtime paths share one config schema yet.
+Do not assume that the whole repository already shares one unified config schema.
 
-## Vina / Unified CLI Usage
+## `example-project.yaml` Semantics
 
-Use YAML configs for the current project-level flow:
+`example-project.yaml` is the main current project config and should be treated as the baseline semantic example for the routine workflow.
 
-```bash
-python main.py vina --config config/example-project.yaml
-python main.py postprocess --config config/example-project.yaml
-python main.py validate
-```
+### Top-Level Meaning
 
-The YAML model is where current project-wide settings belong:
-- receptor definitions
-- ligand definitions
-- Vina parameters
-- postprocess parameters
-- worker count
-- output root
+| Field | Meaning |
+|------|------|
+| `project_name` | Names the output namespace for the routine project run |
+| `output_root` | Root directory under which the project output tree is created |
+| `mode` | Current Vina operating mode for the routine lane |
+| `max_workers` | Parallel worker ceiling; treat `16` as the routine safe bound |
+| `experimental` | Reserved area for non-baseline experiments; `null` means inactive |
 
-## PyRosetta PPI Usage
+### `receptors`
 
-PyRosetta PPI still uses INI configs and PBS wrappers.
+Each receptor entry defines one active receptor state for the routine baseline.
 
-Interactive or direct run:
+Expected meaning per entry:
 
-```bash
-python main.py pyrosetta
-python -m egfr_pipeline.pyrosetta_docking.pipeline_manager config/ppi_test_TH1.ini
-```
+- `id`: stable state identifier that should remain visible in downstream outputs
+- `pdb`: structural input path used for receptor-side structural context
+- `pdbqt`: docking-ready receptor path expected by Vina-oriented lanes
+- `chain`: receptor chain identifier
+- `source_type`: provenance label for how the receptor state was derived
 
-PBS test submission:
+Current baseline expectation:
 
-```bash
-qsub config/run_ppi_test.pbs
-qsub -v CONFIG_FILE=config/ppi_test_TH1.ini config/run_ppi_test.pbs
-qsub -v RUN_MODE=both config/run_ppi_test.pbs
-```
+- the receptor set remains exactly `3GT8_raw`, `3GT8_cl38_48`, and `3GT8_cl85_100`
 
-PBS production submission:
+### `ligands`
 
-```bash
-qsub config/run_ppi_prod.pbs
-qsub -v CONFIG_FILE=config/ppi_prod_TH1.ini config/run_ppi_prod.pbs
-qsub -v RUN_MODE=both config/run_ppi_prod.pbs
-```
+Each ligand entry registers one ligand across the routine ligand workflow.
 
-## Pre-Qsub Validation Lane
+Expected meaning per entry:
 
-Before heavy scheduler runs, use the precheck lane:
+- `id`: stable ligand identifier
+- `sdf`: chemistry input path
+- `pdbqt`: docking-ready ligand path expected by Vina-oriented lanes
 
-```bash
-qsub config/run_pre_qsub_checks.pbs
-```
+### `vina`
 
-On success, it writes:
+The `vina` section controls docking-search behavior for the routine ligand lane.
 
-```bash
-output/pre_qsub_status/last_pass.json
-```
+Representative semantics:
 
-`run_production.pbs` now checks for that success marker by default. The safest
-submission pattern is:
+- `mode`: docking search style
+- `exhaustiveness`: search depth
+- `n_poses`: maximum poses retained per job
+- `min_box` and `padding`: search box sizing controls
 
-```bash
-PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
-qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
-```
+### `postprocess`
 
-If you intentionally need to bypass the guard:
+The `postprocess` section controls which downstream ligand analysis steps are enabled and how pocket logic is parameterized.
 
-```bash
-qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
-```
+Representative semantics:
 
-The current server-side baseline is the shared `pyrosetta` conda environment.
-Repository scripts do not create a separate test environment anymore.
+- parse and contact toggles determine whether pose parsing and residue-contact extraction run
+- cluster and merge thresholds shape how raw contacts become pocket candidates
+- comparison settings determine whether cross-state pocket comparison is produced
+- report-oriented flags determine which summaries are emitted in the routine lane
 
-- environment name: `pyrosetta`
-- package reference list: [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt)
-- manual setup note: [server_environment_setup.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/server_environment_setup.md)
+Interpretation rule:
 
-## Production Modes
+- these flags describe routine ligand postprocessing behavior; they do not define the advanced scientific Phase 2 to Phase 4 workflow by themselves
 
-`run_production.pbs` forwards mode selection into `run_production.py`.
+### `bootstrap`
 
-Examples:
+The `bootstrap` section defines optional resampling behavior for robustness-style summaries.
 
-```bash
-qsub config/run_production.pbs
-qsub -v MODE=force config/run_production.pbs
-qsub -v MODE=from,FROM=4 config/run_production.pbs
-qsub -v MODE=status config/run_production.pbs
-qsub -v MODE=vina-only config/run_production.pbs
-qsub -v MODE=ppi-only config/run_production.pbs
-qsub -v MODE=post-only config/run_production.pbs
-```
+Representative semantics:
 
-## Notes on the INI Files
+- number of replicates
+- sampling fraction
+- random seed
 
-The current `ppi_*.ini` files now carry explicit metadata fields used by the
-Phase 1 traceability path, including:
-- `receptor_id`
-- `partner_id`
-- `construct_type`
-- `receptor_construct`
-- `partner_construct`
-- chain IDs
-- numbering system
+### `ppi`
 
-They also use metadata-tagged output directory naming so test and production
-runs do not overwrite each other as easily.
+The `ppi` section is where the routine project config references receptor-side evidence sources.
 
-## Recommended Reading
+Current meaning:
 
-For operational details, also see:
-- [pre_qsub_test_line.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/pre_qsub_test_line.md)
-- [phase1_output_chain_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_output_chain_note.md)
-- [phase1_pyrosetta_execution_note.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/phase1_pyrosetta_execution_note.md)
+- `pyrosetta_result_dirs` registers existing PyRosetta result locations by receptor state and partner
+- `afm_models` and `afm_settings` remain for legacy compatibility only
+
+Important baseline rule:
+
+- if `ppi.afm_models` is `null`, AFM is inactive in the routine baseline and should not be treated as a required evidence source
+
+## `ppi_*.ini` Semantics
+
+The INI files are the current Phase 1 PyRosetta job configs. They do not replace the YAML project config; they support the still-separate PyRosetta execution surface.
+
+These files typically carry:
+
+- receptor and partner identifiers
+- construct metadata
+- receptor and partner chain mapping
+- numbering-system assumptions
+- output directory naming metadata
+- run-specific PyRosetta job settings
+
+Interpretation rule:
+
+- use INI files to understand one PyRosetta job's metadata and run shape, not to infer the whole project-level ligand workflow
+
+## PBS Wrapper Semantics
+
+The PBS files are submission wrappers, not the scientific source of truth.
+
+### `run_pre_qsub_checks.pbs`
+
+Semantic role:
+
+- activates the baseline environment
+- runs the lightweight validation lane before heavy production submission
+- produces the precheck pass marker used by guarded production submission
+
+### `run_production.pbs`
+
+Semantic role:
+
+- runs the routine production lane after environment setup
+- forwards selected run modes into `run_production.py`
+- expects the precheck guard unless explicitly bypassed
+
+Important caution:
+
+- production stage numbering is operational and should not be confused with the scientific Phase 1 to Phase 4 plan
+
+### `run_production_fresh.pbs`
+
+Semantic role:
+
+- requests a clean rerun of the production lane when prior production outputs should no longer be trusted
+
+### `run_ppi_test.pbs` and `run_ppi_prod.pbs`
+
+Semantic role:
+
+- wrap the dedicated PyRosetta Phase 1 entry points for test or production-style runs
+- allow selection of specific INI configs or run modes at submission time
+
+## Environment Semantics
+
+The config and PBS files assume the shared `pyrosetta` conda environment for both pre-qsub and production lanes.
+
+Current interpretation:
+
+- a separate test-only conda environment is not the baseline
+- environment setup should be understood as shared operational infrastructure, not as a per-lane divergence
+
+## What Not To Infer From Config Alone
+
+- Do not assume a field's presence means that lane is active in the current baseline.
+- Do not treat AFM keys as proof that AFM is part of the routine workflow.
+- Do not assume the production wrapper exposes the full scientific Phase 1 -> 2 -> 3 -> 4 architecture by default.
+- Do not infer artifact meaning from config names alone; use the output docs for that.
+
+## Use These Docs Next
+
+- [../docs/manual_execution.md](../docs/manual_execution.md): exact commands and submission examples
+- [../docs/runbook.md](../docs/runbook.md): operator sequence and stop/go rules
+- [../docs/current_pipeline_status.md](../docs/current_pipeline_status.md): short summary of the current baseline
+- [../docs/data_inventory.md](../docs/data_inventory.md): current input and output locations

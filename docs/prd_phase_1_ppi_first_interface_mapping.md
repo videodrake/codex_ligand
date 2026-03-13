@@ -3,7 +3,7 @@
 > Do not use this file as the default planning baseline for new work.
 
 ## Context Summary
-- Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
+- Project: EGFR-MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 1 PRD
 - Purpose: Define the receptor-side MYO1D attachment patch before any pocket-level ligand prioritization
 - Primary Engine: PyRosetta global docking
@@ -11,13 +11,13 @@
 
 ---
 
-# PRD — Phase 1: PPI-First Interface Mapping
+# PRD ??Phase 1: PPI-first Interface Mapping
 
 ## Goal
 Identify and prioritize the **EGFR receptor-side MYO1D attachment patch** across the three receptor states.
 
 ## Why this phase comes first
-The project’s primary question is where MYO1D attaches to EGFR. Ligandable pockets only become scientifically meaningful after this receptor-side interface patch is defined.
+The project??s primary question is where MYO1D attaches to EGFR. Ligandable pockets only become scientifically meaningful after this receptor-side interface patch is defined.
 
 ## Inputs
 - Three receptor states:
@@ -85,6 +85,7 @@ As the researcher, I want to define the receptor-side MYO1D attachment patch bef
 
 ## Korean Summary
 
-이 Phase의 목표는 ligand보다 먼저 **MYO1D가 EGFR 어디에 붙는지 receptor-side patch를 정의하는 것**이다.
-주 엔진은 PyRosetta이고, AFM은 보조 증거다. 산출물은 receptor-side interface residue와 cluster-level hotspot 요약이다.
+??Phase??목표??ligand보다 먼?? **MYO1D가 EGFR ??디??붙는지 receptor-side patch????*의??는 ???*??다.
+????-진?? PyRosetta??고, AFM?? 보조 증거?? ??출물?? receptor-side interface residue?? cluster-level hotspot ?-약??다.
+
 

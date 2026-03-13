@@ -22,7 +22,7 @@ This phase converts prior outputs into biologically meaningful prioritization.
 ## Inputs
 - Phase 1 receptor-side interface patch outputs
 - Phase 2 candidate pocket and patch relationship outputs
-- Phase 3 diversity-aware ligand docking outputs
+- Phase 3 diversity-aware ligand docking outputs with pocket-level pose provenance, budget-consumption traces, and occupancy/diversity evidence
 - Cross-state receptor evidence
 
 ## Core Requirements

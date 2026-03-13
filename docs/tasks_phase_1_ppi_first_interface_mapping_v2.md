@@ -1,10 +1,10 @@
-> Status note (2026-03-12): This v2 task file is the closest historical task breakdown,
+> Status note (2026-03-12): This v2 task file is the active Phase 1 task breakdown for the current baseline,
 > but current active secondary validation is LightDock. AFM should be treated as legacy optional support only.
-> Read `docs/current_pipeline_status.md` first.
+> Use this task file for Phase 1 implementation intent, and use `docs/current_pipeline_status.md` for current operational status.
 
 ## Context Summary
-- Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
-- Current Subphase: Phase 1 Task Breakdown (v2 — Structural Input Upgrade)
+- Project: EGFR-MYO1D interface-centric perturbation discovery pipeline
+- Current Subphase: Phase 1 Task Breakdown (v2 - Structural Input Upgrade)
 - Purpose: Convert the Phase 1 PRD v2 into implementation-facing tasks for receptor-side MYO1D interface mapping
 - Primary Engine: PyRosetta global docking
 - Supporting Engine: LightDock (independent secondary validation)
@@ -15,7 +15,7 @@
 ---
 
 # Task Breakdown
-## Phase 1: PPI-First Interface Mapping (v2)
+## Phase 1: PPI-first Interface Mapping (v2)
 
 This document breaks Phase 1 into implementation-facing task groups. The purpose of this phase is to define the receptor-side MYO1D attachment patch in a reproducible, structured, and reviewable format before any ligand-pocket prioritization begins.
 
@@ -40,7 +40,7 @@ Each task group below includes:
 
 # Task Group 1.0: Receptor and Partner Input Preparation and Validation
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Prepare and validate structurally adequate receptor and partner inputs that eliminate known fragment-docking artifacts before PPI-first interface mapping begins.
@@ -49,7 +49,7 @@ Prepare and validate structurally adequate receptor and partner inputs that elim
 
 ### 1.0.1 Full kinase domain receptor preparation
 - For each of the three receptor states (3GT8_raw, 3GT8_cl38_48, 3GT8_cl85_100):
-  - Extract or prepare the full kinase domain (~residues 696–979, UniProt numbering)
+  - Extract or prepare the full kinase domain (~residues 696??79, UniProt numbering)
   - Include both N-lobe and C-lobe as a single chain
   - Confirm activation loop is modeled or resolved
   - Confirm chain ID assignment
@@ -73,8 +73,8 @@ Prepare and validate structurally adequate receptor and partner inputs that elim
   - Sheet 9 boundaries and residues
   - Sheet 10, 11, 12 boundaries and residues
   - Inter-sheet loops
-  - Active face definition (sheets 8, 9 — primary contact face)
-  - Structural support face definition (sheet 12 — not primary direct-contact face per current working assumption)
+  - Active face definition (sheets 8, 9 ??primary contact face)
+  - Structural support face definition (sheet 12 ??not primary direct-contact face per current working assumption)
 
 ### 1.0.4 Extended beta-meander partner validation
 - Confirm VAL962 is no longer the first residue in the construct
@@ -87,7 +87,7 @@ Prepare and validate structurally adequate receptor and partner inputs that elim
 - Preserve source paths, structural notes, and preparation method
 
 ### 1.0.6 Pilot data input registration
-- Register the existing C-lobe fragment × beta-meander(962–1006) results as pilot/reference data
+- Register the existing C-lobe fragment × beta-meander(962??006) results as pilot/reference data
 - Record pilot data construct specifications for later comparison
 - Do not modify or overwrite pilot data files
 
@@ -122,7 +122,7 @@ Extended beta-meander preparation may require upstream sequence modeling from th
 
 # Task Group 1.1: PyRosetta Global Docking Standardization
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Standardize PyRosetta global docking execution and output handling so receptor-side interface evidence can be extracted reproducibly from full-kinase-domain docking runs.
@@ -147,14 +147,14 @@ Standardize PyRosetta global docking execution and output handling so receptor-s
 - **Scaling estimate:** RosettaDock scoring scales approximately as O(N × M) where N and M are receptor and partner residue counts. For rigid-body perturbation:
   - C-lobe fragment system: 45 × 45 = 2,025 residue-pair evaluations
   - Full kinase domain system: 280 × 52 = ~14,560 residue-pair evaluations (~7× increase)
-  - Including solvation terms (which scale worse): expect **8–15× slower per decoy**
+  - Including solvation terms (which scale worse): expect **8??5× slower per decoy**
 - **Target decoy count adjustment:**
-  - If per-decoy time increases ~10×, then 1M decoys → ~100K decoys is more realistic for initial run
-  - Alternatively, 200K–500K with multi-seed approach (5 seeds × 50K–100K each)
-  - Literature suggests 100K decoys is sufficient for global docking with proper filtering (Comprehensive Filtering Strategies guide: 10,000–100,000)
-- **Multi-seed strategy preferred:** 5–10 independent seeds × 50K–100K decoys each provides better sampling diversity than single-seed mega-run
+  - If per-decoy time increases ~10×, then 1M decoys ??~100K decoys is more realistic for initial run
+  - Alternatively, 200K??00K with multi-seed approach (5 seeds × 50K??00K each)
+  - Literature suggests 100K decoys is sufficient for global docking with proper filtering (Comprehensive Filtering Strategies guide: 10,000??00,000)
+- **Multi-seed strategy preferred:** 5??0 independent seeds × 50K??00K decoys each provides better sampling diversity than single-seed mega-run
 - Document the compute trade-off and chosen target
-- **All production runs are server-side only** — current workspace cannot validate performance
+- **All production runs are server-side only** ??current workspace cannot validate performance
 
 ### 1.1.4 Standardize raw output placement
 - Separate outputs by receptor state and partner construct
@@ -165,7 +165,7 @@ Standardize PyRosetta global docking execution and output handling so receptor-s
 - Extract or normalize score tables containing at least:
   - decoy_id
   - total score
-  - I_sc (interface score) — preferred primary ranking metric
+  - I_sc (interface score) ??preferred primary ranking metric
   - dG_separated
   - dSASA
   - sc (shape complementarity)
@@ -202,7 +202,7 @@ Depends on Task Group 1.0.
 
 # Task Group 1.2: Receptor-Side Interface Residue Extraction
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Extract receptor-side and partner-side interface residues from PyRosetta models in a structured, reusable format.
@@ -210,10 +210,10 @@ Extract receptor-side and partner-side interface residues from PyRosetta models 
 ## Main Tasks
 
 ### 1.2.1 Define interface extraction rule
-- Choose and document the receptor–partner contact rule (recommended: 8 Å Cα distance or InterfaceAnalyzerMover-based)
+- Choose and document the receptor?-partner contact rule (recommended: 8 Å Cα distance or InterfaceAnalyzerMover-based)
 - Keep receptor-side and partner-side residues separate
 - Keep residue string formatting consistent across outputs
-- For full kinase domain models, receptor-side residues may include N-lobe residues — these must be preserved, not filtered out
+- For full kinase domain models, receptor-side residues may include N-lobe residues ??these must be preserved, not filtered out
 
 ### 1.2.2 Extract per-model interface residues
 - For each decoy or selected model, extract:
@@ -252,7 +252,7 @@ Depends on Task Group 1.1.
 
 # Task Group 1.2A: Orientation-Aware Filtering
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Implement and apply mandatory orientation-aware filtering to all PyRosetta PPI models before they are accepted as valid interface evidence. This eliminates face-flipped poses where sheet 8/9 residues contact the receptor but the active face points away from the binding surface.
@@ -266,7 +266,7 @@ The beta-meander has a thin, flat β-sheet geometry. In global docking, this mea
 - **Active face:** The surface of sheets 8 and 9 that should face the receptor. This is the face where the functional side chains of the experimentally validated residues (8th, 9th sheet alanine mutants that abolished decoy function) are exposed.
 - **Forbidden face (back face):** The opposite surface of the beta-meander, primarily the back of sheets 10, 11 and some of sheet 12's structural scaffold.
 - Define these faces using:
-  - Cα–Cβ vector direction for representative residues on each face
+  - Cα?-Cβ vector direction for representative residues on each face
   - Or: surface normal vector computed from sheet 8/9 plane
   - Or: centroid-to-residue vectors for key active-face residues
 
@@ -274,9 +274,9 @@ The beta-meander has a thin, flat β-sheet geometry. In global docking, this mea
 - For each docked pose, compute a face orientation score that indicates whether the active face is directed toward the receptor surface or away from it
 - Recommended approach:
   1. Compute the centroid of sheet 8/9 Cα atoms
-  2. Compute the mean Cα→Cβ vector for active-face residues (pointing outward from the sheet plane toward the functional side)
+  2. Compute the mean Cα?-Cβ vector for active-face residues (pointing outward from the sheet plane toward the functional side)
   3. Compute the vector from the sheet 8/9 centroid toward the receptor centroid (or nearest receptor surface)
-  4. The dot product of (mean Cα→Cβ vector) and (sheet-to-receptor vector) indicates orientation:
+  4. The dot product of (mean Cα?-Cβ vector) and (sheet-to-receptor vector) indicates orientation:
      - Positive: active face toward receptor (correct)
      - Negative: active face away from receptor (flipped)
 - Store the raw orientation score for each model
@@ -303,7 +303,7 @@ The beta-meander has a thin, flat β-sheet geometry. In global docking, this mea
 - This provides a calibration baseline for the new filter
 
 ## Subtasks
-- Define representative active-face residue set for Cα→Cβ vector computation
+- Define representative active-face residue set for Cα?-Cβ vector computation
 - Implement orientation metric computation function
 - Define orientation class labels and threshold
 - Add orientation columns to interface residue table
@@ -329,7 +329,7 @@ Depends on Task Group 1.2 (interface residues must be extracted first).
 
 # Task Group 1.3: Cluster-Level Interface Consensus
 **Priority:** Must-Have  
-**Zone:** 🟢 Green
+**Zone:** ??? Green
 
 ## Objective
 Aggregate receptor-side interface evidence across PyRosetta clusters to identify stable receptor-side interface patches and hotspot residues. **Only orientation-validated models contribute to consensus.**
@@ -359,7 +359,7 @@ Aggregate receptor-side interface evidence across PyRosetta clusters to identify
 ### 1.3.4 Define hotspot candidate rule
 - Add a configurable rule for hotspot-like residues
 - Start with occupancy-based logic across orientation-validated models
-- Hotspot residues must meet minimum occupancy threshold (configurable, default suggestion: ≥ 50% within cluster)
+- Hotspot residues must meet minimum occupancy threshold (configurable, default suggestion: ??50% within cluster)
 - Separate hotspot lists for receptor-side and partner-side
 
 ## Subtasks
@@ -388,7 +388,7 @@ Depends on Task Group 1.2A (orientation filtering must be complete).
 
 # Task Group 1.4: LightDock Secondary Validation
 **Priority:** Must-Have  
-**Zone:** 🟡 Yellow
+**Zone:** ??? Yellow
 
 ## Objective
 Use LightDock as an independent secondary validation method to provide method-independence evidence for receptor-side patch identification. LightDock results are compared with PyRosetta results but do not replace them.
@@ -442,7 +442,7 @@ Depends on Task Group 1.0 (same inputs as PyRosetta). Can proceed in parallel af
 
 # Task Group 1.5: Multi-State Interface Patch Comparison
 **Priority:** Must-Have  
-**Zone:** 🟡 Yellow
+**Zone:** ??? Yellow
 
 ## Objective
 Compare receptor-side interface patches across the three receptor states to determine which receptor-side residues or patches are state-robust and which are state-specific.
@@ -488,7 +488,7 @@ Depends on Task Group 1.3 and, if used, Task Group 1.4.
 
 # Task Group 1.6: Phase 1 Review Report
 **Priority:** Should-Have  
-**Zone:** 🟡 Yellow
+**Zone:** ??? Yellow
 
 ## Objective
 Generate a readable Phase 1 review package that summarizes receptor-side MYO1D attachment evidence before moving into pocket proposal.
@@ -531,18 +531,18 @@ Depends on Task Groups 1.3, 1.4, and 1.5. Optionally includes 1.7 if pilot compa
 ## Deliverables
 - `phase1_interface_report.md`
 - `phase1_downstream_patch_reference.csv`
-  - **v2 schema requirements for Phase 2 compatibility:** This file must include `construct_type` and `orientation_validation_status` fields. Phase 2 Task Group 2.0 (Patch Reference Ingestion) must be updated to consume these additional fields. Until Phase 2 documents are updated to v2, a field mapping note should accompany the handoff file.
+  - **v2 schema requirements for Phase 2 compatibility:** This file must include `construct_type` and `orientation_validation_status` fields. Phase 2 Task Group 2.0 now consumes these fields; legacy or skipped-filter runs may still carry `orientation_validation_status = not_available`, which should surface as a compatibility warning at ingestion time.
 
 ---
 
 # Task Group 1.7: Pilot Data Comparison Layer (Optional Reference)
 **Priority:** Should-Have  
-**Zone:** 🟡 Yellow
+**Zone:** ??? Yellow
 
 ## Objective
 If methodologically useful, compare new full-kinase-domain docking results against existing C-lobe fragment pilot data. This comparison is **informational only** and must not constrain the interpretation of new results.
 
-**Critical framing rule:** The new full-kinase-domain + extended-beta-meander docking is a fresh start with a fundamentally different system. Pilot data (C-lobe fragment 45 res × truncated beta-meander 962–1006) carries known systematic artifacts (N-lobe absence, VAL962 terminal artifact, no orientation filtering). New results that differ from pilot data are not failures — they are expected improvements.
+**Critical framing rule:** The new full-kinase-domain + extended-beta-meander docking is a fresh start with a fundamentally different system. Pilot data (C-lobe fragment 45 res × truncated beta-meander 962??006) carries known systematic artifacts (N-lobe absence, VAL962 terminal artifact, no orientation filtering). New results that differ from pilot data are not failures ??they are expected improvements.
 
 ## Main Tasks
 
@@ -581,21 +581,21 @@ Depends on Task Group 1.3 (new results must exist first).
 
 If Phase 1 is implemented incrementally, the recommended order is:
 
-1. **Task Group 1.0** — receptor and partner input preparation and validation
-2. **Task Group 1.1** — PyRosetta execution standardization (including compute scaling assessment)
-3. **Task Group 1.2** — receptor-side interface residue extraction
-4. **Task Group 1.2A** — orientation-aware filtering (mandatory)
-5. **Task Group 1.3** — cluster-level interface consensus (orientation-filtered)
-6. **Task Group 1.5** — multi-state interface patch comparison
-7. **Task Group 1.4** — LightDock secondary validation (can overlap with 1.2–1.3)
-8. **Task Group 1.7** — pilot data comparison layer
-9. **Task Group 1.6** — Phase 1 review report
+1. **Task Group 1.0** ??receptor and partner input preparation and validation
+2. **Task Group 1.1** ??PyRosetta execution standardization (including compute scaling assessment)
+3. **Task Group 1.2** ??receptor-side interface residue extraction
+4. **Task Group 1.2A** ??orientation-aware filtering (mandatory)
+5. **Task Group 1.3** ??cluster-level interface consensus (orientation-filtered)
+6. **Task Group 1.5** ??multi-state interface patch comparison
+7. **Task Group 1.4** ??LightDock secondary validation (can overlap with 1.2??.3)
+8. **Task Group 1.7** ??pilot data comparison layer
+9. **Task Group 1.6** ??Phase 1 review report
 
 ### Why this order
 - You must prepare and validate full-kinase-domain + extended-beta-meander inputs before any docking.
 - You must standardize PyRosetta execution before residue extraction.
 - You must extract interface residues before orientation filtering.
-- **Orientation filtering must happen before consensus building** — this is the key v2 insertion point.
+- **Orientation filtering must happen before consensus building** ??this is the key v2 insertion point.
 - You must build orientation-validated consensus before comparing receptor states.
 - LightDock can run in parallel after inputs are prepared, but convergence analysis needs PyRosetta results.
 - Pilot comparison requires both new results and registered pilot data.
@@ -603,22 +603,24 @@ If Phase 1 is implemented incrementally, the recommended order is:
 
 ### Compute budget note
 Full-kinase-domain docking will be substantially more expensive per decoy than C-lobe fragment docking. The project should plan for:
-- Reduced decoy count if needed (100K–500K may still be sufficient with improved filtering)
-- Multi-seed approach (5–10 seeds) rather than single-seed mega-run
+- Reduced decoy count if needed (100K??00K may still be sufficient with improved filtering)
+- Multi-seed approach (5??0 seeds) rather than single-seed mega-run
 - Server-side execution only (current Codex workspace is not suitable for production runs)
 
 ---
 
-## Korean Summary (간단 요약)
+## Korean Summary (간단 ?-약)
 
-이 문서는 Phase 1을 구현 단위로 쪼갠 task 문서 v2다. v1 대비 핵심 변경사항:
+??문서??Phase 1??구현 ??위???쪼갠 task 문서 v2?? v1 ???????심 변경사??
 
-- **Task 1.0:** Receptor를 전장 kinase domain으로, partner를 ~955부터 시작하는 확장 beta-meander로 업그레이드
-- **Task 1.2A (신규):** Orientation-aware filtering을 필수 단계로 삽입. Sheet 8/9 active face가 receptor를 향하는지 기하학적으로 검증
-- **Task 1.4:** AFM 대신 LightDock를 독립 secondary validation으로 재배치
-- **Task 1.7 (신규):** 기존 C-lobe fragment pilot data와 새 결과의 체계적 비교. VAL962 artifact 판정 포함
-- 모든 consensus 및 downstream 작업은 orientation-validated model만 사용
-- 전장 kinase domain 도킹의 compute cost 증가를 인지하고, decoy count 조정과 multi-seed 전략을 계획
+- **Task 1.0:** Receptor?????장 kinase domain??로, partner???~955부????작??는 ?*장 beta-meander????...그??이??
+- **Task 1.2A (? 규):** Orientation-aware filtering????수 ??계?????입. Sheet 8/9 active face가 receptor?????하?-?? 기하??적??로 검???
+- **Task 1.4:** AFM ????LightDock????...립 secondary validation??로 ??배???
+- **Task 1.7 (? 규):** 기존 C-lobe fragment pilot data?? ??결과??체계??비교. VAL962 artifact ??정 ??함
+- 모든 consensus ???downstream ?'업?? orientation-validated model?????용
+- ??장 kinase domain ??킹??compute cost 증???????????고, decoy count 조정???multi-seed ??략??계획
 
-핵심 흐름: 입력 준비 → PyRosetta 표준화 → interface residue 추출 → **orientation filtering** → cluster consensus → state 비교 → LightDock 검증 → pilot 비교 → 최종 보고서
+??심 ??름: ?...력 준?????PyRosetta ????????interface residue 추출 ??**orientation filtering** ??cluster consensus ??state 비교 ??LightDock 검?????pilot 비교 ??최종 보고??
+
+
 

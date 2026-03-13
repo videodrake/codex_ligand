@@ -25,7 +25,7 @@ This script does not create or modify an environment anymore.
 It assumes you already use the existing `pyrosetta` conda environment and only checks that the required test packages are installed.
 
 If the package check fails, install the missing packages manually in `pyrosetta` first.
-See [server_environment_setup.md](/Users/admin/Desktop/hwang/codex/codex_ligand/docs/server_environment_setup.md).
+See [server_environment_setup.md](./server_environment_setup.md).
 
 ## 2. Run the pre-qsub checks
 
@@ -122,4 +122,4 @@ The current baseline is:
 
 - shared production environment: `pyrosetta`
 - manual package installation by the user
-- package reference list: [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt)
+- package reference list: [requirements-test.txt](../requirements-test.txt)

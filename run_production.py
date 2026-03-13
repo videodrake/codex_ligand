@@ -28,9 +28,22 @@ import configparser
 import csv
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import List, Optional
 
+from egfr_pipeline.output_steps import (
+    build_current_run_manifest,
+    record_step1_outputs,
+    record_step2_outputs,
+    record_step3_outputs,
+    record_step4_outputs,
+    record_step5_outputs,
+    record_step6_outputs,
+    record_step7_outputs,
+    refresh_root_step_views,
+    step_output_view_enabled,
+)
 from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -61,6 +74,39 @@ PPI_TARGETS = [
 ]
 
 
+def _record_step2_outputs_with_targets(config_path, repo_root=None):
+    return record_step2_outputs(
+        config_path,
+        repo_root=repo_root,
+        ppi_targets=PPI_TARGETS,
+    )
+
+
+def _record_step7_outputs_with_result(
+    config_path,
+    repo_root=None,
+    validation_result=None,
+    error_message=None,
+):
+    return record_step7_outputs(
+        config_path,
+        repo_root=repo_root,
+        validation_result=validation_result,
+        error_message=error_message,
+    )
+
+
+STEP_VIEW_COLLECTORS = {
+    1: ("step1_vina_raw", record_step1_outputs),
+    2: ("step2_ppi_raw", _record_step2_outputs_with_targets),
+    3: ("step3_ppi_postprocess", record_step3_outputs),
+    4: ("step4_vina_postprocess", record_step4_outputs),
+    5: ("step5_verdict", record_step5_outputs),
+    6: ("step6_report", record_step6_outputs),
+    7: ("step7_validate", _record_step7_outputs_with_result),
+}
+
+
 def banner(msg: str):
     width = 60
     print()
@@ -78,7 +124,7 @@ def run_step(name: str, func, *args, **kwargs):
         minutes = int(elapsed // 60)
         seconds = int(elapsed % 60)
         print(f"\n  [OK] {name} 완료 ({minutes}분 {seconds}초)")
-        return result
+        return True, result, None
     except Exception as e:
         elapsed = time.time() - t0
         minutes = int(elapsed // 60)
@@ -87,7 +133,7 @@ def run_step(name: str, func, *args, **kwargs):
         print(f"  Error: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        return False, None, e
 
 
 def _load_config():
@@ -132,6 +178,92 @@ def _ppi_docking_dir(target: dict) -> Optional[Path]:
 
     root_name = build_output_root_name(config, str(input_pdb), input_pdb.stem)
     return REPO_ROOT / root_name
+
+
+def _execution_mode_label(args: argparse.Namespace) -> str:
+    if args.only:
+        return f"only:{args.only}"
+    if args.from_phase:
+        return f"from:{args.from_phase}"
+    if args.force:
+        return "force"
+    return "full"
+
+
+def _selected_step_numbers(
+    args: argparse.Namespace,
+    only_phases: set[int],
+) -> List[int]:
+    if only_phases:
+        return sorted(step_num for step_num in only_phases if step_num in STEP_VIEW_COLLECTORS)
+    if args.from_phase:
+        return sorted(step_num for step_num in STEP_VIEW_COLLECTORS if step_num >= args.from_phase)
+    if args.force:
+        return sorted(STEP_VIEW_COLLECTORS)
+    return []
+
+
+def _pyrosetta_raw_run_paths(config: dict) -> List[str]:
+    paths: List[str] = []
+
+    result_dirs = (config.get("ppi") or {}).get("pyrosetta_result_dirs") or {}
+    for entries in result_dirs.values():
+        if not entries:
+            continue
+        for entry in entries:
+            path = entry.get("path")
+            if path and path not in paths:
+                paths.append(str(path))
+
+    for target in PPI_TARGETS:
+        docking_dir = _ppi_docking_dir(target)
+        if docking_dir and str(docking_dir) not in paths:
+            paths.append(str(docking_dir))
+
+    return paths
+
+
+def _refresh_step_view_outputs(
+    phase_num: int,
+    args: argparse.Namespace,
+    config: dict,
+    phase_result=None,
+    phase_error: Optional[Exception] = None,
+    fresh_run: bool = False,
+    stale_steps: Optional[List[int]] = None,
+) -> None:
+    collector_entry = STEP_VIEW_COLLECTORS.get(phase_num)
+    if not collector_entry:
+        return
+
+    step_label, collector = collector_entry
+    try:
+        if phase_num == 7:
+            step_dir = collector(
+                CONFIG_PATH,
+                repo_root=REPO_ROOT,
+                validation_result=phase_result,
+                error_message=str(phase_error) if phase_error else None,
+            )
+        else:
+            if phase_error is not None:
+                return
+            step_dir = collector(CONFIG_PATH, repo_root=REPO_ROOT)
+        manifest_path, index_path = refresh_root_step_views(
+            CONFIG_PATH,
+            repo_root=REPO_ROOT,
+            execution_mode=_execution_mode_label(args),
+            fresh_run=fresh_run,
+            stale_steps=stale_steps,
+            ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
+            pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
+        )
+        print(f"  [STEP] Derived view refreshed: {step_dir}")
+        print(f"  [STEP] Run manifest updated: {manifest_path}")
+        print(f"  [STEP] Step index updated: {index_path}")
+    except Exception as exc:
+        print(f"  [WARN] Derived {step_label} refresh failed: {exc}")
+        traceback.print_exc()
 
 
 # ---------------------------------------------------------------------------
@@ -234,14 +366,21 @@ PHASE_CHECKS = {
 }
 
 
-def print_status():
-    """각 Phase별 완료 상태 출력."""
+def print_status(
+    *,
+    config: Optional[dict] = None,
+    step_view_enabled_flag: bool = True,
+):
+    """각 Phase별 완료 상태와 step view 상태를 읽기 전용으로 출력한다."""
+    config = config or _load_config()
     print("\n  Phase 상태 점검:")
     print(f"  {'Phase':<8} {'상태':<8} {'결과물':<50} {'상세'}")
     print(f"  {'─'*8} {'─'*8} {'─'*50} {'─'*20}")
 
+    canonical_done = {}
     for phase_num, (desc, check_fn) in PHASE_CHECKS.items():
         missing = check_fn()
+        canonical_done[phase_num] = not missing
         if not missing:
             status = "[DONE]"
             detail = ""
@@ -252,7 +391,30 @@ def print_status():
                 detail += f" ...+{len(missing)-3}"
         print(f"  Phase {phase_num:<3} {status:<8} {desc:<50} {detail}")
 
-    print(f"  Phase 7   [항상]   Validate (매 실행마다 검증)")
+    print("  Phase 7   [항상]   Validate (매 실행마다 검증)")
+    print()
+
+    if not step_view_enabled_flag:
+        print("  Derived step view 상태:")
+        print("  [DISABLED] Step output view generation is disabled by config or CLI.")
+        print()
+        return
+
+    manifest = build_current_run_manifest(
+        CONFIG_PATH,
+        repo_root=REPO_ROOT,
+        execution_mode="status",
+        ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
+        pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
+    )
+    print("  Derived step view 상태:")
+    print(f"  {'Step':<8} {'상태':<12} {'폴더':<24}")
+    print(f"  {'─'*8} {'─'*12} {'─'*24}")
+    for phase_num, (folder_name, _) in STEP_VIEW_COLLECTORS.items():
+        status = manifest["step_status"].get(f"step{phase_num}", "not_generated")
+        if phase_num in canonical_done and canonical_done[phase_num] and status in {"not_generated", "incomplete"}:
+            status = "stale"
+        print(f"  Step {phase_num:<4} {status:<12} {folder_name:<24}")
     print()
 
 
@@ -459,6 +621,11 @@ def main():
                         help="지정 Phase만 실행 (예: --only 1,4,5,6,7)")
     parser.add_argument("--status", action="store_true",
                         help="각 Phase 완료 상태만 출력")
+    parser.add_argument(
+        "--disable-step-view",
+        action="store_true",
+        help="Derived step output view generation을 비활성화",
+    )
     args = parser.parse_args()
 
     only_phases = set()
@@ -466,6 +633,10 @@ def main():
         only_phases = {int(x.strip()) for x in args.only.split(",")}
 
     config = _load_config()
+    step_view_enabled_flag = step_output_view_enabled(
+        config,
+        cli_disabled=args.disable_step_view,
+    )
     vina_cfg = config.get("vina", {})
     ppi_models = "50K"  # from ini files
 
@@ -477,10 +648,23 @@ def main():
           f"PPI ({ppi_models}) ║")
     print("╚══════════════════════════════════════════════════════╝")
 
-    print_status()
+    fresh_run = not _project_root().exists()
+    print_status(config=config, step_view_enabled_flag=step_view_enabled_flag)
 
     if args.status:
         return
+
+    pending_stale_steps = set(_selected_step_numbers(args, only_phases)) if step_view_enabled_flag else set()
+    if step_view_enabled_flag and pending_stale_steps:
+        refresh_root_step_views(
+            CONFIG_PATH,
+            repo_root=REPO_ROOT,
+            execution_mode=_execution_mode_label(args),
+            fresh_run=fresh_run,
+            stale_steps=sorted(pending_stale_steps),
+            ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
+            pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
+        )
 
     t_start = time.time()
 
@@ -505,7 +689,18 @@ def main():
                         print(f"\n  [SKIP] {name} — 결과물 이미 존재")
                         continue
 
-        run_step(name, func)
+        phase_success, phase_result, phase_error = run_step(name, func)
+        if step_view_enabled_flag and (phase_success or phase_num == 7):
+            pending_stale_steps.discard(phase_num)
+            _refresh_step_view_outputs(
+                phase_num,
+                args,
+                config,
+                phase_result=phase_result,
+                phase_error=phase_error,
+                fresh_run=fresh_run,
+                stale_steps=sorted(pending_stale_steps),
+            )
 
     # 요약
     elapsed = time.time() - t_start

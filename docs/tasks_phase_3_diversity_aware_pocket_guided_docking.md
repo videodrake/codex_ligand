@@ -2,7 +2,7 @@
 - Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 3 Task Breakdown
 - Purpose: Convert the Phase 3 PRD into implementation-facing tasks for diversity-aware, pocket-guided ligand docking
-- Upstream Dependency: Phase 2 must provide a budget-ready candidate pocket reference
+- Upstream Dependency: Phase 2 must provide a budget-ready candidate pocket reference with machine-readable patch-relationship classification, druggability annotations, and receptor-local priority fields
 - Key Principle: Docking should maximize biologically useful pocket diversity rather than repeatedly over-sampling the same dominant pocket
 
 ---
@@ -37,12 +37,12 @@ Each task group below includes:
 **Zone:** 🟢 Green
 
 ## Objective
-Load and validate the Phase 2 candidate pocket reference so that all docking jobs are anchored to explicitly prioritized receptor-local candidate pockets.
+Load and validate the structured Phase 2 candidate pocket reference, including patch-relationship classification, druggability annotations, and receptor-local priority fields, so that all docking jobs are anchored to explicitly prioritized receptor-local candidate pockets.
 
 ## Main Tasks
 
 ### 3.0.1 Candidate pocket reference ingestion
-- Read the Phase 2 export file.
+- Read the Phase 2 export file containing the structured candidate pocket catalog with patch-relationship classification, druggability annotations, and receptor-local priority fields.
 - Preserve receptor_id, candidate_pocket_id, centroid, patch relationship class, druggability support, state class, phase3_priority_tier, and recommended budget fields.
 
 ### 3.0.2 Reference validation

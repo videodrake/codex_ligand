@@ -1,161 +1,108 @@
 # Project Context
 
-## EGFR-MYO1D Pipeline
+Last updated: 2026-03-12
 
-## 1. Why this repository exists
+This document explains why this repository exists, what scientific question it is trying to support, and which project assumptions should shape future documentation and implementation work. It is not the read-order guide, the operator runbook, or the detailed data-flow map. Start with [AI_START_HERE.md](AI_START_HERE.md) for onboarding order, [current_pipeline_status.md](current_pipeline_status.md) for the present baseline, and [architecture.md](architecture.md) for flow-level structure.
 
-This repository exists to standardize the computational workflow used in the
-EGFR-MYO1D study.
+## Project Identity
 
-The problem is not the absence of computation. The problem is the lack of
-stable, comparable, and reviewable outputs across receptor states and across
-evidence types.
+This repository is an EGFR-MYO1D state-comparison research pipeline. Its purpose is to turn docking, receptor-side interface mapping, and downstream interpretation into a traceable workflow whose outputs stay comparable across receptor states and across evidence types.
 
-This repository is therefore a structured research pipeline, not a collection
-of one-off scripts.
+The repository is therefore not a generic docking toolkit and not a collection of one-off analysis scripts. It is a structured research system for asking whether receptor state changes alter pocket behavior, interface evidence, and perturbation relevance in ways that remain reviewable after the run is finished.
 
-## 2. Scientific framing
+## Scientific Question
 
-The current scientific focus is the EGFR kinase-domain surface in the context
-of MYO1D interaction and perturbation.
+The central question is how the EGFR kinase-domain surface behaves across receptor states in the context of MYO1D interaction and ligand perturbation. In practice, the project tries to connect four kinds of evidence:
 
-The pipeline is designed to support:
+- ligand pose and pocket behavior
+- receptor-side interface patch evidence
+- cross-state agreement or divergence
+- downstream perturbation-oriented interpretation
 
-- receptor-state-specific ligand docking behavior
-- pose-level and pocket-level evidence
-- receptor-side PPI patch definition
-- cross-state comparison
-- downstream perturbation-oriented ranking
+This framing matters because the project is not only looking for strong docking scores. It is trying to preserve enough structure in the outputs to support state-specific comparison, mechanistic review, and later decision-making.
 
-This is not a generic docking project. It is a state-comparison research
-pipeline.
+## Fixed Scope Assumptions
 
-## 3. Fixed receptor states
+The current research scope is intentionally narrow.
 
-The current receptor ensemble is limited to exactly these three structures:
+| Topic | Current project assumption |
+|------|------|
+| Receptor ensemble | Exactly three states: `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100` |
+| Comparison unit | State-specific evidence should remain explicit through the pipeline |
+| Ligand evidence center | Vina-centered outputs remain the current routine backbone |
+| Receptor-side Phase 1 evidence | PyRosetta is the primary structural source |
+| Secondary Phase 1 validation | LightDock is the active independent validation path |
+| AFM status | Legacy optional support only, not part of the routine scientific baseline |
+| MD role | Downstream stability gate, not the first-trust onboarding surface |
 
-1. `3GT8_raw`
-2. `3GT8_cl38_48`
-3. `3GT8_cl85_100`
+These assumptions should be treated as the current project frame unless a user explicitly asks to reopen the scope.
 
-All major outputs and comparisons should preserve these state IDs explicitly.
-Residue numbering consistency across them remains a high-priority concern.
+## Why The Repository Exists
 
-## 4. Current computational baseline
+The problem this repository addresses is not the lack of computational methods. The problem is the lack of stable, comparable, and reviewable outputs when multiple receptor states, multiple evidence layers, and multiple analysis passes are involved.
 
-The active baseline is:
+The repository exists to standardize:
 
-1. Vina-centered ligand workflow
-2. PyRosetta-centered Phase 1 PPI workflow
-3. LightDock secondary validation for Phase 1
-4. MD as a downstream stability gate
+- how receptor states are named and compared
+- how ligand-side and receptor-side evidence are kept traceable
+- how handoff artifacts feed later phases
+- how final summaries remain tied back to machine-readable outputs
 
-This means the repository is no longer AFM-centered for Phase 1.
+Without this structure, it becomes too easy for historical labels, ad hoc notebooks, or one-time interpretation choices to outrank the actual run evidence.
 
-## 5. AFM status
+## Evidence Philosophy
 
-AlphaFold-Multimer is not part of the active routine workflow.
+This project is evidence-driven rather than conclusion-driven. The pipeline should preserve enough intermediate structure that later reviewers can see where a claim came from.
 
-The repository still contains AFM parsing code, but that code should be treated
-as legacy optional support, not as the default planning baseline.
+That means the repository should keep:
 
-In practice:
+- pose-level evidence before aggressive summarization
+- pocket-level summaries that still preserve state identity
+- receptor-side residue and patch evidence
+- cross-method agreement where it exists
+- cross-state comparison tables rather than single-state claims only
 
-- do not treat AFM as part of the current core workflow
-- do not create new requirements that depend on AFM unless explicitly requested
-- do not let older AFM-oriented docs outrank the current LightDock-based Phase 1 baseline
+It should avoid treating every overlap, patch match, or classification label as settled truth without the supporting artifacts.
 
-## 6. Current evidence philosophy
+## Interpretation Boundaries
 
-The pipeline is evidence-driven, not conclusion-driven.
+Several constraints keep the project grounded:
 
-That means the system should preserve:
+- Historical residue labels and older site names are reference material, not authoritative truth.
+- Legacy AFM-oriented material should not define the current scientific baseline.
+- Planning documents can describe a desirable future end-to-end phase system without proving that the default operational path already behaves that way.
+- State comparison is part of the core question, so outputs that collapse receptor identity too early are lower-value artifacts.
 
-- raw pose-level evidence
-- pocket-level summaries
-- receptor-side interface evidence
-- cross-state overlap metrics
-- method-agreement information
+## What Counts As A Good Output
 
-It should not over-interpret every overlap or every patch relationship as fixed
-truth.
+A useful output in this project usually has most of these properties:
 
-## 7. Interpretation rule
+- it is tied to one or more explicit receptor states
+- it preserves machine-readable provenance
+- it can be handed to the next stage without manual reinterpretation
+- it can be reviewed by a human without re-running the whole analysis
+- it helps distinguish orthosteric, rim, allosteric, or low-relevance behavior more clearly than raw scores alone
 
-Legacy residue labels, site names, and older report labels are historical
-reference only.
+This is why the project values structured CSV handoffs and review reports together instead of choosing only one style of artifact.
 
-The current repository should prioritize:
+## What This Repository Is Not
 
-- newly generated pose data
-- newly generated pocket assignments
-- current receptor-state-specific overlap evidence
-- current PyRosetta and LightDock outputs for Phase 1
-
-Do not hard-code old site names into logic.
-
-## 8. Operating constraint
-
-The main execution environment has 32 CPU cores, but the routine safe operating
-assumption is 16 workers.
-
-That means:
-
-- parallel execution must stay configurable
-- 16 workers should be treated as the practical routine upper bound
-- local Codex workspace behavior must not be treated as server-performance truth
-
-## 9. Development style
-
-This repository should be improved by refactoring and standardizing the current
-codebase, not by discarding it and starting over.
-
-Preferred style:
-
-- inspect the current repo first
-- preserve what works
-- tighten traceability and schema consistency
-- expand in small safe steps
-
-## 10. Current output goals
-
-The repository should provide structured outputs for:
-
-- receptor metadata
-- ligand metadata
-- Vina pose-level parsed output
-- Vina pocket-level summaries
-- ligand-to-pocket mapping
-- cross-receptor pocket comparison
-- PyRosetta receptor-side residue summaries
-- LightDock cross-method convergence outputs
-- markdown summary reports
-- validation outputs
-
-## 11. What this repository is not
-
-This is not:
+This repository is not:
 
 - a web application
-- a SaaS platform
-- a cloud deployment project
-- a generic docking toolkit
+- a SaaS product
+- a generic molecular modeling framework
+- an AFM-first workflow
+- a repo that should be restarted from scratch whenever the design evolves
 
-It is a focused computational research pipeline for EGFR-MYO1D analysis.
+The preferred development style is to inspect the current codebase, preserve the working baseline, and improve traceability in small safe steps.
 
-## 12. Read-first rule for future contributors
+## Use These Docs For The Rest
 
-Anyone entering the repository should read, in order:
-
-1. `docs/current_pipeline_status.md`
-2. `README.md`
-3. `docs/project_context.md`
-4. `docs/architecture.md`
-5. `docs/runbook.md`
-
-Then, if they are working on Phase 1:
-
-6. `docs/phase1_pyrosetta_execution_note.md`
-7. `docs/phase1_ppi_handoff_note.md`
-8. `docs/phase1_lightdock_validation_note.md`
-9. `docs/phase1_output_chain_note.md`
+- [AI_START_HERE.md](AI_START_HERE.md): onboarding order, trust hierarchy, and conflict rules
+- [current_pipeline_status.md](current_pipeline_status.md): short summary of the current baseline
+- [architecture.md](architecture.md): current data flow and package responsibilities
+- [data_inventory.md](data_inventory.md): current input and output locations
+- [output_artifact_map.md](output_artifact_map.md): meaning and priority of major artifacts
+- [current_vs_plan_matrix.md](current_vs_plan_matrix.md): differences between planned behavior and current implementation
+- [runbook.md](runbook.md): operator-facing execution procedure

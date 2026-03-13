@@ -1,12 +1,12 @@
-> Status note (2026-03-12): Read `docs/current_pipeline_status.md` first.
+> Status note (2026-03-12): This brief remains part of the active source-of-truth set. `docs/current_pipeline_status.md` is a derived summary only and must not override it.
 > Current active Phase 1 baseline is PyRosetta + LightDock.
 > AlphaFold-Multimer references in older planning language are historical or optional only.
 
 ## Context Summary
-- Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
+- Project: EGFR-MYO1D interface-centric perturbation discovery pipeline
 - Current Phase: Phase 0 (Refactored Project Brief)
 - Status: Refactored brief drafted to replace the earlier Vina-first framing
-- Key Shift: Pipeline logic is reorganized from Vina-first to PPI-first → pocket proposal → diversity-aware docking → perturbation scoring
+- Key Shift: Pipeline logic is reorganized from Vina-first to PPI-first -> pocket proposal -> diversity-aware docking -> perturbation scoring
 - Intended Next Step: Create phase-specific PRDs and then phase-specific task files after review
 
 ---
@@ -38,32 +38,32 @@ These receptor states must remain comparable by receptor identity, residue numbe
 
 ## Refactored 4-Phase Scientific Architecture
 
-### Phase 1 — PPI-First Interface Mapping
-Define the receptor-side MYO1D attachment patch using PyRosetta global docking as the primary engine and AlphaFold-Multimer as auxiliary structural evidence.
+### Phase 1 ??PPI-first Interface Mapping
+Define the receptor-side MYO1D attachment patch using PyRosetta global docking as the primary engine, LightDock as the active secondary validation path, and AlphaFold-Multimer only as optional legacy auxiliary evidence.
 
-### Phase 2 — Pocket Proposal and Druggability Mapping
+### Phase 2 ??Pocket Proposal and Druggability Mapping
 Enumerate ligandable pockets using structure-based pocket proposal tools and classify their spatial relationship to the Phase 1 PPI patch.
 
-### Phase 3 — Diversity-Aware Pocket-Guided Ligand Docking
+### Phase 3 ??Diversity-Aware Pocket-Guided Ligand Docking
 Replace naive repeated giant-box blind docking with candidate-pocket-guided docking plus search-budget control and pocket saturation rules.
 
-### Phase 4 — Perturbation Relevance Scoring
+### Phase 4 ??Perturbation Relevance Scoring
 Rank candidate pockets and ligands by their likelihood of disrupting MYO1D attachment, using orthosteric/rim/allosteric interpretation rather than affinity-only logic.
 
 ## Why This Refactor Is Necessary
 The older Vina-first framing was useful for building a docking infrastructure, but it does not align perfectly with the real research question.
 
 The actual question is not:
-- “Which pocket is strongest?”
+- ??Which pocket is strongest???
 
 It is:
-- “Which ligandable site is most relevant to MYO1D attachment disruption?”
+- ??Which ligandable site is most relevant to MYO1D attachment disruption???
 
 That requires a PPI-first architecture.
 
 ## Explicitly Out of Scope
 - Public web application features
-- Generic docking platform behavior unrelated to EGFR–MYO1D
+- Generic docking platform behavior unrelated to EGFR-MYO1D
 - Treating old residue/site labels as fixed truth
 - Fully automated scientific conclusions without raw evidence
 - Performance tuning based only on the current non-server Codex workspace
@@ -81,11 +81,12 @@ This brief is complete when the project is clearly reframed as a 4-phase, PPI-fi
 
 ---
 
-## Korean Summary (간단 요약)
+## Korean Summary (간단 ?-약)
 
-이 프로젝트의 새 핵심은 다음이다.
-- 먼저 MYO1D가 EGFR 어디에 붙는지 정의한다.
-- 그 다음 그 부착을 방해할 수 있는 ligandable pocket을 찾는다.
-- 따라서 구조는 **PPI-first → pocket proposal → diverse docking → perturbation scoring**으로 바뀐다.
-- 최종 목표는 “좋은 포켓”이 아니라 “MYO1D 부착 방해 가능 포켓”을 찾는 것이다.
+????로??트??????심?? ??음??다.
+- 먼?? MYO1D가 EGFR ??디??붙는지 ?*의??다.
+- ?????음 ???부착을 방해??????는 ligandable pocket??찾는??
+- ??라??구조??**PPI-first ??pocket proposal ??diverse docking ??perturbation scoring**??로 바뀐다.
+- 최종 목표????좋?? ??켓??이 ??니????MYO1D 부???방해 가????켓??을 찾는 것이??
+
 

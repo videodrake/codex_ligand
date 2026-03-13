@@ -2,7 +2,7 @@
 - Project: EGFR–MYO1D interface-centric perturbation discovery pipeline
 - Current Subphase: Phase 4 Task Breakdown
 - Purpose: Convert the Phase 4 PRD into implementation-facing tasks for perturbation relevance scoring
-- Upstream Dependencies: Phase 1 receptor-side patch reference, Phase 2 candidate pocket classification, and Phase 3 docking evidence package
+- Upstream Dependencies: Phase 1 receptor-side patch reference, Phase 2 candidate pocket classification, and a Phase 3 docking evidence package with pocket-level pose provenance, budget-consumption traces, and occupancy/diversity evidence
 - Key Principle: Final ranking must reflect MYO1D attachment disruption relevance, not affinity alone
 
 ---
@@ -36,7 +36,7 @@ Each task group below includes:
 **Zone:** 🟢 Green
 
 ## Objective
-Load and validate the structured evidence outputs from Phases 1–3 so that final scoring is based on complete, traceable, and internally consistent inputs.
+Load and validate the structured evidence outputs from Phases 1-3, including Phase 3 docking evidence with pocket-level pose provenance, budget-consumption traces, and occupancy/diversity evidence, so that final scoring is based on complete, traceable, and internally consistent inputs.
 
 ## Main Tasks
 
@@ -53,7 +53,7 @@ Load and validate the structured evidence outputs from Phases 1–3 so that fina
 - Load cross-state pocket class labels
 
 ### 4.0.3 Phase 3 evidence ingestion
-- Load docking evidence reference
+- Load the Phase 3 docking evidence reference containing pocket-level pose provenance, budget-consumption traces, and occupancy/diversity evidence.
 - Load ligand support information
 - Load search-policy and budget provenance
 - Load diversity/occupancy summaries if needed

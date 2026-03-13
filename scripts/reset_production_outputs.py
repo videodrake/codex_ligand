@@ -44,6 +44,19 @@ PHASE_OUTPUT_DIRS = (
     REPO_ROOT / "output" / "phase3_docking",
     REPO_ROOT / "output" / "phase4_perturbation",
 )
+DERIVED_STEP_DIRS = (
+    "step1_vina_raw",
+    "step2_ppi_raw",
+    "step3_ppi_postprocess",
+    "step4_vina_postprocess",
+    "step5_verdict",
+    "step6_report",
+    "step7_validate",
+)
+DERIVED_ROOT_FILES = (
+    "current_run_manifest.json",
+    "step_index.md",
+)
 
 
 def _project_output_dir() -> Path:
@@ -82,6 +95,15 @@ def _ppi_output_dirs() -> Set[Path]:
     return targets
 
 
+def _derived_output_targets(project_root: Path) -> List[Path]:
+    targets: List[Path] = []
+    for name in DERIVED_STEP_DIRS:
+        targets.append(project_root / name)
+    for name in DERIVED_ROOT_FILES:
+        targets.append(project_root / name)
+    return targets
+
+
 def collect_cleanup_targets() -> List[Path]:
     targets: List[Path] = []
     seen: Set[Path] = set()
@@ -92,7 +114,10 @@ def collect_cleanup_targets() -> List[Path]:
             seen.add(resolved)
             targets.append(resolved)
 
-    add(_project_output_dir())
+    project_root = _project_output_dir()
+    for path in _derived_output_targets(project_root):
+        add(path)
+    add(project_root)
     for path in PHASE_OUTPUT_DIRS:
         add(path)
     for path in sorted(_ppi_output_dirs()):

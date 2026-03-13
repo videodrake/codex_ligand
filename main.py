@@ -453,7 +453,7 @@ def _ppi_show_pbs():
     print("  tail -f ppi_prod.o   # 프로덕션")
 
 
-def run_md():
+def run_md(config_path: str = None):
     """Run MD (GROMACS) analysis."""
     print("\n" + "=" * 50)
     print("  [4] MD GROMACS Analysis")
@@ -744,8 +744,8 @@ def main():
     dispatch = {
         "vina": lambda: run_vina(config),
         "postprocess": lambda: run_postprocess(config),
-        "pyrosetta": lambda: run_pyrosetta(),
-        "md": lambda: run_md(),
+        "pyrosetta": lambda: run_pyrosetta(config),
+        "md": lambda: run_md(config),
         "report": lambda: run_report(config),
         "validate": lambda: run_validate(config),
         "verdict": lambda: run_verdict(config),

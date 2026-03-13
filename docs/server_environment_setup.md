@@ -19,7 +19,7 @@ The pre-qsub lane expects these packages to be available in `pyrosetta`:
 - `scipy`
 - `matplotlib`
 
-The package reference list is also stored in [requirements-test.txt](/Users/admin/Desktop/hwang/codex/codex_ligand/requirements-test.txt).
+The package reference list is also stored in [requirements-test.txt](../requirements-test.txt).
 
 ## Recommended manual install
 

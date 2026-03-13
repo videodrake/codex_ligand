@@ -1,14 +1,18 @@
 # Phase 1 Output Chain Note
 
-This note summarizes the current Phase 1 output chain as it exists in the
-repository today.
+This note summarizes the structured Phase 1 output chain under `output/phase1_ppi/`.
 
-It is meant for operators and follow-up coding work. It does not replace the
-PRD or task documents.
+It is meant for operators and follow-up coding work. It does not replace the PRD or task documents.
+
+## Scope and relationship to sibling docs
+
+- This file documents the structured Phase 1 branch outputs.
+- The legacy postprocess handoff tables under `output/egfr_myo1d_vina/ppi/` are documented in `docs/phase1_ppi_handoff_note.md`.
+- For artifact meaning and onboarding priority across all phases, use `docs/output_artifact_map.md`.
 
 ## Current Phase 1 Flow
 
-The current Phase 1 output chain is:
+The current structured Phase 1 output chain is:
 
 1. PyRosetta input validation and run metadata
 2. PyRosetta docking and decoy score export
@@ -51,8 +55,7 @@ The comparison and robustness layer now preserves:
 - `construct_type`
 - `orientation_validation_status`
 
-Cross-state interpretation should still defer to the Phase 1 input validation
-outputs if there is any numbering or chain mismatch warning upstream.
+Cross-state interpretation should still defer to the Phase 1 input validation outputs if there is any numbering or chain mismatch warning upstream.
 
 ## Current Secondary Evidence Outputs
 
@@ -70,10 +73,8 @@ Cross-method output is written to:
 Current LightDock notes:
 - LightDock remains secondary evidence only.
 - `construct_type` is propagated through the LightDock support path.
-- `orientation_validation_status` is currently present but uses the honest
-  placeholder value `not_available` in raw LightDock support outputs.
-- LightDock-only residues should not be treated as primary Phase 2 patch input
-  without additional support.
+- `orientation_validation_status` is currently present but uses the placeholder value `not_available` in raw LightDock support outputs.
+- LightDock-only residues should not be treated as primary Phase 2 patch input without additional support.
 - AFM is not part of the current active secondary-validation baseline.
 
 ## Current Final Phase 1 Outputs
@@ -89,10 +90,11 @@ The downstream patch reference currently preserves:
 - method agreement
 - confidence
 
+If orientation filtering is skipped for a run, this field may fall back to `not_available`; downstream consumers should not assume that every run already has calibrated orientation classes.
+
 ## Practical Reading Order
 
-If you need to inspect a single Phase 1 run quickly, the current practical
-reading order is:
+If you need to inspect a single Phase 1 run quickly, the current practical reading order is:
 
 1. `phase1_input_validation_summary.md`
 2. `pyrosetta_run_metadata.json`
@@ -108,3 +110,4 @@ For more focused implementation details, see:
 - `docs/phase1_ppi_handoff_note.md`
 - `docs/phase1_orientation_filter_note.md`
 - `docs/phase1_lightdock_validation_note.md`
+- `docs/output_artifact_map.md`
