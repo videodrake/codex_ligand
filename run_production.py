@@ -10,9 +10,9 @@ Usage:
 전체 흐름:
   Phase 1: Vina blind docking (3 receptor × 3 ligand, exhaustiveness=128)  ~15분
            결과물: output/{project}/{receptor_id}/{ligand}_blind.pdbqt
-  Phase 2: PPI docking — Phase 1 인프라로 전환 완료 (config/phase1/*.ini)
-           현재 비활성 (PPI_TARGETS = [])
-  Phase 3: PPI postprocess — Phase 2와 동일하게 비활성
+  Phase 2: PPI docking — Phase 1 monomer-based (3 state × seed0 = 60K models)
+           결과물: {docking_dir}/final_result/final_ranking.csv
+  Phase 3: PPI postprocess — monomer 타겟은 chain restoration 불필요 (자동 스킵)
   Phase 4: Vina postprocess (parse → contacts → cluster → summarize → compare → bootstrap)
            결과물: output/{project}/vina_pocket_table.csv
   Phase 5: Verdict (3축 통합 scoring)
@@ -48,8 +48,42 @@ from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
 
-# PPI 설정 — Phase 1 인프라로 전환 완료 (config/phase1/*.ini 사용)
-PPI_TARGETS = []
+# PPI 설정 — Phase 1 monomer-based (seed0 테스트)
+PPI_TARGETS = [
+    {
+        "name": "3GT8_raw_seed0",
+        "config_ini": "config/phase1/phase1_prod_3GT8_raw_seed0.ini",
+        "input_pdb": "input/PPI/phase1/docking_3GT8_raw_ext_beta_meander.pdb",
+        "mapping_csv": "",
+        "receptor_id": "3GT8_raw",
+        "partner_name": "ext_beta_meander",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
+    },
+    {
+        "name": "3GT8_cl38_48_seed0",
+        "config_ini": "config/phase1/phase1_prod_3GT8_cl38_48_seed0.ini",
+        "input_pdb": "input/PPI/phase1/docking_3GT8_cl38_48_ext_beta_meander.pdb",
+        "mapping_csv": "",
+        "receptor_id": "3GT8_cl38_48",
+        "partner_name": "ext_beta_meander",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
+    },
+    {
+        "name": "3GT8_cl85_100_seed0",
+        "config_ini": "config/phase1/phase1_prod_3GT8_cl85_100_seed0.ini",
+        "input_pdb": "input/PPI/phase1/docking_3GT8_cl85_100_ext_beta_meander.pdb",
+        "mapping_csv": "",
+        "receptor_id": "3GT8_cl85_100",
+        "partner_name": "ext_beta_meander",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
+    },
+]
+
+
+_FORCE_MODE = False
 
 
 def _record_step2_outputs_with_targets(config_path, repo_root=None):
@@ -445,12 +479,13 @@ def phase2_ppi():
                 print(f"  [ERROR] {name}: 입력 PDB 없음: {input_pdb}")
                 continue
 
-        # 이미 완료된 target은 스킵
-        docking_dir = _ppi_docking_dir(target)
-        ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
-        if ranking and ranking.exists():
-            print(f"  [SKIP] {name}: 이미 완료 ({ranking})")
-            continue
+        # 이미 완료된 target은 스킵 (--force 시 무시)
+        if not _FORCE_MODE:
+            docking_dir = _ppi_docking_dir(target)
+            ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
+            if ranking and ranking.exists():
+                print(f"  [SKIP] {name}: 이미 완료 ({ranking})")
+                continue
 
         print(f"\n  --- {name} (20K models) ---")
         print(f"  Config: {config_ini}")
@@ -467,6 +502,9 @@ def phase3_ppi_postprocess():
     for target in PPI_TARGETS:
         name = target["name"]
         mapping_csv = target["mapping_csv"]
+        if not mapping_csv:
+            print(f"  [SKIP] {name}: monomer 타겟 — chain restoration 불필요")
+            continue
         receptor_id = target["receptor_id"]
         partner_name = target["partner_name"]
         construct_type = target.get("construct_type", "full_kinase_domain")
@@ -606,6 +644,9 @@ def main():
         help="Derived step output view generation을 비활성화",
     )
     args = parser.parse_args()
+
+    global _FORCE_MODE
+    _FORCE_MODE = args.force
 
     only_phases = set()
     if args.only:
