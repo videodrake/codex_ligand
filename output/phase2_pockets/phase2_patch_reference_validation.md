@@ -8,15 +8,18 @@
 
 ## Validation Result
 
-**PASS WITH WARNINGS (1 warnings) — review before proceeding**
+**PASS WITH WARNINGS (4 warnings) — review before proceeding**
 
 - Errors: 0
-- Warnings: 1
+- Warnings: 4
 - Info: 2
 
 ### Warnings
 
 - No patch residues found for state(s): ['3GT8_cl85_100']. This may be expected if those states had no orientation-valid models.
+- MD gate artifact missing: md_gate_decision.md
+- MD gate artifact missing: phase1_md_validation_report.md
+- MD gate artifact missing: md_stability_metrics.csv
 
 ### Info
 
@@ -47,6 +50,16 @@
 | 3GT8_raw | Yes |
 | 3GT8_cl38_48 | Yes |
 | 3GT8_cl85_100 | No |
+
+## MD Gate Traceability
+
+- Decision status: `missing`
+
+| Artifact | Status | Location |
+|----------|--------|----------|
+| md_gate_decision.md | missing | not found |
+| phase1_md_validation_report.md | missing | not found |
+| md_stability_metrics.csv | missing | not found |
 
 ## Phase 2 Readiness
 

@@ -58,7 +58,14 @@ def compute_contacts(
     receptor_atoms: List[dict],
     ligand_atoms: List[Tuple[float, float, float]],
     cutoff: float,
-) -> List[str]:
+) -> Tuple[List[str], Dict[str, float]]:
+    """Return (sorted_residue_ids, {residue_id: min_distance_A}).
+
+    The first element preserves the original contract (list of residue ID
+    strings).  The second element maps each contacting residue to its
+    minimum heavy-atom distance to the ligand, in Angstroms, rounded to
+    2 decimal places.
+    """
     cutoff_sq = cutoff * cutoff
     min_dist_by_residue: Dict[str, float] = {}
     for receptor_atom in receptor_atoms:
@@ -72,7 +79,10 @@ def compute_contacts(
             current = min_dist_by_residue.get(residue_id)
             if current is None or dist < current:
                 min_dist_by_residue[residue_id] = dist
-    return sorted(min_dist_by_residue)
+    # Round distances to 2 decimal places
+    min_dist_by_residue = {k: round(v, 2) for k, v in min_dist_by_residue.items()}
+    sorted_ids = sorted(min_dist_by_residue)
+    return sorted_ids, min_dist_by_residue
 
 
 def load_pose_table(path: Path) -> List[dict]:
@@ -102,6 +112,9 @@ def enrich_pose_table_with_contacts(config_path: str, pose_table_path: Optional[
     receptor_cache: Dict[str, List[dict]] = {}
     pose_cache: Dict[str, List[dict]] = {}
 
+    # Accumulate long-form distance rows for the detailed CSV
+    distance_detail_rows: List[dict] = []
+
     for row in rows:
         receptor_id = row["receptor_id"]
         receptor_pdb = receptor_pdb_map.get(receptor_id)
@@ -117,9 +130,38 @@ def enrich_pose_table_with_contacts(config_path: str, pose_table_path: Optional[
 
         pose_rank = int(row["pose_rank"])
         pose = pose_cache[raw_pose_file][pose_rank - 1]
-        contacts = compute_contacts(receptor_cache[receptor_id], parse_pose_atoms(pose["lines"]), cutoff)
-        row["contact_residues"] = ";".join(contacts)
-        row["n_contact_residues"] = len(contacts)
+        contact_ids, dist_map = compute_contacts(
+            receptor_cache[receptor_id], parse_pose_atoms(pose["lines"]), cutoff
+        )
+        row["contact_residues"] = ";".join(contact_ids)
+        row["n_contact_residues"] = len(contact_ids)
+        # New column: residue_id:min_distance pairs, semicolon-separated
+        row["contact_distances"] = ";".join(
+            f"{rid}:{dist_map[rid]:.2f}" for rid in contact_ids
+        )
+
+        # Long-form rows for detailed CSV
+        ligand_id = row.get("ligand_id", "")
+        for rid in contact_ids:
+            distance_detail_rows.append({
+                "receptor_id": receptor_id,
+                "ligand_id": ligand_id,
+                "pose_rank": pose_rank,
+                "residue_id": rid,
+                "min_distance_A": dist_map[rid],
+            })
 
     write_pose_table(pose_table, rows)
+
+    # Write detailed per-residue distance CSV alongside the pose table
+    detail_csv = pose_table.parent / "vina_contact_distances.csv"
+    if distance_detail_rows:
+        with open(detail_csv, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=["receptor_id", "ligand_id", "pose_rank", "residue_id", "min_distance_A"],
+            )
+            writer.writeheader()
+            writer.writerows(distance_detail_rows)
+
     return pose_table

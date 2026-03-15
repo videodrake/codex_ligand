@@ -24,13 +24,12 @@ Read the files here with the current project baseline in mind:
 |------|------|
 | `example-project.yaml` | Main project-level YAML config for the current routine baseline |
 | `full_test.yaml` | Auxiliary test-oriented YAML config, not the default baseline |
-| `ppi_test_*.ini` | PyRosetta Phase 1 test configs |
-| `ppi_prod_*.ini` | PyRosetta Phase 1 production configs |
+| `phase1/*.ini` | Phase 1 PyRosetta configs (18 files: 3 test + 15 production) |
 | `run_pre_qsub_checks.pbs` | Scheduler wrapper for the lightweight precheck lane |
 | `run_production.pbs` | Scheduler wrapper for the routine production lane |
 | `run_production_fresh.pbs` | Fresh production rerun wrapper when prior production outputs must be discarded |
-| `run_ppi_test.pbs` | Scheduler wrapper for PyRosetta Phase 1 test submission |
-| `run_ppi_prod.pbs` | Scheduler wrapper for PyRosetta Phase 1 production submission |
+| `run_lightdock.pbs` | Scheduler wrapper for Phase 1 LightDock validation |
+| `run_lightdock_test.pbs` | Scheduler wrapper for Phase 1 LightDock test submission |
 | `run_full_test.pbs` | Auxiliary full-test submission helper |
 
 ## Config Surfaces And Their Roles
@@ -134,9 +133,11 @@ Important baseline rule:
 
 - if `ppi.afm_models` is `null`, AFM is inactive in the routine baseline and should not be treated as a required evidence source
 
-## `ppi_*.ini` Semantics
+## `phase1/*.ini` Semantics
 
-The INI files are the current Phase 1 PyRosetta job configs. They do not replace the YAML project config; they support the still-separate PyRosetta execution surface.
+The Phase 1 INI files are the current PyRosetta job configs, located under `config/phase1/`. They do not replace the YAML project config; they support the still-separate PyRosetta execution surface.
+
+Layout: 3 test configs + 15 production configs (5 seeds × 3 receptor states).
 
 These files typically carry:
 
@@ -181,12 +182,12 @@ Semantic role:
 
 - requests a clean rerun of the production lane when prior production outputs should no longer be trusted
 
-### `run_ppi_test.pbs` and `run_ppi_prod.pbs`
+### `run_lightdock.pbs` and `run_lightdock_test.pbs`
 
 Semantic role:
 
-- wrap the dedicated PyRosetta Phase 1 entry points for test or production-style runs
-- allow selection of specific INI configs or run modes at submission time
+- wrap the Phase 1 LightDock secondary validation entry points
+- allow selection of specific receptor states at submission time
 
 ## Environment Semantics
 

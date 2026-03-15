@@ -70,6 +70,13 @@ VERDICT_FIELDS = [
     "vina_quality_score",
     "ppi_proximity_score",
     "cross_receptor_score",
+    "vina_affinity_pts",
+    "vina_convergence_pts",
+    "vina_consensus_pts",
+    "ppi_spatial_pts",
+    "ppi_overlap_pts",
+    "cross_receptor_pts",
+    "score_denominator",
     "ppi_data_available",
     "best_affinity",
     "n_pose",
@@ -891,7 +898,7 @@ def score_pocket(
     thresholds: dict,
     has_ppi_data: bool,
     exp_correlation: Optional[dict] = None,
-) -> Tuple[float, str, List[str], float, float, float]:
+) -> Tuple[float, str, List[str], float, float, float, dict]:
     """Score a single pocket with adaptive weighting.
 
     Scoring adapts to available evidence:
@@ -902,6 +909,10 @@ def score_pocket(
 
     exp_correlation: optional dict from compute_experimental_correlation().
       Does NOT change the 100-point total — adds informational reason tags only.
+
+    Returns:
+      (total, verdict, reasons, vina_score, ppi_score, cross_score, raw_components)
+      where raw_components is a dict of pre-normalization point values.
     """
     reasons: List[str] = []
     T = thresholds
@@ -912,28 +923,37 @@ def score_pocket(
     n_ligand = _safe_int(pocket.get("n_ligand"), 0)
 
     vina_raw = 0.0
+    affinity_pts = 0.0
+    convergence_pts = 0.0
+    consensus_pts = 0.0
 
     # Affinity: graduated scoring (0 / 10 / 20)
     if affinity <= T["affinity_great"]:
+        affinity_pts = 20.0
         vina_raw += 20
         reasons.append(f"affinity={affinity:.1f}")
     elif affinity <= T["affinity_good"]:
+        affinity_pts = 10.0
         vina_raw += 10
         reasons.append(f"affinity={affinity:.1f}")
 
     # Pose convergence: graduated (0 / 8 / 15)
     if n_pose >= T["n_pose_great"]:
+        convergence_pts = 15.0
         vina_raw += 15
         reasons.append(f"n_pose={n_pose}")
     elif n_pose >= T["n_pose_good"]:
+        convergence_pts = 8.0
         vina_raw += 8
         reasons.append(f"n_pose={n_pose}")
 
     # Multi-ligand consensus: graduated (0 / 10 / 20)
     if n_ligand >= T["n_ligand_all"]:
+        consensus_pts = 20.0
         vina_raw += 20
         reasons.append(f"n_ligand={n_ligand}")
     elif n_ligand >= T["n_ligand_good"]:
+        consensus_pts = 10.0
         vina_raw += 10
         reasons.append(f"n_ligand={n_ligand}")
 
@@ -942,9 +962,11 @@ def score_pocket(
     if membrane_tag:
         reasons.append(membrane_tag)
 
-    # Normalize to adaptive max
-    # Raw max = affinity(20) + convergence(15) + consensus(20) = 55
-    VINA_RAW_MAX = 20.0 + 15.0 + 20.0  # keep in sync with components above
+    # Normalize to adaptive max — computed from actual max component points
+    _AFFINITY_MAX = 20.0
+    _CONVERGENCE_MAX = 15.0
+    _CONSENSUS_MAX = 20.0
+    VINA_RAW_MAX = _AFFINITY_MAX + _CONVERGENCE_MAX + _CONSENSUS_MAX
     vina_max = 50.0 if has_ppi_data else 60.0
     vina_score = min(vina_raw, VINA_RAW_MAX) / VINA_RAW_MAX * vina_max
 
@@ -955,6 +977,8 @@ def score_pocket(
     # account for this systematic overestimate.
     ppi_score = 0.0
     ppi_max = 20.0 if has_ppi_data else 0.0
+    spatial_pts = 0.0
+    overlap_pts = 0.0
 
     if has_ppi_data and ppi_agreement:
         spatial = ppi_agreement.get("spatial_proximity", "no_data")
@@ -962,17 +986,21 @@ def score_pocket(
         spatial_dist = ppi_agreement.get("spatial_dist_A", "")
 
         if spatial == "adjacent":
+            spatial_pts = 15.0
             ppi_score += 15.0
             reasons.append(f"ppi_adjacent({spatial_dist}A)")
         elif spatial == "near":
+            spatial_pts = 10.0
             ppi_score += 10.0
             reasons.append(f"ppi_near({spatial_dist}A)")
         elif spatial == "moderate":
+            spatial_pts = 4.0
             ppi_score += 4.0
             reasons.append(f"ppi_moderate({spatial_dist}A)")
         elif spatial == "no_data":
             # PPI residues exist but no PDB for centroid → use residue overlap
             if n_shared > 0:
+                spatial_pts = 8.0
                 ppi_score += 8.0
                 reasons.append(f"ppi_shared={n_shared}res")
         else:
@@ -982,14 +1010,18 @@ def score_pocket(
         if T.get("ppi_residue_bonus") and n_shared > 0:
             occ = _safe_float(ppi_agreement.get("ppi_mean_occupancy_of_shared"), 0)
             if occ >= 0.5:
+                overlap_pts = 5.0
                 ppi_score += 5.0
                 reasons.append(f"shared_highocc={n_shared}")
             else:
+                overlap_pts = 2.0
                 ppi_score += 2.0
 
         # Multi-partner corroboration bonus: near both beta_meander AND TH1
         n_partners_near = _safe_int(ppi_agreement.get("n_ppi_partners_near"), 0)
         if n_partners_near >= 2:
+            # Include multi-partner bonus in spatial_pts (it's spatial evidence)
+            spatial_pts += 3.0
             ppi_score += 3.0
             reasons.append(f"multi_ppi={n_partners_near}partners")
 
@@ -1034,7 +1066,19 @@ def score_pocket(
     else:
         verdict = "WEAK"
 
-    return total, verdict, reasons, vina_score, ppi_score, cross_score
+    # Raw component breakdown (pre-normalization points)
+    score_denominator = vina_max + ppi_max + cross_max
+    raw_components = {
+        "vina_affinity_pts": affinity_pts,
+        "vina_convergence_pts": convergence_pts,
+        "vina_consensus_pts": consensus_pts,
+        "ppi_spatial_pts": spatial_pts,
+        "ppi_overlap_pts": overlap_pts,
+        "cross_receptor_pts": cross_raw,
+        "score_denominator": score_denominator,
+    }
+
+    return total, verdict, reasons, vina_score, ppi_score, cross_score, raw_components
 
 
 # ---------------------------------------------------------------------------
@@ -1201,7 +1245,7 @@ def generate_verdict(
         pocket_has_ppi = rid in ppi_receptor_ids
 
         exp_corr = exp_correlations.get(key)
-        total, verdict, reasons, v_score, p_score, c_score = score_pocket(
+        total, verdict, reasons, v_score, p_score, c_score, raw_comp = score_pocket(
             pocket, ppi_agr, cross_matches, thresholds, pocket_has_ppi,
             exp_correlation=exp_corr,
         )
@@ -1224,6 +1268,13 @@ def generate_verdict(
             "vina_quality_score": round(v_score, 1),
             "ppi_proximity_score": round(p_score, 1),
             "cross_receptor_score": round(c_score, 1),
+            "vina_affinity_pts": raw_comp["vina_affinity_pts"],
+            "vina_convergence_pts": raw_comp["vina_convergence_pts"],
+            "vina_consensus_pts": raw_comp["vina_consensus_pts"],
+            "ppi_spatial_pts": raw_comp["ppi_spatial_pts"],
+            "ppi_overlap_pts": raw_comp["ppi_overlap_pts"],
+            "cross_receptor_pts": raw_comp["cross_receptor_pts"],
+            "score_denominator": raw_comp["score_denominator"],
             "ppi_data_available": "yes" if pocket_has_ppi else "no",
             "best_affinity": pocket.get("best_affinity", ""),
             "n_pose": pocket.get("n_pose", ""),

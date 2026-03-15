@@ -1,0 +1,80 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N LightDock
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=999:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/lightdock.o
+#PBS -e ${PBS_O_WORKDIR}/lightdock.e
+
+cd $PBS_O_WORKDIR
+
+# Conda 환경 활성화
+source ~/.bashrc
+conda activate pyrosetta
+
+# ============================================================
+# LightDock Secondary Validation (production)
+#
+# 400 swarms × 200 glowworms × 100 steps
+# Estimated: 12-24 hours per state (16 cores)
+#
+# 사용법:
+#   qsub config/run_lightdock.pbs                         # 3개 state 전체
+#   qsub -v STATE=3GT8_raw config/run_lightdock.pbs        # 단일 state
+# ============================================================
+
+STATE=${STATE:-all}
+
+echo "============================================"
+echo "  LightDock Secondary Validation [PRODUCTION]"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "  State: $STATE"
+echo "============================================"
+
+# Step 1: Generate setup scripts
+echo ""
+echo "[Phase 1] Generating LightDock setup..."
+if [ "$STATE" = "all" ]; then
+    python -m egfr_pipeline.phase1.lightdock_validation --setup
+else
+    python -m egfr_pipeline.phase1.lightdock_validation --setup --state "$STATE"
+fi
+
+# Step 2: Execute LightDock for each state
+echo ""
+echo "[Phase 2] Executing LightDock..."
+if [ "$STATE" = "all" ]; then
+    for state in 3GT8_raw 3GT8_cl38_48 3GT8_cl85_100; do
+        echo ""
+        echo "--- $state ---"
+        bash "output/phase1_ppi/${state}/lightdock/run_lightdock_${state}.sh"
+    done
+else
+    bash "output/phase1_ppi/${STATE}/lightdock/run_lightdock_${STATE}.sh"
+fi
+
+# Step 3: Extract interfaces + orientation filter
+echo ""
+echo "[Phase 3] Extracting interfaces..."
+if [ "$STATE" = "all" ]; then
+    python -m egfr_pipeline.phase1.lightdock_validation --extract
+else
+    python -m egfr_pipeline.phase1.lightdock_validation --extract --state "$STATE"
+fi
+
+# Step 4: Cross-method convergence + validation note
+echo ""
+echo "[Phase 4] Cross-method convergence analysis..."
+if [ "$STATE" = "all" ]; then
+    python -m egfr_pipeline.phase1.lightdock_validation --convergence --note
+else
+    python -m egfr_pipeline.phase1.lightdock_validation --convergence --note --state "$STATE"
+fi
+
+echo ""
+echo "============================================"
+echo "  Finished: $(date)"
+echo "============================================"

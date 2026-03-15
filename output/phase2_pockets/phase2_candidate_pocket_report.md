@@ -60,9 +60,9 @@
 
 | Pocket | Class | Hotspot Overlap | Fraction | Centroid Dist (A) | Basis |
 |--------|-------|----------------|----------|-------------------|-------|
-| 3GT8_raw_PKT01 | orthosteric_candidate | 4 | 0.571 | 132.57 | hotspot_overlap=4 (frac=0.57 >= 0.25) |
-| 3GT8_raw_PKT02 | orthosteric_candidate | 3 | 0.429 | 124.38 | hotspot_overlap=3 (frac=0.43 >= 0.25) |
-| 3GT8_raw_PKT03 | low_relevance_candidate | 0 | 0.000 | 149.96 | centroid_distant=150.0A > 20.0A, no_overlap |
+| 3GT8_raw_PKT01 | orthosteric_candidate | 3 | 0.500 | 132.94 | hotspot_overlap=3 (frac=0.50 >= 0.25) |
+| 3GT8_raw_PKT02 | orthosteric_candidate | 3 | 0.500 | 124.62 | hotspot_overlap=3 (frac=0.50 >= 0.25) |
+| 3GT8_raw_PKT03 | low_relevance_candidate | 0 | 0.000 | 150.39 | centroid_distant=150.4A > 20.0A, no_overlap |
 
 ### Low-Relevance Pockets
 
@@ -140,7 +140,7 @@ Re-run TG 2.5 and TG 2.6 after all states have pocket proposals.
 **3GT8_raw_PKT01** (3GT8_raw)
 - Relationship: orthosteric_candidate
 - Druggability: high (tier tier_1)
-- Hotspot overlap: 4 residues (0.571 of patch)
+- Hotspot overlap: 3 residues (0.500 of patch)
 - Centroid: (44.454, 32.261, 18.584)
 - Box: 14.4 x 13.7 x 13.2 A
 - Lining residues: LEU838;ASP855;ILE857;GLU866
@@ -148,7 +148,7 @@ Re-run TG 2.5 and TG 2.6 after all states have pocket proposals.
 **3GT8_raw_PKT02** (3GT8_raw)
 - Relationship: orthosteric_candidate
 - Druggability: medium (tier tier_2)
-- Hotspot overlap: 3 residues (0.429 of patch)
+- Hotspot overlap: 3 residues (0.500 of patch)
 - Centroid: (28.490, 45.493, 12.601)
 - Box: 11.2 x 11.6 x 12.3 A
 - Lining residues: LEU819;ALA822;VAL834

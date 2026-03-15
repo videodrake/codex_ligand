@@ -390,10 +390,31 @@ def _section_lightdock(state_summaries) -> List[str]:
         "## 6. LightDock Secondary Validation",
         "",
         "LightDock remains secondary evidence only.",
-        "Its raw support tables currently use `orientation_validation_status = not_available`",
-        "until an equivalent LightDock orientation-aware filter path exists.",
         "",
     ]
+
+    # Check if orientation data is available
+    has_orientation = False
+    for state in RECEPTOR_STATES:
+        data = state_summaries.get(state, {})
+        conv = data.get("convergence", [])
+        for c in conv:
+            ovs = c.get("orientation_validation_status", "")
+            if ovs and ovs not in ("not_available", ""):
+                has_orientation = True
+                break
+
+    if has_orientation:
+        lines.append(
+            "LightDock poses are now filtered with the PDB-based orientation test "
+            "(same algorithm as PyRosetta, PyRosetta-free implementation)."
+        )
+    else:
+        lines.append(
+            "LightDock raw support tables use `orientation_validation_status = not_available` "
+            "until LightDock execution and orientation filtering are performed."
+        )
+    lines.append("")
 
     any_convergence = False
     for state in RECEPTOR_STATES:

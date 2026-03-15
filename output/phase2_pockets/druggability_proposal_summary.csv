@@ -1,4 +1,4 @@
 receptor_id,pocket_id,relationship_class,best_proposal_score,best_druggability_score,normalized_proposal_score,normalized_druggability_score,druggability_confidence,n_sources,sources,multi_source_support,mean_volume_A3,n_residues,ftmap_hotspot_count,ftmap_overlap_residues,hotspot_support_available,overall_druggability_tier
-3GT8_raw,3GT8_raw_PKT01,orthosteric_candidate,0.8234,0.7120,1.0000,1.0000,high,1,fpocket,False,892.3,4,,,False,tier_1
-3GT8_raw,3GT8_raw_PKT02,orthosteric_candidate,0.5612,0.4450,0.4790,0.4805,medium,1,fpocket,False,567.9,3,,,False,tier_2
-3GT8_raw,3GT8_raw_PKT03,low_relevance_candidate,0.3201,0.1980,0.0000,0.0000,low,1,fpocket,False,312.4,2,,,False,tier_3
+3GT8_raw,3GT8_raw_PKT01,orthosteric_candidate,0.8234,0.7120,1.0000,1.0000,high,1,fpocket,false,892.3,4,,,false,tier_1
+3GT8_raw,3GT8_raw_PKT02,orthosteric_candidate,0.5612,0.4450,0.4790,0.4805,medium,1,fpocket,false,567.9,3,,,false,tier_2
+3GT8_raw,3GT8_raw_PKT03,low_relevance_candidate,0.3201,0.1980,0.0000,0.0000,low,1,fpocket,false,312.4,2,,,false,tier_3

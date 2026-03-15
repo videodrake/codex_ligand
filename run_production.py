@@ -9,11 +9,10 @@ Usage:
 
 전체 흐름:
   Phase 1: Vina blind docking (3 receptor × 3 ligand, exhaustiveness=128)  ~15분
-           결과물: output/{project}//{receptor_id}/{ligand}_blind.pdbqt
-  Phase 2: PPI docking (PyRosetta 20K models × 2 targets)                  ~24-36시간
-           결과물: {pdb_stem}/final_result/final_ranking.csv
-  Phase 3: PPI postprocess (chain restoration + residue extraction)
-           결과물: output/{project}/ppi_pyrosetta_residues.csv
+           결과물: output/{project}/{receptor_id}/{ligand}_blind.pdbqt
+  Phase 2: PPI docking — Phase 1 인프라로 전환 완료 (config/phase1/*.ini)
+           현재 비활성 (PPI_TARGETS = [])
+  Phase 3: PPI postprocess — Phase 2와 동일하게 비활성
   Phase 4: Vina postprocess (parse → contacts → cluster → summarize → compare → bootstrap)
            결과물: output/{project}/vina_pocket_table.csv
   Phase 5: Verdict (3축 통합 scoring)
@@ -49,29 +48,8 @@ from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
 
-# PPI 설정
-PPI_TARGETS = [
-    {
-        "name": "TH1",
-        "config_ini": "config/ppi_prod_TH1.ini",
-        "input_pdb": "input/PPI/prepared/EGFR_dimer_TH1.pdb",
-        "mapping_csv": "input/PPI/prepared/EGFR_dimer_TH1_mapping.csv",
-        "receptor_id": "3GT8_raw",
-        "partner_name": "MYO1D_TH1",
-        "construct_type": "full_kinase_domain",
-        "orientation_validation_status": "not_available",
-    },
-    {
-        "name": "beta-meander",
-        "config_ini": "config/ppi_prod_beta_meander.ini",
-        "input_pdb": "input/PPI/prepared/EGFR_dimer_beta_meander.pdb",
-        "mapping_csv": "input/PPI/prepared/EGFR_dimer_beta_meander_mapping.csv",
-        "receptor_id": "3GT8_raw",
-        "partner_name": "MYO1D_beta",
-        "construct_type": "full_kinase_domain",
-        "orientation_validation_status": "not_available",
-    },
-]
+# PPI 설정 — Phase 1 인프라로 전환 완료 (config/phase1/*.ini 사용)
+PPI_TARGETS = []
 
 
 def _record_step2_outputs_with_targets(config_path, repo_root=None):
@@ -434,7 +412,7 @@ def phase1_vina():
     print(f"  exhaustiveness={config['vina']['exhaustiveness']}, n_poses={config['vina']['n_poses']}")
     print(f"  병렬 실행: {len(receptors)}개 프로세스")
 
-    from run_full_test import _dock_one_receptor
+    from egfr_pipeline.vina.dock import dock_one_receptor as _dock_one_receptor
 
     with ProcessPoolExecutor(max_workers=len(receptors)) as executor:
         futures = {
@@ -554,9 +532,10 @@ def phase4_vina_postprocess():
 
     print("\n  --- summarize ---")
     from egfr_pipeline.vina.summarize import summarize_from_config
-    pocket_csv, drug_csv = summarize_from_config(config_str)
+    pocket_csv, drug_csv, occupancy_csv = summarize_from_config(config_str)
     print(f"  → {pocket_csv}")
     print(f"  → {drug_csv}")
+    print(f"  → {occupancy_csv}")
 
     print("\n  --- compare ---")
     from egfr_pipeline.vina.compare import compare_from_config

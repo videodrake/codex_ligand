@@ -8,25 +8,27 @@
 PyRosetta 기반 **단백질-단백질 상호작용(PPI) Global Blind Docking 파이프라인**.
 2-chain PDB를 입력받아 Relax -> Global Docking -> Filtering -> Clustering -> Refinement -> Final Scoring을 수행하여 최적 결합 포즈를 예측한다.
 
-- **상태**: v2.0 (필터링 파이프라인 개편, 1K 테스트 진행 중) / v1.0 하위 호환
+- **상태**: Phase 1 monomer-based PPI 전환 완료, v2.0 필터링 파이프라인 (v1.0 하위 호환)
 - **실행 환경**: Linux HPC (PBS/qsub), 32 CPU cores, 네트워크 차단
 - **언어**: Python 3.x + PyRosetta (구버전 호환성 필수)
 
 ## 파일 구조
 
 ```
-pipeline_manager.py        # 메인 오케스트레이터 (~1660줄) - 7단계 파이프라인 실행
-docking.py                 # 워커: Relax, Global Docking, Refinement (253줄)
-analysis.py                # 워커: Scoring, RMSD, Interface 분석 (~590줄)
-common.py                  # 유틸리티: PyRosetta 초기화, Pose<->String 변환 (150줄)
-config.ini                 # 기본 설정 (1K 모델, 테스트용) - v2.0 필터 포함
-config_100k.ini            # 프로덕션 설정 (100K 모델) - v2.0 필터 포함
-config_20k.ini             # 중간 설정 (20K 모델)
-config/run_ppi_prod.pbs    # PBS 배치 (현재 프로덕션 PPI 실행 진입점)
-config/run_ppi_test.pbs    # PBS 배치 (현재 테스트 PPI 실행 진입점)
-config/run_pre_qsub_checks.pbs  # 사전 검증 PBS 진입점
-check_improvements_compat.py # v1.0 개선사항 호환성 점검
-input_PDB/                 # 입력 PDB 파일 (EGFR_TH1, EGFR_beta, C-lobe_TH1, C-lobe_beta)
+egfr_pipeline/pyrosetta_docking/
+  pipeline_manager.py        # 메인 오케스트레이터 (~1660줄) - 7단계 파이프라인 실행
+  docking.py                 # 워커: Relax, Global Docking, Refinement (253줄)
+  analysis.py                # 워커: Scoring, RMSD, Interface 분석 (~590줄)
+  common.py                  # 유틸리티: PyRosetta 초기화, Pose<->String 변환 (150줄)
+config/
+  example-project.yaml       # 메인 프로젝트 설정 (Vina + PPI 통합)
+  phase1/*.ini               # Phase 1 PyRosetta 설정 (3 test + 15 production)
+  run_production.pbs         # 프로덕션 PBS 진입점
+  run_lightdock.pbs          # Phase 1 LightDock 검증 PBS
+  run_lightdock_test.pbs     # Phase 1 LightDock 테스트 PBS
+  run_pre_qsub_checks.pbs   # 사전 검증 PBS 진입점
+input/PPI/phase1/            # Phase 1 입력 PDB (monomer receptor + partner)
+input/PPI/prepared/          # 레거시 dimer 준비 PDB
 ```
 
 ## 파이프라인 7단계 흐름
@@ -69,19 +71,18 @@ input_PDB/                 # 입력 PDB 파일 (EGFR_TH1, EGFR_beta, C-lobe_TH1,
 conda activate pyrosetta
 python main.py -c config/example-project.yaml pyrosetta
 
-# PBS 배치 - v1.0 (input_PDB/ 전체 순차 처리)
-qsub config/run_ppi_prod.pbs
-qsub config/run_pre_qsub_checks.pbs
-
-# PBS 배치 - v2.0 테스트 (단일 PDB, 기본: C-lobe_beta)
-qsub config/run_ppi_test.pbs
-python main.py -c config/example-project.yaml ppi-postprocess
+# PBS 배치 - 프로덕션 (precheck → production)
 PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
-
-# PBS 배치 - v2.0 전체 PDB 처리
 qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
 
-# 호환성 점검 (서버 배포 전)
+# Phase 1 LightDock 검증
+qsub config/run_lightdock.pbs                          # 전체 state
+qsub config/run_lightdock_test.pbs                     # 테스트
+
+# PPI 후처리
+python main.py -c config/example-project.yaml ppi-postprocess
+
+# 출력 검증
 python main.py -c config/example-project.yaml validate
 ```
 
@@ -89,15 +90,24 @@ python main.py -c config/example-project.yaml validate
 
 ```
 <PDB_NAME>/
+  scored_all_models.csv  # 전체 스코어링 모델 메트릭 + filter_status (재도킹 없이 재분석 가능)
+  scored_stage2_models.csv # Stage 2 대상 모델의 비싼 메트릭 (packstat, unsatHb 등)
+  filter_thresholds.csv  # 필터 임계값 기록 (재현성 보장)
+  all_scored_summary.csv # 에너지 퍼널용 데이터 (dG, dSASA, sc, total_score + L_RMSD)
   filter_passed/         # 필터 통과 구조 (F0001_S-15.23.pdb)
-  cluster_results/       # 클러스터 대표 (C01_M01_S-15.23.pdb) + cluster_summary.csv
+  cluster_results/       # 클러스터 대표 + 전체 멤버십
+    cluster_summary.csv          # 대표 모델 메트릭 (centroid, dSASA 분해, 에너지 분포 통계 포함)
+    cluster_membership.csv       # 전체 model→cluster 매핑 (비대표 포함)
+    dropped_candidates.csv       # 중복제거로 제외된 후보
   final_result/          # 최종 랭킹 + PyMOL 스크립트 + 리포트
     Rank01_C01_M01_S-18.45.pdb   # 최종 구조 (S뒤 숫자 = dG)
-    Rank01_C01_M01_Energies.csv  # Per-residue 에너지
+    Rank01_C01_M01_Energies.csv  # Per-residue 에너지 (9항: fa_atr/rep/sol/elec + hbond 4항 + fa_dun)
+    Rank01_C01_M01_InterfaceEnergies.csv  # 인터페이스 잔기 ΔE (9항 분해)
+    Rank01_C01_M01_ContactPairs.csv      # 잔기 쌍별 최소 거리 (A-B 접촉 네트워크)
     view_results.pml             # 최종 랭킹 모델 (B-factor 컬러링)
     2_DETAIL_C01.pml             # 사이트별 상세 뷰
-    docking_validation_report.txt # PPI 사이트 탐색 리포트
-  final_ranking.csv      # 종합 랭킹 테이블 (모든 메트릭 포함)
+    docking_validation_report.txt # PPI 사이트 탐색 리포트 (I_RMSD 분포 포함)
+  final_ranking.csv      # 종합 랭킹 (dSASA_polar/hydrophobic, I_RMSD, centroid 포함)
   energy_funnel.png      # L_RMSD vs dG 산점도
   1_OVERVIEW_Clusters.pml # 전체 결합 사이트 비교 (클러스터별 색상 구분)
 ```
@@ -178,12 +188,15 @@ Global Blind Docking에서 **높은 L_RMSD는 정상**이다. 표면 전체를 �
 |--------|---------|------|
 | dG_separated | < -10 REU | 인터페이스 결합 에너지 (낮을수록 강한 결합) |
 | dSASA | > 800 A^2 | 결합 시 묻히는 표면적 (클수록 넓은 인터페이스) |
+| dSASA_polar | — | dSASA 중 극성 기여분 (A^2) |
+| dSASA_hydrophobic | — | dSASA 중 소수성 기여분 (A^2) |
 | sc_value | > 0.65 | Shape Complementarity (높을수록 좋은 기하적 맞물림) |
 | packstat | > 0.65 | 원자 패킹 밀도 (높을수록 조밀) |
 | dG_density | < -1.5 | dG/dSASA×100 (에너지 밀도, 낮을수록 효율적) |
 | delta_unsatHbonds | < 5 | 결합 시 미충족 수소결합 수 (적을수록 양호) |
 | nres_int | > 15 | 인터페이스 잔기 수 (클수록 넓은 접촉면) |
 | hbonds_int | ≥ 1 | 인터페이스 수소결합 수 (많을수록 강한 상호작용) |
+| I_RMSD | 낮을수록 | 인터페이스 잔기 기준 RMSD (결합 부위 구조 변화) |
 | L_RMSD | 낮을수록 | Relaxed 대비 Ligand RMSD |
 
 ## v2.0 필터링 아키텍처
@@ -217,4 +230,8 @@ Global Blind Docking에서 **높은 L_RMSD는 정상**이다. 표면 전체를 �
 - 클러스터링: CoM(Center of Mass) pre-filter로 O(N^2) RMSD 계산 회피
 - 메모리 관리: `docking_results[i] = None` + `gc.collect()` 로 대규모 실행 시 메모리 절약
 - Boltzmann-weighted cluster probability: Validation Report에 포함 (kT=1.0 REU)
-- v2.0 Validation Report: 10개 품질 체크 (C1~C10) + 새 메트릭 분포 섹션
+- v2.0 Validation Report: 10개 품질 체크 (C1~C10) + 새 메트릭 분포 섹션 + I_RMSD 분포
+- Per-residue 에너지 CSV: 9개 가중 에너지 항 (fa_atr, fa_rep, fa_sol, fa_elec, hbond_sr_bb, hbond_lr_bb, hbond_bb_sc, hbond_sc, fa_dun)
+- ContactPairs CSV: 잔기 쌍별 최소 거리 (CB-CB 기본, GLY는 CA, 실패 시 heavy-atom 최소)
+- scored_all_models.csv: 전체 모델의 Pass 1 메트릭 + filter_status (재도킹 없이 재분석 가능)
+- filter_thresholds.csv: 사용된 필터 임계값 + 입출력 카운트 (재현성 보장)

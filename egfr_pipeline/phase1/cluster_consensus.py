@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import csv
+import math
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -65,6 +66,17 @@ CLUSTER_SUMMARY_COLUMNS = [
     "receptor_lobe_distribution",   # "N-lobe:X%,C-lobe:Y%"
     "receptor_hotspot_residues",    # Semicolon-separated
     "partner_hotspot_residues",     # Semicolon-separated
+    "centroid_x",                   # Mean CA x-coord of receptor interface residues
+    "centroid_y",                   # Mean CA y-coord
+    "centroid_z",                   # Mean CA z-coord
+    "centroid_spread_A",            # RMSD of per-model centroids from cluster centroid (Angstrom)
+    "std_dG",                       # Std deviation of dG within cluster
+    "min_dG",                       # Best (most negative) dG in cluster
+    "max_dG",                       # Worst (least negative) dG in cluster
+    "std_dSASA",                    # Std deviation of dSASA within cluster
+    "min_dSASA",                    # Minimum dSASA in cluster
+    "max_dSASA",                    # Maximum dSASA in cluster
+    "std_sc_value",                 # Std deviation of sc_value within cluster
 ]
 
 HOTSPOT_COLUMNS = [
@@ -100,6 +112,9 @@ PATCH_TABLE_COLUMNS = [
     "is_multi_cluster_hotspot", # Present as hotspot in ≥2 clusters
     "global_model_count",       # Total orientation-valid models with this residue
     "global_model_fraction",    # Fraction of all orientation-valid models
+    "ca_x",                     # CA atom x-coordinate from receptor PDB
+    "ca_y",                     # CA atom y-coordinate
+    "ca_z",                     # CA atom z-coordinate
 ]
 
 
@@ -134,11 +149,19 @@ def compute_cluster_consensus(
     residues: List[dict],
     receptor_id: str,
     hotspot_threshold: float = DEFAULT_HOTSPOT_THRESHOLD,
+    ca_coords: Optional[Dict[int, Tuple[float, float, float]]] = None,
 ) -> Tuple[List[dict], List[dict], List[dict]]:
     """Compute cluster consensus from models and residue tables.
 
+    Args:
+        ca_coords: Optional mapping {resnum: (x, y, z)} of receptor CA atoms.
+            When provided, cluster centroids and per-residue coordinates are
+            computed from receptor-side interface residues.
+
     Returns (cluster_summaries, hotspot_rows, patch_rows).
     """
+    if ca_coords is None:
+        ca_coords = {}
     construct_type = _derive_construct_type(models, residues)
     orientation_filter_applied = _has_orientation_filter(models)
     orientation_validation_status = (
@@ -197,6 +220,19 @@ def compute_cluster_consensus(
         mean_sc = _mean_field(valid_members, "sc_value")
         mean_packstat = _mean_field(valid_members, "packstat")
         mean_nres = _mean_field(valid_members, "nres_int")
+
+        # Distribution statistics (orientation-valid only)
+        dG_values = _collect_field_values(valid_members, "dG_separated")
+        dSASA_values = _collect_field_values(valid_members, "dSASA")
+        sc_values = _collect_field_values(valid_members, "sc_value")
+
+        std_dG = _std_field(dG_values)
+        min_dG = min(dG_values) if dG_values else None
+        max_dG = max(dG_values) if dG_values else None
+        std_dSASA = _std_field(dSASA_values)
+        min_dSASA = min(dSASA_values) if dSASA_values else None
+        max_dSASA = max(dSASA_values) if dSASA_values else None
+        std_sc = _std_field(sc_values)
 
         # --- Per-residue occupancy within cluster (orientation-valid only) ---
         valid_model_ids = {m["model_id"] for m in valid_members}
@@ -304,6 +340,49 @@ def compute_cluster_consensus(
         else:
             lobe_dist = ""
 
+        # --- Compute cluster interface centroid from receptor CA coords ---
+        # Cluster centroid: mean CA position of all unique receptor-side
+        # interface residues across orientation-valid models in this cluster.
+        # Per-model centroid: mean CA of that model's receptor interface
+        # residues, used to compute centroid_spread_A.
+        cluster_centroid = None
+        centroid_spread = None
+
+        if ca_coords:
+            # Collect all receptor residue nums seen in this cluster
+            cluster_receptor_resnums = set()
+            for key, meta in residue_meta.items():
+                ch, _ = key
+                if ch == "A":
+                    rn = _safe_int(meta.get("residue_num", ""))
+                    if rn is not None and rn in ca_coords:
+                        cluster_receptor_resnums.add(rn)
+
+            # Cluster centroid from union of receptor interface residues
+            cluster_ca_list = [ca_coords[rn] for rn in cluster_receptor_resnums
+                               if rn in ca_coords]
+            cluster_centroid = _compute_centroid(cluster_ca_list)
+
+            # Per-model centroids for spread calculation
+            if cluster_centroid is not None:
+                model_centroids = []
+                for mid in valid_model_ids:
+                    model_resnums = set()
+                    for r in residues_by_model.get(mid, []):
+                        if r.get("chain", "") == "A":
+                            rn = _safe_int(r.get("residue_num", ""))
+                            if rn is not None and rn in ca_coords:
+                                model_resnums.add(rn)
+                    if model_resnums:
+                        mc = _compute_centroid(
+                            [ca_coords[rn] for rn in model_resnums]
+                        )
+                        if mc is not None:
+                            model_centroids.append(mc)
+                centroid_spread = _compute_centroid_spread(
+                    model_centroids, cluster_centroid
+                )
+
         cluster_summaries.append({
             "receptor_id": receptor_id,
             "construct_type": construct_type,
@@ -326,6 +405,17 @@ def compute_cluster_consensus(
             "receptor_lobe_distribution": lobe_dist,
             "receptor_hotspot_residues": ";".join(receptor_hotspots),
             "partner_hotspot_residues": ";".join(partner_hotspots),
+            "centroid_x": round(cluster_centroid[0], 3) if cluster_centroid else "",
+            "centroid_y": round(cluster_centroid[1], 3) if cluster_centroid else "",
+            "centroid_z": round(cluster_centroid[2], 3) if cluster_centroid else "",
+            "centroid_spread_A": round(centroid_spread, 3) if centroid_spread is not None else "",
+            "std_dG": round(std_dG, 2) if std_dG is not None else "",
+            "min_dG": round(min_dG, 2) if min_dG is not None else "",
+            "max_dG": round(max_dG, 2) if max_dG is not None else "",
+            "std_dSASA": round(std_dSASA, 1) if std_dSASA is not None else "",
+            "min_dSASA": round(min_dSASA, 1) if min_dSASA is not None else "",
+            "max_dSASA": round(max_dSASA, 1) if max_dSASA is not None else "",
+            "std_sc_value": round(std_sc, 4) if std_sc is not None else "",
         })
 
     # --- Build global patch table ---
@@ -343,6 +433,18 @@ def compute_cluster_consensus(
         global_frac = (info["global_count"] / total_orient_valid
                        if total_orient_valid > 0 else 0)
 
+        # Look up CA coordinate for receptor-side residues
+        resnum_int = _safe_int(info["residue_num"])
+        if chain == "A" and resnum_int is not None and resnum_int in ca_coords:
+            ca_x, ca_y, ca_z = ca_coords[resnum_int]
+            ca_x_val = round(ca_x, 3)
+            ca_y_val = round(ca_y, 3)
+            ca_z_val = round(ca_z, 3)
+        else:
+            ca_x_val = ""
+            ca_y_val = ""
+            ca_z_val = ""
+
         patch_rows.append({
             "receptor_id": receptor_id,
             "construct_type": construct_type,
@@ -359,6 +461,9 @@ def compute_cluster_consensus(
             "is_multi_cluster_hotspot": is_multi,
             "global_model_count": info["global_count"],
             "global_model_fraction": round(global_frac, 4),
+            "ca_x": ca_x_val,
+            "ca_y": ca_y_val,
+            "ca_z": ca_z_val,
         })
 
     # Sort patch table: receptor first, then by global_model_fraction descending
@@ -371,6 +476,98 @@ def compute_cluster_consensus(
 
 
 # ---------------------------------------------------------------------------
+# Coordinate helpers
+# ---------------------------------------------------------------------------
+
+# Default receptor PDB directory
+_INPUT_PDB_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
+
+# Mapping from receptor_id (state name) to PDB filename
+_STATE_TO_PDB = {
+    "3GT8_raw": "receptor_3GT8_raw.pdb",
+    "3GT8_cl38_48": "receptor_3GT8_cl38_48.pdb",
+    "3GT8_cl85_100": "receptor_3GT8_cl85_100.pdb",
+}
+
+
+def load_receptor_ca_coords(
+    receptor_id: str,
+    pdb_dir: Optional[Path] = None,
+) -> Dict[int, Tuple[float, float, float]]:
+    """Parse receptor PDB and return CA coordinates keyed by residue number.
+
+    Returns {resnum: (x, y, z)} for chain A CA atoms.
+    Returns empty dict if PDB not found or parsing fails.
+    """
+    if pdb_dir is None:
+        pdb_dir = _INPUT_PDB_DIR
+
+    pdb_name = _STATE_TO_PDB.get(receptor_id, "")
+    if not pdb_name:
+        # Try generic pattern
+        pdb_name = f"receptor_{receptor_id}.pdb"
+
+    pdb_path = pdb_dir / pdb_name
+    if not pdb_path.exists():
+        return {}
+
+    ca_coords: Dict[int, Tuple[float, float, float]] = {}
+    try:
+        with open(pdb_path, encoding="utf-8") as f:
+            for line in f:
+                if not line.startswith(("ATOM  ", "HETATM")):
+                    continue
+                atom_name = line[12:16].strip()
+                if atom_name != "CA":
+                    continue
+                chain = line[21].strip()
+                if chain != "A":
+                    continue
+                try:
+                    resnum = int(line[22:26].strip())
+                    x = float(line[30:38].strip())
+                    y = float(line[38:46].strip())
+                    z = float(line[46:54].strip())
+                    ca_coords[resnum] = (x, y, z)
+                except (ValueError, IndexError):
+                    continue
+    except OSError:
+        return {}
+
+    return ca_coords
+
+
+def _compute_centroid(
+    coords: List[Tuple[float, float, float]],
+) -> Optional[Tuple[float, float, float]]:
+    """Compute mean of a list of (x, y, z) tuples."""
+    if not coords:
+        return None
+    n = len(coords)
+    cx = sum(c[0] for c in coords) / n
+    cy = sum(c[1] for c in coords) / n
+    cz = sum(c[2] for c in coords) / n
+    return (cx, cy, cz)
+
+
+def _compute_centroid_spread(
+    member_centroids: List[Tuple[float, float, float]],
+    cluster_centroid: Tuple[float, float, float],
+) -> Optional[float]:
+    """Compute RMSD of member centroids from the cluster centroid.
+
+    Returns None if fewer than 2 members (spread is undefined for a single point).
+    """
+    if len(member_centroids) < 2:
+        return None
+    cx, cy, cz = cluster_centroid
+    sum_sq = 0.0
+    for mx, my, mz in member_centroids:
+        sum_sq += (mx - cx) ** 2 + (my - cy) ** 2 + (mz - cz) ** 2
+    return math.sqrt(sum_sq / len(member_centroids))
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -378,6 +575,14 @@ def _safe_float(val: str) -> Optional[float]:
     """Convert string to float, returning None on failure."""
     try:
         return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_int(val) -> Optional[int]:
+    """Convert string/value to int, returning None on failure."""
+    try:
+        return int(val)
     except (ValueError, TypeError):
         return None
 
@@ -431,12 +636,32 @@ def _derive_construct_type(models: List[dict], residues: List[dict]) -> str:
 
 def _mean_field(rows: List[dict], field: str) -> Optional[float]:
     """Compute mean of a numeric field across rows."""
+    values = _collect_field_values(rows, field)
+    return sum(values) / len(values) if values else None
+
+
+def _collect_field_values(rows: List[dict], field: str) -> List[float]:
+    """Collect all valid float values for *field* from *rows*."""
     values = []
     for r in rows:
         v = _safe_float(r.get(field, ""))
         if v is not None:
             values.append(v)
-    return sum(values) / len(values) if values else None
+    return values
+
+
+def _std_field(values: List[float]) -> Optional[float]:
+    """Population standard deviation of a list of floats.
+
+    Returns 0.0 for single-element lists and None for empty lists.
+    """
+    if not values:
+        return None
+    if len(values) == 1:
+        return 0.0
+    mean = sum(values) / len(values)
+    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    return math.sqrt(variance)
 
 
 def _write_csv(path: Path, rows: List[dict], columns: List[str]) -> None:
@@ -486,8 +711,15 @@ def process_state(
         print(f"  Run orientation filter with --merge first.")
         print(f"  Proceeding without orientation filtering (all models used).")
 
+    # Load receptor CA coordinates for centroid computation
+    ca_coords = load_receptor_ca_coords(state_name)
+    if ca_coords:
+        print(f"  Loaded {len(ca_coords)} receptor CA coordinates for centroid computation")
+    else:
+        print(f"  WARNING: No receptor PDB found for {state_name}; centroids will be empty")
+
     summaries, hotspots, patches = compute_cluster_consensus(
-        models, residues, state_name, hotspot_threshold
+        models, residues, state_name, hotspot_threshold, ca_coords=ca_coords
     )
 
     if not summaries:

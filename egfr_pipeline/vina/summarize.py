@@ -20,17 +20,26 @@ def split_contact_residues(value: str) -> List[str]:
     return [item for item in value.split(";") if item]
 
 
-def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict]]:
+def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[dict]]:
     pocket_groups: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
     ligand_groups: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
 
+    n_skipped = 0
     for row in rows:
         if not row.get("pocket_id"):
+            n_skipped += 1
             continue
         pocket_groups[(row["receptor_id"], row["pocket_id"])].append(row)
+    if n_skipped:
+        import logging
+        logging.getLogger(__name__).warning(
+            "summarize: %d pose(s) without pocket_id excluded from summary",
+            n_skipped,
+        )
         ligand_groups[(row["receptor_id"], row["ligand_id"])].append(row)
 
     pocket_rows: List[dict] = []
+    residue_occupancy_rows: List[dict] = []
     for (receptor_id, pocket_id), group in sorted(pocket_groups.items()):
         centroids_x = [float(item["centroid_x"]) for item in group]
         centroids_y = [float(item["centroid_y"]) for item in group]
@@ -80,6 +89,19 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict]]:
             "affinity_iqr": aff_iqr,
         })
 
+        # Build full per-residue occupancy rows for this pocket
+        n_poses = len(group)
+        for residue_id, n_occ in sorted(residue_counter.items(), key=lambda item: (-item[1], item[0])):
+            occ = round(n_occ / n_poses, 4) if n_poses > 0 else 0.0
+            residue_occupancy_rows.append({
+                "receptor_id": receptor_id,
+                "pocket_id": pocket_id,
+                "residue_id": residue_id,
+                "n_occurrences": n_occ,
+                "occupancy": occ,
+                "is_hotspot": occ >= 0.5,
+            })
+
     drug_map_rows: List[dict] = []
     for (receptor_id, ligand_id), group in sorted(ligand_groups.items()):
         pocket_counter: Counter = Counter(item["pocket_id"] for item in group)
@@ -114,7 +136,7 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict]]:
             "is_multimodal_binding": len(pocket_counter) > 1,
         })
 
-    return pocket_rows, drug_map_rows
+    return pocket_rows, drug_map_rows, residue_occupancy_rows
 
 
 def write_csv(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
@@ -126,7 +148,7 @@ def write_csv(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
     return path
 
 
-def summarize_from_config(config_path: str, pose_table_path: Optional[str] = None) -> Tuple[Path, Path]:
+def summarize_from_config(config_path: str, pose_table_path: Optional[str] = None) -> Tuple[Path, Path, Path]:
     config = load_config(config_path)
     project_root = project_root_from_config(config)
     pose_table = Path(pose_table_path) if pose_table_path else project_root / "vina_pose_table.csv"
@@ -134,7 +156,7 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
 
     # Cross-receptor comparison is not implemented yet; residue numbering consistency
     # should be verified on the real server before Task Group 5 uses these summaries.
-    pocket_rows, drug_map_rows = summarize_pose_rows(rows)
+    pocket_rows, drug_map_rows, residue_occupancy_rows = summarize_pose_rows(rows)
     pocket_csv = write_csv(
         project_root / "vina_pocket_table.csv",
         pocket_rows,
@@ -171,4 +193,16 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
             "is_multimodal_binding",
         ],
     )
-    return pocket_csv, drug_csv
+    occupancy_csv = write_csv(
+        project_root / "vina_pocket_residue_occupancy.csv",
+        residue_occupancy_rows,
+        [
+            "receptor_id",
+            "pocket_id",
+            "residue_id",
+            "n_occurrences",
+            "occupancy",
+            "is_hotspot",
+        ],
+    )
+    return pocket_csv, drug_csv, occupancy_csv

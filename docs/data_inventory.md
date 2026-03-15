@@ -153,6 +153,10 @@ Key files:
 | `output/egfr_myo1d_vina/vina/vina_drug_pocket_map.csv` | mapping from ligands to inferred pockets |
 | `output/egfr_myo1d_vina/vina/vina_pocket_comparison.csv` | cross-receptor pocket comparison output |
 | `output/egfr_myo1d_vina/vina/vina_pocket_bootstrap.csv` | optional bootstrap stability summary for pocket-level patterns |
+| `output/egfr_myo1d_vina/vina/vina_contact_distances.csv` | long-form per-pose contact distances (receptor_id, ligand_id, pose_rank, residue_id, min_distance_A) |
+| `output/egfr_myo1d_vina/vina/vina_pocket_residue_occupancy.csv` | per-pocket residue occupancy and hotspot flags |
+| `output/egfr_myo1d_vina/vina/vina_clustering_merge_log.csv` | pocket merge provenance log with merge reasons |
+| `output/egfr_myo1d_vina/vina/vina_clustering_parameters.json` | clustering parameter snapshot for reproducibility |
 
 ### 3.3 Integrated verdict/report outputs
 
@@ -186,6 +190,20 @@ Interpretation:
 
 - This area preserves previous PPI-derived products and historical run outputs.
 - For the current structured Phase 1 baseline, prefer the dedicated `output/phase1_ppi/` tree described below.
+
+### 3.5 PyRosetta PPI docking outputs (per-PDB run)
+
+Each PPI docking run produces the following enhanced output files under `<PDB_NAME>/`:
+
+| File | Meaning |
+|------|------|
+| `scored_all_models.csv` | All models with Pass 1 metrics (dG, dSASA, dSASA_polar, dSASA_hydrophobic, sc, total_score) + filter_status |
+| `scored_stage2_models.csv` | Stage 2 candidate models with expensive metrics (packstat, unsatHb, nres_int, hbonds_int) |
+| `filter_thresholds.csv` | Filter thresholds applied per stage with input/output counts |
+| `cluster_results/cluster_membership.csv` | Full model-to-cluster mapping including non-representative members |
+| `final_result/*_ContactPairs.csv` | Per-residue-pair minimum distances for final ranked models |
+| `final_ranking.csv` | Comprehensive ranking with dSASA_polar, dSASA_hydrophobic, I_RMSD, center_x/y/z |
+| `cluster_results/cluster_summary.csv` | Cluster summaries with centroid coordinates, dSASA decomposition, energy distribution stats |
 
 ## 4. Phase-Specific Derived Trees
 

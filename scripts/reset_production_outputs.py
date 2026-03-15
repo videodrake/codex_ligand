@@ -34,10 +34,8 @@ if str(REPO_ROOT) not in sys.path:
 from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
 
 PROJECT_CONFIG = REPO_ROOT / "config" / "example-project.yaml"
-PPI_CONFIGS = (
-    REPO_ROOT / "config" / "ppi_prod_TH1.ini",
-    REPO_ROOT / "config" / "ppi_prod_beta_meander.ini",
-)
+# Legacy PPI configs removed — Phase 1 인프라로 전환 완료 (config/phase1/*.ini)
+PPI_CONFIGS = ()
 PHASE_OUTPUT_DIRS = (
     REPO_ROOT / "output" / "phase1_ppi",
     REPO_ROOT / "output" / "phase2_pockets",

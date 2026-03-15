@@ -72,7 +72,7 @@ def sweep(
 
         clustered = assign_pockets(rows, cutoff)
         if merge_by_residue:
-            clustered = merge_pockets_by_residue(
+            clustered, _merge_log = merge_pockets_by_residue(
                 clustered,
                 jaccard_threshold=merge_jaccard,
                 overlap_threshold=merge_overlap,

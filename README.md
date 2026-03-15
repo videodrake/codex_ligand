@@ -15,14 +15,13 @@ For deep scientific or architecture detail, use `docs/`.
 
 Read in this order:
 
-1. [docs/onboarding/README.md](docs/onboarding/README.md)
-2. [docs/AI_START_HERE.md](docs/AI_START_HERE.md)
-3. [docs/current_pipeline_status.md](docs/current_pipeline_status.md)
-4. [docs/first_time_environment_setup.md](docs/first_time_environment_setup.md)
-5. [docs/runbook.md](docs/runbook.md)
-6. [docs/manual_execution.md](docs/manual_execution.md)
-7. [config/README.md](config/README.md)
-8. [output/README.md](output/README.md)
+1. [docs/AI_START_HERE.md](docs/AI_START_HERE.md)
+2. [docs/current_pipeline_status.md](docs/current_pipeline_status.md)
+3. [docs/first_time_environment_setup.md](docs/first_time_environment_setup.md)
+4. [docs/runbook.md](docs/runbook.md)
+5. [docs/manual_execution.md](docs/manual_execution.md)
+6. [config/README.md](config/README.md)
+7. [output/README.md](output/README.md)
 
 ## Current Output Reading Order
 
@@ -117,7 +116,6 @@ Routine baseline project output root:
 ## Documentation Indexes
 
 - [docs/README.md](docs/README.md): Full docs index.
-- [docs/onboarding/README.md](docs/onboarding/README.md): New-contributor package.
 - [config/README.md](config/README.md): Config semantics and wrapper roles.
 
 ## Current Baseline Guardrails

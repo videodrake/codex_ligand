@@ -105,6 +105,7 @@ def iter_pose_rows(config: dict) -> Iterable[dict]:
                     "pocket_id": "",
                     "contact_residues": "",
                     "n_contact_residues": 0,
+                    "contact_distances": "",
                 }
 
 
@@ -124,6 +125,7 @@ def write_pose_table(rows: List[dict], output_csv: Path) -> Path:
         "pocket_id",
         "contact_residues",
         "n_contact_residues",
+        "contact_distances",
     ]
     with open(output_csv, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)

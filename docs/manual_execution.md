@@ -150,13 +150,13 @@ PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
 qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
 ```
 
-### PyRosetta PBS Paths
+### Phase 1 LightDock PBS Paths
 
-Use these when the current environment and cluster setup expects the dedicated PyRosetta submission scripts.
+Use these for Phase 1 LightDock secondary validation.
 
 ```bash
-qsub config/run_ppi_test.pbs
-qsub config/run_ppi_prod.pbs
+qsub config/run_lightdock.pbs                          # 전체 state
+qsub config/run_lightdock_test.pbs                     # 테스트
 ```
 
 ## Output Orientation By Command

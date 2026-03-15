@@ -27,9 +27,9 @@ support assessment, and overall druggability tier assignment.
 
 | Pocket | Drugg. Conf. | Tier | Multi-Source | Relationship | Raw Score |
 |--------|-------------|------|-------------|-------------|-----------|
-| 3GT8_raw_PKT01 | high | tier_1 | False | orthosteric_candidate | 0.7120 |
-| 3GT8_raw_PKT02 | medium | tier_2 | False | orthosteric_candidate | 0.4450 |
-| 3GT8_raw_PKT03 | low | tier_3 | False | low_relevance_candidate | 0.1980 |
+| 3GT8_raw_PKT01 | high | tier_1 | false | orthosteric_candidate | 0.7120 |
+| 3GT8_raw_PKT02 | medium | tier_2 | false | orthosteric_candidate | 0.4450 |
+| 3GT8_raw_PKT03 | low | tier_3 | false | low_relevance_candidate | 0.1980 |
 
 ## Tier Distribution
 

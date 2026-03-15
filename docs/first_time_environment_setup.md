@@ -99,8 +99,8 @@ following.
 Required for:
 
 - Phase 1 receptor-side PPI mapping
-- `qsub config/run_ppi_test.pbs`
-- `qsub config/run_ppi_prod.pbs`
+- `qsub config/run_lightdock.pbs`
+- `qsub config/run_lightdock_test.pbs`
 - `qsub config/run_production.pbs` when Phase 2/3 PPI steps are involved
 
 Notes:

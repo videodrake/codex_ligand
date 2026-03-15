@@ -40,12 +40,9 @@ codex_ligand/
   main.py                          # 통합 CLI 진입점
   config/
     example-project.yaml           # 프로젝트 설정 (YAML)
-    ppi_test_beta_meander.ini      # PPI 도킹 설정 (테스트)
-    ppi_test_TH1.ini               # PPI 도킹 설정 (테스트)
-    ppi_prod_beta_meander.ini      # PPI 도킹 설정 (프로덕션)
-    ppi_prod_TH1.ini               # PPI 도킹 설정 (프로덕션)
-    run_ppi_test.pbs               # PBS 스크립트 (테스트)
-    run_ppi_prod.pbs               # PBS 스크립트 (프로덕션)
+    phase1/                        # Phase 1 PyRosetta 설정 (18 INI files)
+    run_lightdock.pbs              # Phase 1 LightDock PBS
+    run_lightdock_test.pbs         # Phase 1 LightDock 테스트 PBS
   egfr_pipeline/
     config.py                      # Config 로드 유틸리티
     report.py                      # 종합 보고서 생성

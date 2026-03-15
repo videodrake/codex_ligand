@@ -27,9 +27,9 @@
 
 | Pocket | Class | Overlap | Fraction | Dist (A) | Basis |
 |--------|-------|---------|----------|----------|-------|
-| 3GT8_raw_PKT01 | orthosteric_candidate | 4 | 0.571 | 132.57 | hotspot_overlap=4 (frac=0.57 >= 0.25) |
-| 3GT8_raw_PKT02 | orthosteric_candidate | 3 | 0.429 | 124.38 | hotspot_overlap=3 (frac=0.43 >= 0.25) |
-| 3GT8_raw_PKT03 | low_relevance_candidate | 0 | 0.000 | 149.96 | centroid_distant=150.0A > 20.0A, no_overlap |
+| 3GT8_raw_PKT01 | orthosteric_candidate | 3 | 0.500 | 132.94 | hotspot_overlap=3 (frac=0.50 >= 0.25) |
+| 3GT8_raw_PKT02 | orthosteric_candidate | 3 | 0.500 | 124.62 | hotspot_overlap=3 (frac=0.50 >= 0.25) |
+| 3GT8_raw_PKT03 | low_relevance_candidate | 0 | 0.000 | 150.39 | centroid_distant=150.4A > 20.0A, no_overlap |
 
 ---
 

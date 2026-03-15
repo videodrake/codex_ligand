@@ -104,6 +104,10 @@ OPTIONAL_OUTPUTS = [
     "valid_sites.csv",
     "vina_consensus_sites.csv",
     "vina_pocket_bootstrap.csv",
+    "vina_contact_distances.csv",
+    "vina_pocket_residue_occupancy.csv",
+    "vina_clustering_merge_log.csv",
+    "vina_clustering_parameters.json",
 ]
 
 
@@ -177,6 +181,7 @@ EXPECTED_SCHEMAS = {
         "receptor_id", "ligand_id", "pose_rank", "affinity",
         "rmsd_lb", "rmsd_ub", "centroid_x", "centroid_y", "centroid_z",
         "raw_pose_file", "pocket_id", "contact_residues", "n_contact_residues",
+        "contact_distances",
     ],
     "vina_pocket_table.csv": [
         "receptor_id", "pocket_id", "centroid_x", "centroid_y", "centroid_z",
@@ -225,6 +230,9 @@ EXPECTED_SCHEMAS = {
     "valid_sites.csv": [
         "receptor_id", "pocket_id", "verdict", "confidence_score",
         "vina_quality_score", "ppi_proximity_score", "cross_receptor_score",
+        "vina_affinity_pts", "vina_convergence_pts", "vina_consensus_pts",
+        "ppi_spatial_pts", "ppi_overlap_pts", "cross_receptor_pts",
+        "score_denominator",
         "ppi_data_available", "best_affinity", "n_pose", "n_ligand",
         "spatial_dist_to_ppi", "closest_ppi_partner", "n_ppi_partners_near",
         "n_shared_with_ppi",

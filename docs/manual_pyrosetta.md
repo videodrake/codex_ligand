@@ -29,14 +29,14 @@ python main.py -c config/example-project.yaml ppi-postprocess
 ### 2.2 PBS wrappers
 
 ```bash
-qsub config/run_ppi_test.pbs
-qsub config/run_ppi_prod.pbs
+qsub config/run_lightdock.pbs                          # Phase 1 LightDock 전체 state
+qsub config/run_lightdock_test.pbs                     # Phase 1 LightDock 테스트
 ```
 
-- `run_ppi_test.pbs`: lower-cost validation lane
-- `run_ppi_prod.pbs`: routine production PPI lane
+- `run_lightdock.pbs`: Phase 1 LightDock secondary validation
+- `run_lightdock_test.pbs`: LightDock test lane (3GT8_raw)
 
-If you need precheck/production wrappers around the full baseline flow, see:
+Precheck/production wrappers for the full baseline flow:
 
 - `config/run_pre_qsub_checks.pbs`
 - `config/run_production.pbs`
@@ -54,12 +54,10 @@ Phase 1 state/seed configs:
 - `config/phase1/phase1_test_3GT8_cl85_100.ini`
 - `config/phase1/phase1_prod_3GT8_*_seed*.ini`
 
-PPI PBS configs:
+Phase 1 LightDock PBS:
 
-- `config/ppi_test_TH1.ini`
-- `config/ppi_test_beta_meander.ini`
-- `config/ppi_prod_TH1.ini`
-- `config/ppi_prod_beta_meander.ini`
+- `config/run_lightdock.pbs`
+- `config/run_lightdock_test.pbs`
 
 ## 4. Output Locations
 
@@ -91,9 +89,8 @@ python main.py -c config/example-project.yaml ppi-postprocess
 ### 5.2 Cluster submission
 
 ```bash
-qsub config/run_ppi_test.pbs
-# or
-qsub config/run_ppi_prod.pbs
+qsub config/run_lightdock.pbs                          # LightDock 전체 state
+qsub config/run_lightdock_test.pbs                     # LightDock 테스트
 ```
 
 ### 5.3 Production baseline with precheck guard

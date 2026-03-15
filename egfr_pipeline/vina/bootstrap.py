@@ -64,7 +64,7 @@ def bootstrap_once(
 
     clustered = assign_pockets(sampled, pocket_cutoff)
     if merge_by_residue:
-        clustered = merge_pockets_by_residue(
+        clustered, _merge_log = merge_pockets_by_residue(
             clustered,
             jaccard_threshold=merge_jaccard,
             overlap_threshold=merge_overlap,
@@ -102,13 +102,13 @@ def run_bootstrap_replicates(
         r.pop("pocket_id", None)
     ref_clustered = assign_pockets(ref_rows, pocket_cutoff)
     if merge_by_residue:
-        ref_clustered = merge_pockets_by_residue(
+        ref_clustered, _merge_log = merge_pockets_by_residue(
             ref_clustered,
             jaccard_threshold=merge_jaccard,
             overlap_threshold=merge_overlap,
             centroid_fallback_cutoff=merge_centroid_fallback,
         )
-    ref_pockets, _ = summarize_pose_rows(ref_clustered)
+    ref_pockets, _, _ = summarize_pose_rows(ref_clustered)
 
     # Replicates
     replicate_summaries: List[List[dict]] = []
@@ -122,7 +122,7 @@ def run_bootstrap_replicates(
             merge_overlap=merge_overlap,
             merge_centroid_fallback=merge_centroid_fallback,
         )
-        rep_pockets, _ = summarize_pose_rows(rep_rows)
+        rep_pockets, _, _ = summarize_pose_rows(rep_rows)
         replicate_summaries.append(rep_pockets)
 
     return ref_pockets, replicate_summaries

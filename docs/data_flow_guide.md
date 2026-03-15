@@ -245,12 +245,18 @@ Key fields:
 
 - `contact_residues`
 - `n_contact_residues`
+- `contact_distances` (per-residue minimum distance in semicolon-delimited format)
+
+Additional output:
+
+- `vina_contact_distances.csv` (long-form: receptor_id, ligand_id, pose_rank, residue_id, min_distance_A)
 
 Scientific meaning:
 
 - this step tells us which receptor residues physically surround a pose
+- the distance information enables distance-weighted analysis and threshold tuning
 - this is the first place where a pose becomes biologically interpretable
-- we can move from "a pose exists here" to "this pose touches these residues"
+- we can move from "a pose exists here" to "this pose touches these residues at known distances"
 
 ### 4.4 Pocket clustering
 
@@ -265,10 +271,13 @@ Input:
 Output:
 
 - updated `vina_pose_table.csv` with `pocket_id`
+- `vina_clustering_merge_log.csv` (pocket merge provenance with merge reasons)
+- `vina_clustering_parameters.json` (clustering parameter snapshot)
 
 Scientific meaning:
 
 - multiple poses are grouped into recurring spatial pockets
+- merge provenance is preserved so clustering decisions can be audited
 - this reduces pose-level clutter into pocket-level patterns
 - the clustering is receptor-local, so each receptor state keeps its own pocket
   organization
@@ -283,6 +292,7 @@ Outputs:
 
 - `vina_pocket_table.csv`
 - `vina_drug_pocket_map.csv`
+- `vina_pocket_residue_occupancy.csv`
 
 What these mean:
 
@@ -296,10 +306,14 @@ What these mean:
 - `vina_drug_pocket_map.csv`
   - ligand-to-dominant-pocket mapping
   - tells us which pocket each ligand prefers in each receptor state
+- `vina_pocket_residue_occupancy.csv`
+  - per-pocket residue occupancy counts and fractions
+  - hotspot flag for residues appearing in a high fraction of poses
 
 Scientific meaning:
 
 - the pose cloud is now summarized into interpretable pockets
+- residue occupancy reveals which residues are most consistently contacted
 - we can ask whether a pocket is broad or narrow
 - we can ask whether multiple ligands converge on the same pocket
 - we can ask whether a ligand changes dominant pocket across receptor states
@@ -356,19 +370,26 @@ Code path:
 
 - `egfr_pipeline/pyrosetta_docking/pipeline_manager.py`
 - `egfr_pipeline/pyrosetta_docking/docking.py`
-- `config/ppi_prod_TH1.ini`
-- `config/ppi_prod_beta_meander.ini`
+- `config/phase1/*.ini` (Phase 1 PyRosetta configs)
 
 Primary outputs include:
 
 - `pyrosetta_run_metadata.json`
 - `pyrosetta_decoy_scores.csv`
+- `scored_all_models.csv` (all models with Pass 1 metrics + filter_status for post-hoc re-analysis)
+- `scored_stage2_models.csv` (Stage 2 candidates with expensive metrics)
+- `filter_thresholds.csv` (filter parameters and pass/reject counts)
+- `cluster_membership.csv` (full model-to-cluster mapping)
+- `*_ContactPairs.csv` (per-residue-pair minimum distances for final models)
 - decoy structural outputs inside Phase 1 PPI output directories
 
 Scientific meaning:
 
 - this generates many receptor-partner docking hypotheses
 - it is the primary structural evidence layer for receptor-side patch mapping
+- the comprehensive metric capture (dSASA polar/hydrophobic decomposition, I_RMSD,
+  per-residue energy with 9 terms, contact pair distances) enables post-hoc
+  re-analysis without re-docking
 - it is not a ligand docking step; it is a protein-protein interface search
 
 ### 5.2 Interface extraction and filtering
@@ -383,7 +404,7 @@ Outputs include:
 
 - `ppi_pyrosetta_residues.csv`
 - `ppi_pyrosetta_summary.csv`
-- `ppi_cluster_summary.csv`
+- `ppi_cluster_summary.csv` (with centroid_x/y/z, centroid_spread_A, energy distribution stats)
 - `ppi_hotspot_residues.csv`
 - `ppi_interface_patch_table.csv`
 
@@ -534,7 +555,9 @@ Scientific meaning:
 Current integrated outputs include:
 
 - `cross_method_agreement.csv`
-- `valid_sites.csv`
+- `valid_sites.csv` (now includes per-component score breakdown: vina_affinity_pts,
+  vina_convergence_pts, vina_consensus_pts, ppi_spatial_pts, ppi_overlap_pts,
+  cross_receptor_pts, score_denominator)
 - `vina_consensus_sites.csv`
 - `combined_residue_evidence.csv`
 - `project_report.txt`
@@ -542,6 +565,8 @@ Current integrated outputs include:
 Scientific meaning:
 
 - these files summarize the project-level conclusion
+- the component-level score breakdown in `valid_sites.csv` enables transparent
+  auditing of which evidence axes drove each site's final verdict
 - they are the first place to look when asking:
   - which sites look biologically meaningful?
   - which pockets are supported by multiple evidence types?

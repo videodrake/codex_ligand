@@ -2491,9 +2491,10 @@ def run_taskgroup12_main():
         if args.summarize_pockets:
             from egfr_pipeline.vina.summarize import summarize_from_config
 
-            pocket_csv, drug_csv = summarize_from_config(args.config, str(pose_table))
+            pocket_csv, drug_csv, occupancy_csv = summarize_from_config(args.config, str(pose_table))
             print(f"[Summary] Wrote pocket table: {pocket_csv}")
             print(f"[Summary] Wrote drug pocket map: {drug_csv}")
+            print(f"[Summary] Wrote residue occupancy: {occupancy_csv}")
 
         if args.compare_pockets:
             from egfr_pipeline.vina.compare import compare_from_config
@@ -2533,4 +2534,63 @@ def run_taskgroup12_main():
 
             vresult = run_validation(args.config)
             print(vresult.summary())
+
+
+# ============================================================
+# 단일 receptor 도킹 워커 (ProcessPoolExecutor 워커용)
+# ============================================================
+
+def dock_one_receptor(receptor_entry, ligand_entries, config):
+    """단일 receptor에 대해 모든 ligand 도킹 (subprocess 워커용).
+
+    Args:
+        receptor_entry: config receptors 항목 (id, pdb, pdbqt 키 포함)
+        ligand_entries: config ligands 리스트 (pdbqt 키 포함)
+        config: 프로젝트 config dict (vina, output_root, project_name 등)
+
+    Returns:
+        (receptor_id, {ligand_name: energies}) 튜플
+    """
+    receptor_id = receptor_entry["id"]
+    receptor_pdbqt = Path(receptor_entry["pdbqt"])
+    receptor_pdb = Path(receptor_entry["pdb"])
+    mode = config.get("mode", "blind")
+
+    # box 계산
+    padding = config.get("vina", {}).get("padding", 5.0)
+    min_box = config.get("vina", {}).get("min_box", 70.0)
+    center, box_size = calc_box_from_pdb(receptor_pdb, padding, min_box)
+
+    # 출력 디렉토리
+    output_root = Path(config.get("output_root", "./output"))
+    project_name = config.get("project_name", "")
+    out_dir = output_root / project_name / receptor_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    exhaustiveness = config.get("vina", {}).get("exhaustiveness", 8)
+    n_poses = config.get("vina", {}).get("n_poses", 5)
+
+    results = {}
+    for lig_entry in ligand_entries:
+        lig_path = Path(lig_entry["pdbqt"])
+        lig_name = lig_path.name.replace("_ligand.pdbqt", "")
+        output_file = out_dir / f"{lig_name}_{mode}.pdbqt"
+
+        print(f"\n>>> [{receptor_id}] {lig_name} {mode} docking ...")
+        energies = run_docking(
+            receptor_pdbqt, lig_path, output_file,
+            center, box_size, exhaustiveness, n_poses,
+        )
+        results[lig_name] = energies
+        print_results(lig_name, mode, energies, center, box_size, display_n=n_poses)
+
+    # 요약
+    print(f"\n{'='*60}")
+    print(f"  [{receptor_id}] Summary - Best Affinity per Ligand")
+    print(f"{'='*60}")
+    for lig_name, energies in results.items():
+        best = energies[0][0] if energies is not None and len(energies) > 0 else float("nan")
+        print(f"  {lig_name:>12}  {best:>15.2f}")
+    print(f"\n[done] {receptor_id} results: {out_dir}")
+    return receptor_id, results
 
