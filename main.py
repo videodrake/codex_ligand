@@ -611,7 +611,7 @@ def run_lightdock():
             print(f"\n{state}:")
             ldv.generate_lightdock_setup(state, ldv.PHASE1_OUTPUT_DIR)
     elif sel == "b":
-        state = input("  State [all/3GT8_raw/3GT8_cl38_48/3GT8_cl85_100]: ").strip()
+        state = input("  State [all/3GT8_raw/EGFR_160-185/EGFR_170-200]: ").strip()
         states = ldv.RECEPTOR_STATES if state in ("", "all") else [state]
         for s in states:
             ldv.run_lightdock_scripts(s, ldv.PHASE1_OUTPUT_DIR)
@@ -638,7 +638,7 @@ def run_lightdock():
         print()
         print("  [테스트] 50 swarms, ~1-2시간")
         print("  qsub config/run_lightdock_test.pbs                     # 3GT8_raw")
-        print("  qsub -v STATE=3GT8_cl38_48 config/run_lightdock_test.pbs")
+        print("  qsub -v STATE=EGFR_160-185 config/run_lightdock_test.pbs")
         print()
         print("  # 로그 확인")
         print("  tail -f lightdock.o")

@@ -4,7 +4,7 @@
 
 - Receptor states with pocket data: 1
   - States: 3GT8_raw
-  - Missing: 3GT8_cl38_48, 3GT8_cl85_100
+  - Missing: EGFR_160-185, EGFR_170-200
 - Pairwise comparisons: 0
 - Pockets classified: 3
 

@@ -1,0 +1,5 @@
+receptor_id,cluster_id,chain,residue_id,residue_num,residue_name,lobe_label,occupancy,n_models_with_residue,n_orientation_valid_models,is_hotspot,mean_delta_e_total
+EGFR_160-185,C01,A,LEU819,819,LEU,N-lobe,0.75,6,8,True,-1.2
+EGFR_160-185,C01,A,ASP855,855,ASP,C-lobe,0.90,7,8,True,-2.1
+EGFR_160-185,C01,A,GLU866,866,GLU,C-lobe,0.50,4,8,True,-0.8
+EGFR_160-185,C02,A,ILE857,857,ILE,C-lobe,0.60,3,5,True,-0.5

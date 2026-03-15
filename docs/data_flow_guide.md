@@ -94,20 +94,20 @@ AlphaFold-Multimer is not part of the current routine baseline.
 The current active receptor set contains exactly three states:
 
 - `input/receptors/3GT8_raw.pdb`
-- `input/receptors/3GT8_cl38_48.pdb`
-- `input/receptors/3GT8_cl85_100.pdb`
+- `input/receptors/EGFR_160-185.pdb`
+- `input/receptors/EGFR_170-200.pdb`
 
 These correspond to:
 
 - `3GT8_raw`
-- `3GT8_cl38_48`
-- `3GT8_cl85_100`
+- `EGFR_160-185`
+- `EGFR_170-200`
 
 For Vina runs, matching receptor `.pdbqt` files are also expected or prepared:
 
 - `input/receptors/3GT8_raw_receptor.pdbqt`
-- `input/receptors/3GT8_cl38_48_receptor.pdbqt`
-- `input/receptors/3GT8_cl85_100_receptor.pdbqt`
+- `input/receptors/EGFR_160-185_receptor.pdbqt`
+- `input/receptors/EGFR_170-200_receptor.pdbqt`
 
 ### 2.2 Ligands
 
@@ -330,8 +330,8 @@ Output:
 
 Scientific meaning:
 
-- this compares pockets across `3GT8_raw`, `3GT8_cl38_48`, and
-  `3GT8_cl85_100`
+- this compares pockets across `3GT8_raw`, `EGFR_160-185`, and
+  `EGFR_170-200`
 - it tells us whether a pocket is conserved, shifted, or state-specific
 - this is central for state-comparison interpretation
 

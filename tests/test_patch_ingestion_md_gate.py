@@ -50,7 +50,7 @@ def test_blocked_md_gate_decision_fails_patch_ingestion(tmp_path):
                 "orientation_validation_status": "orientation_validated",
                 "robustness_class": "robust",
                 "n_states_present": "3",
-                "states_present": "3GT8_raw;3GT8_cl38_48;3GT8_cl85_100",
+                "states_present": "3GT8_raw;EGFR_160-185;EGFR_170-200",
                 "global_max_occupancy": "0.82",
                 "is_hotspot_any_state": "True",
                 "pyrosetta_evidence": "True",

@@ -48,8 +48,8 @@ Phase 1 now explicitly requires:
 ### Receptor inputs (upgraded)
 - Three receptor states, each as **full kinase domain**:
   - 3GT8_raw (full kinase domain)
-  - 3GT8_cl38_48 (full kinase domain)
-  - 3GT8_cl85_100 (full kinase domain)
+  - EGFR_160-185 (full kinase domain)
+  - EGFR_170-200 (full kinase domain)
 - **Residue range caution:** The exact residue range depends on the numbering system used:
   - 3GT8 PDB numbering: ~681??90 (as deposited in PDB)
   - UniProt numbering (P00533): PDB + 24, yielding ~705??014 (including C-terminal tail)

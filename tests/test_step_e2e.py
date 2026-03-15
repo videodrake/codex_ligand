@@ -11,7 +11,7 @@ from egfr_pipeline.output_steps import STEP_SPECS
 from egfr_pipeline.validate import ValidationResult
 
 
-RECEPTOR_IDS = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_IDS = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 LIGAND_NAMES = ["173940", "97806", "VAX-C12_0"]
 
 
@@ -145,7 +145,7 @@ def _phase4_writer(project_root: Path, call_log: list[str], *, token: str):
         )
         _write_text(
             project_root / "vina_pocket_comparison.csv",
-            f"receptor_a,pocket_a,receptor_b,pocket_b\n3GT8_raw,3GT8_raw_PKT01_{token},3GT8_cl38_48,3GT8_cl38_48_PKT01_{token}\n",
+            f"receptor_a,pocket_a,receptor_b,pocket_b\n3GT8_raw,3GT8_raw_PKT01_{token},EGFR_160-185,EGFR_160-185_PKT01_{token}\n",
         )
         _write_text(
             project_root / "vina_pocket_bootstrap.csv",

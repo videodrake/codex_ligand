@@ -40,8 +40,8 @@ placing VAL962 in the middle of the chain, 7 residues from the N-terminus.
 | State | Status | Max occupancy | Clusters | Hotspot | Interpretation |
 |-------|--------|--------------|----------|---------|---------------|
 | 3GT8_raw | dominant_contact | 1.00 | 1 | Yes | VAL962 is a hotspot (occ=1.00) in 1 cluster(s). This could be independent confirmation of genuine binding or residual artifact. Compare with other partner residues for context. |
-| 3GT8_cl38_48 | moderate_contact | 0.80 | 2 | No | VAL962 present (occ=0.80) but not dominant. Artifact partially resolved — not a primary contact. |
-| 3GT8_cl85_100 | no data | — | — | — | — |
+| EGFR_160-185 | moderate_contact | 0.80 | 2 | No | VAL962 present (occ=0.80) but not dominant. Artifact partially resolved — not a primary contact. |
+| EGFR_170-200 | no data | — | — | — | — |
 
 ### Overall Assessment
 

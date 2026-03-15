@@ -22,8 +22,8 @@ The project??s primary question is where MYO1D attaches to EGFR. Ligandable pock
 ## Inputs
 - Three receptor states:
   - 3GT8_raw
-  - 3GT8_cl38_48
-  - 3GT8_cl85_100
+  - EGFR_160-185
+  - EGFR_170-200
 - MYO1D partner structures or fragments:
   - TH1 domain and/or beta-meander constructs
 - Existing PyRosetta global docking pipeline

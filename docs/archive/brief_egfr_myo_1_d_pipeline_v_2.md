@@ -31,8 +31,8 @@ Therefore, the pipeline must prioritize:
 ## Fixed Receptor States
 The current receptor ensemble is explicitly fixed to:
 1. **3GT8_raw**
-2. **3GT8_cl38_48**
-3. **3GT8_cl85_100**
+2. **EGFR_160-185**
+3. **EGFR_170-200**
 
 These receptor states must remain comparable by receptor identity, residue numbering, and metadata.
 

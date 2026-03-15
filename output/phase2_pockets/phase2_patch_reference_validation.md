@@ -16,7 +16,7 @@
 
 ### Warnings
 
-- No patch residues found for state(s): ['3GT8_cl85_100']. This may be expected if those states had no orientation-valid models.
+- No patch residues found for state(s): ['EGFR_170-200']. This may be expected if those states had no orientation-valid models.
 - MD gate artifact missing: md_gate_decision.md
 - MD gate artifact missing: phase1_md_validation_report.md
 - MD gate artifact missing: md_stability_metrics.csv
@@ -48,8 +48,8 @@
 | State | Covered |
 |-------|---------|
 | 3GT8_raw | Yes |
-| 3GT8_cl38_48 | Yes |
-| 3GT8_cl85_100 | No |
+| EGFR_160-185 | Yes |
+| EGFR_170-200 | No |
 
 ## MD Gate Traceability
 

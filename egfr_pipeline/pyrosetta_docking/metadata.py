@@ -13,8 +13,8 @@ from typing import Dict, List, Optional, Set
 
 RECEPTOR_PATTERNS = (
     "3GT8_raw",
-    "3GT8_cl38_48",
-    "3GT8_cl85_100",
+    "EGFR_160-185",
+    "EGFR_170-200",
 )
 
 

@@ -56,14 +56,14 @@ receptors:
   pdbqt: input/receptors/3GT8_raw_receptor.pdbqt
   source_type: raw_3GT8
 - chain: A
-  id: 3GT8_cl38_48
-  pdb: input/receptors/3GT8_cl38_48.pdb
-  pdbqt: input/receptors/3GT8_cl38_48_receptor.pdbqt
+  id: EGFR_160-185
+  pdb: input/receptors/EGFR_160-185.pdb
+  pdbqt: input/receptors/EGFR_160-185_receptor.pdbqt
   source_type: md_cluster_38_48
 - chain: A
-  id: 3GT8_cl85_100
-  pdb: input/receptors/3GT8_cl85_100.pdb
-  pdbqt: input/receptors/3GT8_cl85_100_receptor.pdbqt
+  id: EGFR_170-200
+  pdb: input/receptors/EGFR_170-200.pdb
+  pdbqt: input/receptors/EGFR_170-200_receptor.pdbqt
   source_type: md_cluster_85_100
 vina:
   exhaustiveness: 384

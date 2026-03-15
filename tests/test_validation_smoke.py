@@ -81,8 +81,8 @@ def test_run_validation_smoke(tmp_path: Path) -> None:
     raw_pose = project_root / "raw_pose_1.pdbqt"
 
     _make_pdb(receptors_dir / "3GT8_raw.pdb", "A")
-    _make_pdb(receptors_dir / "3GT8_cl38_48.pdb", "A")
-    _make_pdb(receptors_dir / "3GT8_cl85_100.pdb", "A")
+    _make_pdb(receptors_dir / "EGFR_160-185.pdb", "A")
+    _make_pdb(receptors_dir / "EGFR_170-200.pdb", "A")
     _write(raw_pose, ["MODEL 1", "ENDMDL"])
 
     _write(
@@ -159,8 +159,8 @@ def test_run_validation_smoke(tmp_path: Path) -> None:
         "output_root": str(output_root),
         "receptors": [
             {"id": "3GT8_raw", "pdb": str(receptors_dir / "3GT8_raw.pdb")},
-            {"id": "3GT8_cl38_48", "pdb": str(receptors_dir / "3GT8_cl38_48.pdb")},
-            {"id": "3GT8_cl85_100", "pdb": str(receptors_dir / "3GT8_cl85_100.pdb")},
+            {"id": "EGFR_160-185", "pdb": str(receptors_dir / "EGFR_160-185.pdb")},
+            {"id": "EGFR_170-200", "pdb": str(receptors_dir / "EGFR_170-200.pdb")},
         ],
         "ligands": [{"id": "lig_001"}],
     }

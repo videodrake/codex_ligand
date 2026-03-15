@@ -148,7 +148,7 @@ def extract_afm_batch(
         ppi:
           afm_models:
             3GT8_raw: path/to/model.pdb
-            3GT8_cl38_48: path/to/model.pdb
+            EGFR_160-185: path/to/model.pdb
     """
     config = load_config(config_path)
     out_root = Path(output_dir) if output_dir else Path(config.get("output_root", "./output"))

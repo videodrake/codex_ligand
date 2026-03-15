@@ -26,7 +26,7 @@ Canonical runtime outputs remain under `output/{project}/` and stay the source o
 
 | Topic | Current state |
 |------|------|
-| Receptor states | `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100` |
+| Receptor states | `3GT8_raw`, `EGFR_160-185`, `EGFR_170-200` |
 | Routine ligand evidence | Vina docking and Vina postprocess outputs |
 | Phase 1 primary evidence | PyRosetta |
 | Phase 1 active secondary validation | LightDock |

@@ -14,7 +14,7 @@ def _write_csv(path, rows):
 def test_compare_states_propagates_metadata_from_patch_tables(tmp_path):
     output_dir = tmp_path / "phase1_ppi"
     raw_dir = output_dir / "3GT8_raw"
-    cl38_dir = output_dir / "3GT8_cl38_48"
+    cl38_dir = output_dir / "EGFR_160-185"
 
     _write_csv(
         raw_dir / "ppi_interface_patch_table.csv",
@@ -59,7 +59,7 @@ def test_compare_states_propagates_metadata_from_patch_tables(tmp_path):
     )
 
     cross_rows, robustness_rows = compare_across_states(
-        output_dir, ["3GT8_raw", "3GT8_cl38_48"]
+        output_dir, ["3GT8_raw", "EGFR_160-185"]
     )
 
     assert len(cross_rows) == 1
@@ -68,13 +68,13 @@ def test_compare_states_propagates_metadata_from_patch_tables(tmp_path):
     assert row["construct_type"] == "full_kinase_domain"
     assert row["orientation_validation_status"] == "orientation_validated"
     assert row["robustness_class"] == "moderate"
-    assert row["states_present"] == "3GT8_cl38_48;3GT8_raw"
+    assert row["states_present"] == "3GT8_raw;EGFR_160-185"
 
 
 def test_compare_states_marks_mixed_orientation_status_in_report(tmp_path):
     output_dir = tmp_path / "phase1_ppi"
     raw_dir = output_dir / "3GT8_raw"
-    cl38_dir = output_dir / "3GT8_cl38_48"
+    cl38_dir = output_dir / "EGFR_160-185"
 
     for state_dir, status in (
         (raw_dir, "orientation_validated"),
@@ -111,10 +111,10 @@ def test_compare_states_marks_mixed_orientation_status_in_report(tmp_path):
         )
 
     cross_rows, robustness_rows = compare_across_states(
-        output_dir, ["3GT8_raw", "3GT8_cl38_48"]
+        output_dir, ["3GT8_raw", "EGFR_160-185"]
     )
     report_path = generate_comparison_report(
-        output_dir, cross_rows, robustness_rows, ["3GT8_raw", "3GT8_cl38_48"]
+        output_dir, cross_rows, robustness_rows, ["3GT8_raw", "EGFR_160-185"]
     )
     report_text = report_path.read_text(encoding="utf-8")
 

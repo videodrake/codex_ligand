@@ -2,7 +2,7 @@
 
 ## Multi-State Receptor-Side Patch Comparison
 
-States compared: 3GT8_raw, 3GT8_cl38_48, 3GT8_cl85_100
+States compared: 3GT8_raw, EGFR_160-185, EGFR_170-200
 Construct type: full_kinase_domain
 Evidence: orientation-validated PyRosetta models only
 
@@ -11,8 +11,8 @@ Evidence: orientation-validated PyRosetta models only
 | State | Clusters | Orient-valid models | Hotspot residues (receptor) |
 |-------|----------|--------------------|-----------------------------|
 | 3GT8_raw | 3 | 1 | 6 |
-| 3GT8_cl38_48 | 1 | 4 | 3 |
-| 3GT8_cl85_100 | — | — | — |
+| EGFR_160-185 | 1 | 4 | 3 |
+| EGFR_170-200 | — | — | — |
 
 ## Robustness Classification (Receptor-side)
 

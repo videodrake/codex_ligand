@@ -109,10 +109,10 @@ output/phase1_ppi/
 ??  ?????? prod_seed4/
 ??  ?-???? pyrosetta_decoy_scores.csv  ??consolidated
 ??
-?????? 3GT8_cl38_48/
+?????? EGFR_160-185/
 ??  ?-???? (same structure)
 ??
-?-???? 3GT8_cl85_100/
+?-???? EGFR_170-200/
     ?-???? (same structure)
 ```
 
@@ -265,7 +265,7 @@ python -m egfr_pipeline.phase1.launch_docking --test --state 3GT8_raw
 python -m egfr_pipeline.phase1.launch_docking --production
 
 # Or submit individual seeds for parallel execution:
-for state in 3GT8_raw 3GT8_cl38_48 3GT8_cl85_100; do
+for state in 3GT8_raw EGFR_160-185 EGFR_170-200; do
     for seed in 0 1 2 3 4; do
         python -m egfr_pipeline.phase1.launch_docking \
             --config config/phase1/phase1_prod_${state}_seed${seed}.ini &

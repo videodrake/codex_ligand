@@ -16,8 +16,8 @@ Task Group: 1.0 (Receptor and Partner Input Preparation)
 | State | Range | Residues | N-lobe | C-lobe | Gaps |
 |-------|-------|----------|--------|--------|------|
 | 3GT8_raw | 699-1007 | 309 | 139 | 170 | None |
-| 3GT8_cl38_48 | 699-1007 | 309 | 139 | 170 | None |
-| 3GT8_cl85_100 | 699-1007 | 309 | 139 | 170 | None |
+| EGFR_160-185 | 699-1007 | 309 | 139 | 170 | None |
+| EGFR_170-200 | 699-1007 | 309 | 139 | 170 | None |
 
 ## Partner Details
 
@@ -42,8 +42,8 @@ Task Group: 1.0 (Receptor and Partner Input Preparation)
 | State | Receptor | Partner | Excluded |
 |-------|----------|---------|----------|
 | 3GT8_raw | A:699-1007 (309 res) | B:955-1006 (52 res) | 43 res |
-| 3GT8_cl38_48 | A:699-1007 (309 res) | B:955-1006 (52 res) | 43 res |
-| 3GT8_cl85_100 | A:699-1007 (309 res) | B:955-1006 (52 res) | 43 res |
+| EGFR_160-185 | A:699-1007 (309 res) | B:955-1006 (52 res) | 43 res |
+| EGFR_170-200 | A:699-1007 (309 res) | B:955-1006 (52 res) | 43 res |
 
 ## Validation Checks
 
@@ -55,8 +55,8 @@ PASS: All states use chain A
 PASS: All states share range 699-1007
 PASS: All states have 309 residues
 PASS: 3GT8_raw has N-lobe (139 res)
-PASS: 3GT8_cl38_48 has N-lobe (139 res)
-PASS: 3GT8_cl85_100 has N-lobe (139 res)
+PASS: EGFR_160-185 has N-lobe (139 res)
+PASS: EGFR_170-200 has N-lobe (139 res)
 PASS: All states are full_kinase_domain construct
 
 ============================================================

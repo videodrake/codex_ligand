@@ -46,13 +46,13 @@ RECEPTOR_STATES = {
         "source_chain": "A",       # Crystal structure, use chain A monomer
         "description": "Crystal structure (PDB 3GT8), chain A monomer",
     },
-    "3GT8_cl38_48": {
-        "pdb": "input/receptors/3GT8_cl38_48.pdb",
+    "EGFR_160-185": {
+        "pdb": "input/receptors/EGFR_160-185.pdb",
         "source_chain": "X",       # MD cluster, single chain X
         "description": "MD cluster representative (38-48 ns), single chain",
     },
-    "3GT8_cl85_100": {
-        "pdb": "input/receptors/3GT8_cl85_100.pdb",
+    "EGFR_170-200": {
+        "pdb": "input/receptors/EGFR_170-200.pdb",
         "source_chain": "X",       # MD cluster, single chain X
         "description": "MD cluster representative (85-100 ns), single chain",
     },

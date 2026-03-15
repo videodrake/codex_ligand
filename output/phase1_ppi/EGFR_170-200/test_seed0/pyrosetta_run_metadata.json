@@ -1,10 +1,10 @@
 {
-  "receptor_id": "3GT8_cl38_48",
+  "receptor_id": "EGFR_170-200",
   "partner_id": "extended_beta_meander_955_1006",
   "construct_type": "full_kinase_domain",
   "construct_note": "Phase 1 v2: monomer receptor (not dimer), extended partner (955 not 960/962)",
-  "config_file": "config/phase1/phase1_test_3GT8_cl38_48.ini",
-  "input_pdb": "input/PPI/phase1/docking_3GT8_cl38_48_ext_beta_meander.pdb",
+  "config_file": "config/phase1/phase1_test_EGFR_170-200.ini",
+  "input_pdb": "input/PPI/phase1/docking_EGFR_170-200_ext_beta_meander.pdb",
   "total_global_models": 1000,
   "n_cpus": 16,
   "random_seed": "auto",
@@ -16,7 +16,7 @@
   "enable_early_rejection": true,
   "phase": "Phase 1: PPI-First Interface Mapping",
   "task_group": "TG 1.1: PyRosetta Global Docking Standardization",
-  "output_dir": "output/phase1_ppi/3GT8_cl38_48/test_seed0",
-  "generated_at": "2026-03-11T02:29:58.296194",
+  "output_dir": "output/phase1_ppi/EGFR_170-200/test_seed0",
+  "generated_at": "2026-03-11T02:29:58.302168",
   "dry_run": true
 }

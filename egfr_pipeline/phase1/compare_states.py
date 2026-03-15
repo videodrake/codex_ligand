@@ -33,7 +33,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 NLOBE_CLOBE_BOUNDARY = 838
 
 # Robustness classification thresholds
@@ -50,9 +50,9 @@ CROSS_STATE_COLUMNS = [
     "lobe_label",
     "n_states_present",
     "states_present",               # Semicolon-separated
-    "max_occupancy_by_state",       # JSON-like: "3GT8_raw:0.85;3GT8_cl38_48:0.72"
-    "n_clusters_by_state",          # "3GT8_raw:3;3GT8_cl38_48:2"
-    "is_hotspot_in_states",         # "3GT8_raw;3GT8_cl38_48"
+    "max_occupancy_by_state",       # JSON-like: "3GT8_raw:0.85;EGFR_160-185:0.72"
+    "n_clusters_by_state",          # "3GT8_raw:3;EGFR_160-185:2"
+    "is_hotspot_in_states",         # "3GT8_raw;EGFR_160-185"
     "robustness_class",             # robust / moderate / state_specific
     "global_max_occupancy",         # Highest occupancy across all states
     "global_mean_occupancy",        # Mean max_occupancy across states where present

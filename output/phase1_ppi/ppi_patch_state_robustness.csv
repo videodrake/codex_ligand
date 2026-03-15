@@ -1,12 +1,12 @@
 chain,residue_id,residue_num,residue_name,lobe_label,robustness_class,n_states_present,states_present,global_max_occupancy,is_hotspot_any_state,is_hotspot_all_present_states,construct_type,orientation_validation_status
-A,ASP855,855,ASP,C-lobe,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
-A,GLU866,866,GLU,C-lobe,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
-A,LEU819,819,LEU,N-lobe,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
+A,ASP855,855,ASP,C-lobe,moderate,2,EGFR_160-185;3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
+A,GLU866,866,GLU,C-lobe,moderate,2,EGFR_160-185;3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
+A,LEU819,819,LEU,N-lobe,moderate,2,EGFR_160-185;3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
 A,ALA822,822,ALA,N-lobe,state_specific,1,3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
 A,LEU838,838,LEU,C-lobe,state_specific,1,3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
 A,VAL834,834,VAL,N-lobe,state_specific,1,3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
-A,ILE857,857,ILE,C-lobe,state_specific,1,3GT8_cl38_48,0.6,True,True,full_kinase_domain,orientation_validated
-B,VAL962,962,VAL,partner,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,False,full_kinase_domain,orientation_validated
+A,ILE857,857,ILE,C-lobe,state_specific,1,EGFR_160-185,0.6,True,True,full_kinase_domain,orientation_validated
+B,VAL962,962,VAL,partner,moderate,2,EGFR_160-185;3GT8_raw,1.0,True,False,full_kinase_domain,orientation_validated
 B,ASN963,963,ASN,partner,state_specific,1,3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
 B,GLN969,969,GLN,partner,state_specific,1,3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated
 B,SER971,971,SER,partner,state_specific,1,3GT8_raw,1.0,True,True,full_kinase_domain,orientation_validated

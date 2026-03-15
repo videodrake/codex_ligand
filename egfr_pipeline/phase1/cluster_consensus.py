@@ -34,7 +34,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Hotspot threshold: a residue must appear in ≥ this fraction of
 # orientation-validated models within a cluster to be a hotspot.
@@ -485,8 +485,8 @@ _INPUT_PDB_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
 # Mapping from receptor_id (state name) to PDB filename
 _STATE_TO_PDB = {
     "3GT8_raw": "receptor_3GT8_raw.pdb",
-    "3GT8_cl38_48": "receptor_3GT8_cl38_48.pdb",
-    "3GT8_cl85_100": "receptor_3GT8_cl85_100.pdb",
+    "EGFR_160-185": "receptor_EGFR_160-185.pdb",
+    "EGFR_170-200": "receptor_EGFR_170-200.pdb",
 }
 
 

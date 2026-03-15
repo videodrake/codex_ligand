@@ -27,7 +27,7 @@ The current research scope is intentionally narrow.
 
 | Topic | Current project assumption |
 |------|------|
-| Receptor ensemble | Exactly three states: `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100` |
+| Receptor ensemble | Exactly three states: `3GT8_raw`, `EGFR_160-185`, `EGFR_170-200` |
 | Comparison unit | State-specific evidence should remain explicit through the pipeline |
 | Ligand evidence center | Vina-centered outputs remain the current routine backbone |
 | Receptor-side Phase 1 evidence | PyRosetta is the primary structural source |

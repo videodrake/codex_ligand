@@ -50,8 +50,8 @@ Project-level config:
 Phase 1 state/seed configs:
 
 - `config/phase1/phase1_test_3GT8_raw.ini`
-- `config/phase1/phase1_test_3GT8_cl38_48.ini`
-- `config/phase1/phase1_test_3GT8_cl85_100.ini`
+- `config/phase1/phase1_test_EGFR_160-185.ini`
+- `config/phase1/phase1_test_EGFR_170-200.ini`
 - `config/phase1/phase1_prod_3GT8_*_seed*.ini`
 
 Phase 1 LightDock PBS:

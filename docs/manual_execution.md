@@ -8,7 +8,7 @@ This document is the command reference for the current repository. Use it when y
 
 These command examples assume the current baseline:
 
-- the fixed receptor set is `3GT8_raw`, `3GT8_cl38_48`, and `3GT8_cl85_100`
+- the fixed receptor set is `3GT8_raw`, `EGFR_160-185`, and `EGFR_170-200`
 - routine ligand work is Vina-centered
 - Phase 1 primary evidence is PyRosetta
 - Phase 1 secondary validation is LightDock

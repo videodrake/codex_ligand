@@ -10,10 +10,10 @@ Total candidate pockets found: **3**
 |----------|------|---------|-----------|-------------------|--------|
 | 3GT8_raw | fpocket | 3 | 0.8234 | 0.7120 | found |
 | 3GT8_raw | p2rank | 0 |  |  | not_found |
-| 3GT8_cl38_48 | fpocket | 0 |  |  | not_found |
-| 3GT8_cl38_48 | p2rank | 0 |  |  | not_found |
-| 3GT8_cl85_100 | fpocket | 0 |  |  | not_found |
-| 3GT8_cl85_100 | p2rank | 0 |  |  | not_found |
+| EGFR_160-185 | fpocket | 0 |  |  | not_found |
+| EGFR_160-185 | p2rank | 0 |  |  | not_found |
+| EGFR_170-200 | fpocket | 0 |  |  | not_found |
+| EGFR_170-200 | p2rank | 0 |  |  | not_found |
 
 ### 3GT8_raw
 
@@ -23,9 +23,9 @@ Total candidate pockets found: **3**
 | 3GT8_raw_fpocket_P02 | fpocket | 2 | 0.5612 | 0.445 | (28.490, 45.493, 12.601) | 3 |
 | 3GT8_raw_fpocket_P03 | fpocket | 3 | 0.3201 | 0.198 | (60.790, 25.173, 31.012) | 2 |
 
-### 3GT8_cl38_48: No pockets found
+### EGFR_160-185: No pockets found
 
-### 3GT8_cl85_100: No pockets found
+### EGFR_170-200: No pockets found
 
 ---
 

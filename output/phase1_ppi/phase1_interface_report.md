@@ -11,8 +11,8 @@
 | State | Residue range | N residues | Source |
 |-------|--------------|------------|--------|
 | 3GT8_raw |  | 309 |  |
-| 3GT8_cl38_48 |  | 309 |  |
-| 3GT8_cl85_100 |  | 309 |  |
+| EGFR_160-185 |  | 309 |  |
+| EGFR_170-200 |  | 309 |  |
 
 ### Partner
 
@@ -33,8 +33,8 @@
 | State | Clusters | Orient-valid | Receptor hotspots | N-lobe hotspots | C-lobe hotspots |
 |-------|----------|-------------|-------------------|-----------------|-----------------|
 | 3GT8_raw | 3 | 1 | 6 | 3 | 3 |
-| 3GT8_cl38_48 | 1 | 4 | 3 | 1 | 2 |
-| 3GT8_cl85_100 | — | — | — | — | — |
+| EGFR_160-185 | 1 | 4 | 3 | 1 | 2 |
+| EGFR_170-200 | — | — | — | — | — |
 
 ## 3. Orientation Filtering Summary
 
@@ -44,8 +44,8 @@ Only PASS models (active face toward receptor) contribute to consensus.
 | State | Total models | PASS | FAIL | AMBIGUOUS | Pass rate |
 |-------|-------------|------|------|-----------|-----------|
 | 3GT8_raw | 3 | 1 | 1 | 1 | 33.3% |
-| 3GT8_cl38_48 | — | — | — | — | — |
-| 3GT8_cl85_100 | — | — | — | — | — |
+| EGFR_160-185 | — | — | — | — | — |
+| EGFR_170-200 | — | — | — | — | — |
 
 ## 4. Receptor-Side Hotspot Residues
 
@@ -60,7 +60,7 @@ Only PASS models (active face toward receptor) contribute to consensus.
 | C01 | ASP855 | C-lobe | 1.0 |  |
 | C01 | GLU866 | C-lobe | 1.0 |  |
 
-### 3GT8_cl38_48
+### EGFR_160-185
 
 | Cluster | Residue | Lobe | Occupancy | Mean ΔE |
 |---------|---------|------|-----------|---------|
@@ -69,7 +69,7 @@ Only PASS models (active face toward receptor) contribute to consensus.
 | C01 | GLU866 | C-lobe | 0.50 | -0.8 |
 | C02 | ILE857 | C-lobe | 0.60 | -0.5 |
 
-### 3GT8_cl85_100: No hotspot data
+### EGFR_170-200: No hotspot data
 
 ## 5. Cross-State Robustness
 
@@ -81,9 +81,9 @@ Only PASS models (active face toward receptor) contribute to consensus.
 
 | Residue | Lobe | States | Max occupancy |
 |---------|------|--------|--------------|
-| ASP855 | C-lobe | 3GT8_cl38_48;3GT8_raw | 1.0 |
-| GLU866 | C-lobe | 3GT8_cl38_48;3GT8_raw | 1.0 |
-| LEU819 | N-lobe | 3GT8_cl38_48;3GT8_raw | 1.0 |
+| ASP855 | C-lobe | EGFR_160-185;3GT8_raw | 1.0 |
+| GLU866 | C-lobe | EGFR_160-185;3GT8_raw | 1.0 |
+| LEU819 | N-lobe | EGFR_160-185;3GT8_raw | 1.0 |
 
 ## 6. LightDock Secondary Validation
 

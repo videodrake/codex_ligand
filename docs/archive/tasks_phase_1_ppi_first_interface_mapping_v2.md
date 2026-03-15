@@ -48,7 +48,7 @@ Prepare and validate structurally adequate receptor and partner inputs that elim
 ## Main Tasks
 
 ### 1.0.1 Full kinase domain receptor preparation
-- For each of the three receptor states (3GT8_raw, 3GT8_cl38_48, 3GT8_cl85_100):
+- For each of the three receptor states (3GT8_raw, EGFR_160-185, EGFR_170-200):
   - Extract or prepare the full kinase domain (~residues 696??79, UniProt numbering)
   - Include both N-lobe and C-lobe as a single chain
   - Confirm activation loop is modeled or resolved

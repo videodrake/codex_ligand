@@ -1,7 +1,7 @@
 receptor_id,proposal_source,n_pockets_found,best_score,best_druggability,mean_volume_A3,output_dir,status
 3GT8_raw,fpocket,3,0.8234,0.7120,590.9,/home/user/codex_ligand/output/phase2_pockets/3GT8_raw/receptor_3GT8_raw_out,found
 3GT8_raw,p2rank,0,,,,/home/user/codex_ligand/output/phase2_pockets/3GT8_raw/p2rank_output,not_found
-3GT8_cl38_48,fpocket,0,,,,/home/user/codex_ligand/output/phase2_pockets/3GT8_cl38_48/receptor_3GT8_cl38_48_out,not_found
-3GT8_cl38_48,p2rank,0,,,,/home/user/codex_ligand/output/phase2_pockets/3GT8_cl38_48/p2rank_output,not_found
-3GT8_cl85_100,fpocket,0,,,,/home/user/codex_ligand/output/phase2_pockets/3GT8_cl85_100/receptor_3GT8_cl85_100_out,not_found
-3GT8_cl85_100,p2rank,0,,,,/home/user/codex_ligand/output/phase2_pockets/3GT8_cl85_100/p2rank_output,not_found
+EGFR_160-185,fpocket,0,,,,/home/user/codex_ligand/output/phase2_pockets/EGFR_160-185/receptor_EGFR_160-185_out,not_found
+EGFR_160-185,p2rank,0,,,,/home/user/codex_ligand/output/phase2_pockets/EGFR_160-185/p2rank_output,not_found
+EGFR_170-200,fpocket,0,,,,/home/user/codex_ligand/output/phase2_pockets/EGFR_170-200/receptor_EGFR_170-200_out,not_found
+EGFR_170-200,p2rank,0,,,,/home/user/codex_ligand/output/phase2_pockets/EGFR_170-200/p2rank_output,not_found

@@ -21,7 +21,7 @@ conda activate pyrosetta
 #
 # 사용법:
 #   qsub config/run_lightdock_test.pbs                         # 단일 state (3GT8_raw)
-#   qsub -v STATE=3GT8_cl38_48 config/run_lightdock_test.pbs   # 다른 state
+#   qsub -v STATE=EGFR_160-185 config/run_lightdock_test.pbs   # 다른 state
 # ============================================================
 
 STATE=${STATE:-3GT8_raw}

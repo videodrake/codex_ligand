@@ -22,7 +22,7 @@
 
 ### Warnings
 
-- [WARNING] V3_PARTIAL_STATES: 1/3 states have pockets. Missing: ['3GT8_cl38_48', '3GT8_cl85_100']
+- [WARNING] V3_PARTIAL_STATES: 1/3 states have pockets. Missing: ['EGFR_160-185', 'EGFR_170-200']
 
 ## Normalized Pocket Summary
 

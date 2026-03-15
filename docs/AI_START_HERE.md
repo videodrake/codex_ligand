@@ -1,13 +1,13 @@
 # AI Start Here
 
-This repository is an EGFR-MYO1D state-comparison research pipeline that combines a Vina-centered ligand evidence layer with a Phase 1 receptor-side PPI evidence layer. The current routine baseline is built around exactly three receptor states (`3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100`), uses PyRosetta as the primary Phase 1 structural engine, uses LightDock as the active secondary Phase 1 validation path, treats AlphaFold-Multimer only as legacy optional support, and feeds integrated interpretation through verdict, report, and validation outputs.
+This repository is an EGFR-MYO1D state-comparison research pipeline that combines a Vina-centered ligand evidence layer with a Phase 1 receptor-side PPI evidence layer. The current routine baseline is built around exactly three receptor states (`3GT8_raw`, `EGFR_160-185`, `EGFR_170-200`), uses PyRosetta as the primary Phase 1 structural engine, uses LightDock as the active secondary Phase 1 validation path, treats AlphaFold-Multimer only as legacy optional support, and feeds integrated interpretation through verdict, report, and validation outputs.
 
 ## Current Operational Baseline
 
 | Topic | Current baseline |
 |------|------|
 | Project focus | EGFR-MYO1D state-comparison pipeline |
-| Receptor states | `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100` |
+| Receptor states | `3GT8_raw`, `EGFR_160-185`, `EGFR_170-200` |
 | Central evidence layer | Vina-centered docking, pose parsing, pocket summarization, and cross-state comparison |
 | Phase 1 primary evidence | PyRosetta |
 | Phase 1 active secondary validation | LightDock |

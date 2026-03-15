@@ -10,7 +10,7 @@ Run this repository with the current baseline in mind:
 
 | Topic | Operational rule |
 |------|------|
-| Receptor states | Treat `3GT8_raw`, `3GT8_cl38_48`, and `3GT8_cl85_100` as the fixed comparison set |
+| Receptor states | Treat `3GT8_raw`, `EGFR_160-185`, and `EGFR_170-200` as the fixed comparison set |
 | Ligand workflow center | Routine ligand evidence is Vina-centered |
 | Phase 1 primary evidence | PyRosetta |
 | Phase 1 secondary validation | LightDock |

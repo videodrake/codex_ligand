@@ -47,7 +47,7 @@ fi
 echo ""
 echo "[Phase 2] Executing LightDock..."
 if [ "$STATE" = "all" ]; then
-    for state in 3GT8_raw 3GT8_cl38_48 3GT8_cl85_100; do
+    for state in 3GT8_raw EGFR_160-185 EGFR_170-200; do
         echo ""
         echo "--- $state ---"
         bash "output/phase1_ppi/${state}/lightdock/run_lightdock_${state}.sh"

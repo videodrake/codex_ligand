@@ -4,7 +4,7 @@
 
 - **Receptor states with pocket data:** 1 of 3
   - Present: 3GT8_raw
-  - Missing: 3GT8_cl38_48, 3GT8_cl85_100
+  - Missing: EGFR_160-185, EGFR_170-200
 - **Phase 1 patch hotspot residues:** 7
 - **Raw pocket proposals:** 3
 - **Merged candidate pockets:** 3
@@ -110,7 +110,7 @@ for PPI-disruption-oriented docking in Phase 3.
 | state_specific_pocket | 3 | 3GT8_raw_PKT01, 3GT8_raw_PKT02, 3GT8_raw_PKT03 |
 | uncertain_alignment | 0 | --- |
 
-**2 state(s) missing pocket data:** 3GT8_cl38_48, 3GT8_cl85_100
+**2 state(s) missing pocket data:** EGFR_160-185, EGFR_170-200
 
 Cross-state classification is provisional. All pockets are currently
 `state_specific_pocket` because only one state has data.

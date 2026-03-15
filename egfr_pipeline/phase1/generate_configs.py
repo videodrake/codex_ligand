@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # Constants
 # ---------------------------------------------------------------------------
 
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Membrane-proximal residues — monomer chain A only (no dimer offset)
 EXCLUDED_RESIDUES_A = "709-720,724-731,736-739,747,783-785,799-805,871-873,917-921"

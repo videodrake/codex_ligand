@@ -34,7 +34,7 @@ def test_state_specific_hotspots_do_not_leak_between_receptors(tmp_path):
         [
             {
                 "pocket_id": "PKT_01",
-                "receptor_id": "3GT8_cl38_48",
+                "receptor_id": "EGFR_160-185",
                 "residue_ids": "LEU838",
                 "centroid_x": "1.000",
                 "centroid_y": "1.000",
@@ -89,7 +89,7 @@ def test_state_specific_hotspots_do_not_leak_between_receptors(tmp_path):
     )
 
     _write_receptor_pdb(receptor_dir / "receptor_3GT8_raw.pdb", 838, 1.0, 1.0, 1.0)
-    _write_receptor_pdb(receptor_dir / "receptor_3GT8_cl38_48.pdb", 838, 1.0, 1.0, 1.0)
+    _write_receptor_pdb(receptor_dir / "receptor_EGFR_160-185.pdb", 838, 1.0, 1.0, 1.0)
 
     rel_path, metrics_path, _ = run_patch_relationship(output_dir, receptor_dir)
 

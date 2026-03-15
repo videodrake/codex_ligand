@@ -86,8 +86,8 @@ def tmp_phase3(tmp_path):
         "low_relevance_candidate,0,0.000,150.0,low,tier_3,0.35,0.20,0.10,"
         "1,fpocket,False,state_specific_pocket,1,2,"
         "ARG748;GLY750,300.0,skip,tier_3 + low_relevance (not recommended)",
-        # 3GT8_cl38_48 PKT01: tier_2 rim → secondary
-        "3GT8_cl38_48,3GT8_cl38_48_PKT01,45.0,33.0,19.0,13.0,12.5,12.0,"
+        # EGFR_160-185 PKT01: tier_2 rim → secondary
+        "EGFR_160-185,EGFR_160-185_PKT01,45.0,33.0,19.0,13.0,12.5,12.0,"
         "rim_candidate,1,0.143,135.0,medium,tier_2,0.75,0.62,0.55,"
         "1,fpocket,False,state_specific_pocket,1,3,"
         "LEU838;ASP855;GLU866,850.0,secondary,tier_2 + rim_candidate",
@@ -98,7 +98,7 @@ def tmp_phase3(tmp_path):
         (ligands / f"{lig}_ligand.sdf").write_text("mock SDF\n")
 
     # Receptor files
-    for rec in ["3GT8_raw", "3GT8_cl38_48"]:
+    for rec in ["3GT8_raw", "EGFR_160-185"]:
         (receptors / f"{rec}.pdb").write_text("mock PDB\n")
 
     return {
@@ -678,7 +678,7 @@ class TestReviewReport:
         text = (out / "phase3_diverse_docking_report.md").read_text(encoding="utf-8")
         assert "3GT8_raw_PKT01" in text
         assert "3GT8_raw_PKT02" in text
-        assert "3GT8_cl38_48_PKT01" in text
+        assert "EGFR_160-185_PKT01" in text
 
 
 # ===========================================================================

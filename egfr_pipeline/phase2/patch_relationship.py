@@ -50,7 +50,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Classification thresholds
 ORTHOSTERIC_HOTSPOT_FRACTION = 0.25   # ≥25% of patch hotspots in pocket → orthosteric

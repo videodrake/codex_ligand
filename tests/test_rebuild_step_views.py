@@ -10,7 +10,7 @@ from pathlib import Path
 from egfr_pipeline.validate import ValidationResult
 
 
-RECEPTOR_IDS = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_IDS = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 LIGAND_IDS = ["173940", "97806", "VAX-C12_0"]
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "rebuild_step_views.py"
 
@@ -93,7 +93,7 @@ def _seed_project_root(project_root: Path) -> None:
     )
     _write_text(
         project_root / "vina_pocket_comparison.csv",
-        "receptor_a,pocket_a,receptor_b,pocket_b\n3GT8_raw,3GT8_raw_PKT01,3GT8_cl38_48,3GT8_cl38_48_PKT01\n",
+        "receptor_a,pocket_a,receptor_b,pocket_b\n3GT8_raw,3GT8_raw_PKT01,EGFR_160-185,EGFR_160-185_PKT01\n",
     )
     _write_text(
         project_root / "vina_pocket_bootstrap.csv",

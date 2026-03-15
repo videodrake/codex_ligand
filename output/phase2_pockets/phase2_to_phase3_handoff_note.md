@@ -70,7 +70,7 @@ All compatibility checks passed.
 ## Cross-State Note
 
 **2 receptor state(s) do not yet have pocket data:**
-3GT8_cl38_48, 3GT8_cl85_100
+EGFR_160-185, EGFR_170-200
 
 Cross-state alignment (`state_class`) is provisional. Re-export
 after all states have fpocket/P2Rank results.

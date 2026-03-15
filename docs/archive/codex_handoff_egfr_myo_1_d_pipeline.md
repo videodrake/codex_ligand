@@ -93,8 +93,8 @@ They must never be hard-coded as truth if new structured outputs disagree with t
 The active receptor ensemble is fixed to these three states:
 
 - `3GT8_raw`
-- `3GT8_cl38_48`
-- `3GT8_cl85_100`
+- `EGFR_160-185`
+- `EGFR_170-200`
 
 These states must remain explicitly labeled and separated in all outputs.
 Direct cross-state comparison requires careful residue-numbering and chain validation.

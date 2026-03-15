@@ -30,7 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 NLOBE_CLOBE_BOUNDARY = 838
 
 # Patch reference schema (Phase 2 handoff)

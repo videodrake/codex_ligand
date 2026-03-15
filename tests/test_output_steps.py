@@ -48,8 +48,8 @@ def _make_config(tmp_path: Path, *, step_view_enabled_flag: bool = True) -> Tupl
         "step_output_view": {"enabled": step_view_enabled_flag},
         "receptors": [
             {"id": "3GT8_raw"},
-            {"id": "3GT8_cl38_48"},
-            {"id": "3GT8_cl85_100"},
+            {"id": "EGFR_160-185"},
+            {"id": "EGFR_170-200"},
         ],
         "ligands": [
             {"id": "173940", "pdbqt": "input/ligands/173940_ligand.pdbqt"},
@@ -75,7 +75,7 @@ def _canonical_artifact_contents() -> Dict[str, str]:
         "vina_pose_table.csv": "receptor_id,ligand_id\n3GT8_raw,173940\n",
         "vina_pocket_table.csv": "receptor_id,pocket_id\n3GT8_raw,3GT8_raw_PKT01\n",
         "vina_drug_pocket_map.csv": "receptor_id,ligand_id,dominant_pocket_id\n3GT8_raw,173940,3GT8_raw_PKT01\n",
-        "vina_pocket_comparison.csv": "receptor_a,pocket_a,receptor_b,pocket_b\n3GT8_raw,3GT8_raw_PKT01,3GT8_cl38_48,3GT8_cl38_48_PKT01\n",
+        "vina_pocket_comparison.csv": "receptor_a,pocket_a,receptor_b,pocket_b\n3GT8_raw,3GT8_raw_PKT01,EGFR_160-185,EGFR_160-185_PKT01\n",
         "vina_pocket_bootstrap.csv": "receptor_id,pocket_id,pocket_exists_frac\n3GT8_raw,3GT8_raw_PKT01,0.9\n",
         "valid_sites.csv": "receptor_id,pocket_id,verdict\n3GT8_raw,3GT8_raw_PKT01,STRONG\n",
         "cross_method_agreement.csv": "receptor_id,pocket_id,agreement_level\n3GT8_raw,3GT8_raw_PKT01,HIGH\n",
@@ -99,7 +99,7 @@ def _seed_project_root(project_root: Path, *, include_optional_step5: bool = Fal
 
 
 def _seed_step1_pose_tree(project_root: Path, *, missing_pairs: Tuple = ()) -> None:
-    receptors = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+    receptors = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
     ligands = ["173940", "97806", "VAX-C12_0"]
     for receptor_id in receptors:
         for ligand_id in ligands:
@@ -250,7 +250,7 @@ def test_record_step1_outputs_indexes_raw_pose_paths_without_copying_pose_files(
     config_path, project_root = _make_config(tmp_path)
     _seed_step1_pose_tree(
         project_root,
-        missing_pairs=(("3GT8_cl85_100", "VAX-C12_0"),),
+        missing_pairs=(("EGFR_170-200", "VAX-C12_0"),),
     )
 
     step1_dir = record_step1_outputs(config_path, repo_root=tmp_path)
@@ -269,11 +269,11 @@ def test_record_step1_outputs_indexes_raw_pose_paths_without_copying_pose_files(
     assert rows[0] == "receptor_id,ligand_id,raw_pose_file,n_models,source,docking_mode,exhaustiveness,n_poses"
     assert len(rows) == 10
     assert "3GT8_raw,173940,3GT8_raw/173940_blind.pdbqt,2,canonical_output,blind,384,100" in rows
-    assert "3GT8_cl85_100,VAX-C12_0,,0,missing,blind,384,100" in rows
+    assert "EGFR_170-200,VAX-C12_0,,0,missing,blind,384,100" in rows
 
     manifest = _read_json(step1_dir / "step_manifest.json")
     assert manifest["status"] == "partial"
-    assert "3GT8_cl85_100/VAX-C12_0_blind.pdbqt" in manifest["missing_files"]
+    assert "EGFR_170-200/VAX-C12_0_blind.pdbqt" in manifest["missing_files"]
     assert manifest["artifact_paths"] == ["raw_pose_index.csv"]
     assert manifest["source_artifacts"][0]["canonical_path"] == "3GT8_raw/173940_blind.pdbqt"
 

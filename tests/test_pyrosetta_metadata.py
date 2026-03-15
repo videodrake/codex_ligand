@@ -47,7 +47,7 @@ def test_build_run_metadata_contains_traceability_fields() -> None:
     config.read_dict(
         {
             "Metadata": {
-                "receptor_id": "3GT8_cl38_48",
+                "receptor_id": "EGFR_160-185",
                 "partner_id": "MYO1D_beta_meander",
                 "construct_type": "full_kinase_domain",
                 "receptor_construct": "full_kinase_domain",
@@ -69,7 +69,7 @@ def test_build_run_metadata_contains_traceability_fields() -> None:
         dir_cluster="EGFR_dimer_beta_meander_wt/cluster_results",
         dir_final="EGFR_dimer_beta_meander_wt/final_result",
     )
-    assert metadata["receptor_id"] == "3GT8_cl38_48"
+    assert metadata["receptor_id"] == "EGFR_160-185"
     assert metadata["partner_id"] == "MYO1D_beta_meander"
     assert metadata["construct_type"] == "full_kinase_domain"
     assert metadata["numbering_system"] == "pdb"

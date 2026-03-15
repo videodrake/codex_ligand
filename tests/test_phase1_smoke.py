@@ -25,7 +25,7 @@ def _write_csv(path, rows, fieldnames=None):
 def test_phase1_smoke_chain_runs_through_review_handoff(tmp_path, monkeypatch):
     output_dir = tmp_path / "phase1_ppi"
 
-    for state_name, dg in (("3GT8_raw", "-12.5"), ("3GT8_cl38_48", "-11.0")):
+    for state_name, dg in (("3GT8_raw", "-12.5"), ("EGFR_160-185", "-11.0")):
         state_dir = output_dir / state_name
         _write_csv(
             state_dir / "pyrosetta_interface_models.csv",
@@ -99,7 +99,7 @@ def test_phase1_smoke_chain_runs_through_review_handoff(tmp_path, monkeypatch):
     assert convergence_path is not None
     assert convergence_path.exists()
 
-    states = ["3GT8_raw", "3GT8_cl38_48"]
+    states = ["3GT8_raw", "EGFR_160-185"]
     cross_rows, robustness_rows = compare_across_states(output_dir, states)
     assert cross_rows
     assert robustness_rows
@@ -121,7 +121,7 @@ def test_phase1_smoke_chain_runs_through_review_handoff(tmp_path, monkeypatch):
                 "source_pdb": "3gt8_raw.pdb",
             },
             {
-                "state_name": "3GT8_cl38_48",
+                "state_name": "EGFR_160-185",
                 "residue_start": "699",
                 "residue_end": "1007",
                 "n_residues": "309",

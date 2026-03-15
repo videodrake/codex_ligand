@@ -41,8 +41,8 @@ Validate that receptor structures and MYO1D partner inputs are complete, compara
 ### 1.0.1 Receptor ensemble validation
 - Confirm the three receptor states are available and correctly labeled:
   - 3GT8_raw
-  - 3GT8_cl38_48
-  - 3GT8_cl85_100
+  - EGFR_160-185
+  - EGFR_170-200
 - Confirm chain IDs are known
 - Confirm residue numbering ranges are recorded
 - Detect obvious numbering mismatches across receptor states

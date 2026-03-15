@@ -72,7 +72,7 @@ Expected meaning per entry:
 
 Current baseline expectation:
 
-- the receptor set remains exactly `3GT8_raw`, `3GT8_cl38_48`, and `3GT8_cl85_100`
+- the receptor set remains exactly `3GT8_raw`, `EGFR_160-185`, and `EGFR_170-200`
 
 ### `ligands`
 

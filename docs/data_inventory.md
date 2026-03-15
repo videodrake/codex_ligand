@@ -13,7 +13,7 @@ This document inventories the current repository data surfaces that a new GPT ne
 
 | Category | Current baseline |
 |------|------|
-| Receptor states | `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100` |
+| Receptor states | `3GT8_raw`, `EGFR_160-185`, `EGFR_170-200` |
 | Ligand set in active config | `173940`, `97806`, `VAX-C12_0` |
 | Phase 1 primary partner baseline | extended beta-meander derived from `input/PPI/TH1 domain.pdb` |
 | Phase 1 secondary validation | LightDock outputs under `output/phase1_ppi/<state>/lightdock/` |
@@ -28,8 +28,8 @@ These are the current checked-in receptor PDB sources used across the repo.
 | Path | Meaning | Current status |
 |------|------|------|
 | `input/receptors/3GT8_raw.pdb` | Raw 3GT8-derived receptor state | active |
-| `input/receptors/3GT8_cl38_48.pdb` | MD cluster representative for 38-48 ns state | active |
-| `input/receptors/3GT8_cl85_100.pdb` | MD cluster representative for 85-100 ns state | active |
+| `input/receptors/EGFR_160-185.pdb` | MD cluster representative for 38-48 ns state | active |
+| `input/receptors/EGFR_170-200.pdb` | MD cluster representative for 85-100 ns state | active |
 
 Notes:
 
@@ -227,8 +227,8 @@ Key cross-state files:
 Per-state subtrees:
 
 - `output/phase1_ppi/3GT8_raw/`
-- `output/phase1_ppi/3GT8_cl38_48/`
-- `output/phase1_ppi/3GT8_cl85_100/`
+- `output/phase1_ppi/EGFR_160-185/`
+- `output/phase1_ppi/EGFR_170-200/`
 
 Typical per-state files:
 

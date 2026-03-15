@@ -24,14 +24,14 @@ def test_project_config_prepares_missing_pdbqt_inputs(tmp_path: Path, monkeypatc
                 "pdbqt": str(receptors_dir / "3GT8_raw_receptor.pdbqt"),
             },
             {
-                "id": "3GT8_cl38_48",
+                "id": "EGFR_160-185",
                 "pdb": str(receptors_dir / "3GT8_raw.pdb"),
-                "pdbqt": str(receptors_dir / "3GT8_cl38_48_receptor.pdbqt"),
+                "pdbqt": str(receptors_dir / "EGFR_160-185_receptor.pdbqt"),
             },
             {
-                "id": "3GT8_cl85_100",
+                "id": "EGFR_170-200",
                 "pdb": str(receptors_dir / "3GT8_raw.pdb"),
-                "pdbqt": str(receptors_dir / "3GT8_cl85_100_receptor.pdbqt"),
+                "pdbqt": str(receptors_dir / "EGFR_170-200_receptor.pdbqt"),
             },
         ],
         "ligands": [
@@ -71,8 +71,8 @@ def test_project_config_still_fails_without_any_source(tmp_path: Path) -> None:
     config = {
         "receptors": [
             {"id": "3GT8_raw", "pdbqt": str(tmp_path / "3GT8_raw_receptor.pdbqt")},
-            {"id": "3GT8_cl38_48", "pdbqt": str(tmp_path / "3GT8_cl38_48_receptor.pdbqt")},
-            {"id": "3GT8_cl85_100", "pdbqt": str(tmp_path / "3GT8_cl85_100_receptor.pdbqt")},
+            {"id": "EGFR_160-185", "pdbqt": str(tmp_path / "EGFR_160-185_receptor.pdbqt")},
+            {"id": "EGFR_170-200", "pdbqt": str(tmp_path / "EGFR_170-200_receptor.pdbqt")},
         ],
         "ligands": [
             {"id": "173940", "pdbqt": str(tmp_path / "173940_ligand.pdbqt")},

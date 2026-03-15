@@ -12,7 +12,7 @@ This document defines the working vocabulary for the EGFR-MYO1D repository as it
 | Term | Meaning in this repository | Current note |
 |------|------|------|
 | `EGFR-MYO1D pipeline` | A state-comparison research pipeline combining a Vina-centered ligand layer with a Phase 1 receptor-side PPI evidence layer | Current routine baseline is Vina-centered, not fully PPI-first end to end |
-| `receptor state` | One of the three fixed EGFR structural states used for comparison | Exactly `3GT8_raw`, `3GT8_cl38_48`, `3GT8_cl85_100` |
+| `receptor state` | One of the three fixed EGFR structural states used for comparison | Exactly `3GT8_raw`, `EGFR_160-185`, `EGFR_170-200` |
 | `state comparison` | Comparing evidence across those three receptor states rather than treating the receptor as a single static object | Applies to Vina pockets and Phase 1 PPI residues |
 | `baseline` | The current default operational interpretation of the repo | PyRosetta primary Phase 1, LightDock active secondary, AFM legacy optional, `max_workers = 16` |
 
@@ -21,8 +21,8 @@ This document defines the working vocabulary for the EGFR-MYO1D repository as it
 | Term | Meaning in this repository | Current note |
 |------|------|------|
 | `3GT8_raw` | Raw 3GT8-derived receptor state | Current active receptor state |
-| `3GT8_cl38_48` | MD cluster representative from the 38-48 ns window | Current active receptor state |
-| `3GT8_cl85_100` | MD cluster representative from the 85-100 ns window | Current active receptor state |
+| `EGFR_160-185` | MD cluster representative from the 38-48 ns window | Current active receptor state |
+| `EGFR_170-200` | MD cluster representative from the 85-100 ns window | Current active receptor state |
 | `extended beta-meander` | Current primary Phase 1 MYO1D partner construct spanning residues `955-1006` | Replaces older truncated `962-1006` framing |
 | `TH1 domain` | Larger MYO1D source/domain context retained in repo | Current Phase 1 docs treat it as plausibility context, not the primary search input |
 | `AFM` | AlphaFold-Multimer-derived interface support path | Legacy optional only unless explicitly re-enabled |
