@@ -20,6 +20,7 @@ POSE_HEADER = [
     "pocket_id",
     "contact_residues",
     "n_contact_residues",
+    "contact_distances",
 ]
 
 POCKET_HEADER = [
@@ -103,6 +104,7 @@ def test_run_validation_smoke(tmp_path: Path) -> None:
                     "3GT8_raw_PKT01",
                     "A:ALA699;A:ALA700",
                     "2",
+                    "3.5;4.1",
                 ]
             ),
         ],
