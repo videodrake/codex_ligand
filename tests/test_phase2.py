@@ -173,9 +173,7 @@ class TestPocketMerge:
         for row in prov:
             # merged_pocket_id starts with a state, raw_pocket_id starts with same state
             merged_state = row["merged_pocket_id"].split("_PKT")[0]
-            raw_state = "_".join(row["raw_pocket_id"].split("_")[:-2])
-            # Handle potential naming issues by checking receptor_id
-            assert row["receptor_id"] in merged_state
+            assert row["receptor_id"] == merged_state
 
     def test_stable_pocket_ids(self, tmp_phase2):
         from egfr_pipeline.phase2.pocket_merge import run_pocket_merge
