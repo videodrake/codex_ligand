@@ -30,13 +30,13 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[
             n_skipped += 1
             continue
         pocket_groups[(row["receptor_id"], row["pocket_id"])].append(row)
+        ligand_groups[(row["receptor_id"], row["ligand_id"])].append(row)
     if n_skipped:
         import logging
         logging.getLogger(__name__).warning(
             "summarize: %d pose(s) without pocket_id excluded from summary",
             n_skipped,
         )
-        ligand_groups[(row["receptor_id"], row["ligand_id"])].append(row)
 
     pocket_rows: List[dict] = []
     residue_occupancy_rows: List[dict] = []
