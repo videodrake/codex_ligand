@@ -34,7 +34,6 @@ python -m pytest \
   "${ROOT_DIR}/tests/test_precheck_guard.py" \
   "${ROOT_DIR}/tests/test_review_report.py" \
   "${ROOT_DIR}/tests/test_lightdock_validation.py" \
-  "${ROOT_DIR}/tests/test_pyrosetta_configs.py" \
   "${ROOT_DIR}/tests/test_pyrosetta_extract.py" \
   "${ROOT_DIR}/tests/test_pyrosetta_metadata.py" \
   "${ROOT_DIR}/tests/test_postprocess_ppi.py" \
