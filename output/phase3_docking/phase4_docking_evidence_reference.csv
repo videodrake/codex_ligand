@@ -1,7 +1,0 @@
-receptor_id,candidate_pocket_id,ligand_id,pose_support_count,best_affinity_kcal,mean_affinity_kcal,n_seeds_completed,docking_mode,contact_residues,n_contact_residues,relationship_class,overall_druggability_tier,druggability_confidence,docking_priority,state_class,n_states_matched,pocket_status,diversity_verdict,coverage_fraction,normalized_entropy,ligand_support_strength,total_poses_in_pocket,fraction_of_receptor_poses
-3GT8_raw,3GT8_raw_PKT01,173940,3,,,3,focused,,0,orthosteric_candidate,tier_1,high,primary,state_specific_pocket,1,open,well_distributed,1.000,1.000,pending_moderate,3,0.500
-3GT8_raw,3GT8_raw_PKT02,173940,3,,,3,focused,,0,orthosteric_candidate,tier_2,medium,primary,state_specific_pocket,1,open,well_distributed,1.000,1.000,pending_moderate,3,0.500
-3GT8_raw,3GT8_raw_PKT01,97806,3,,,3,focused,,0,orthosteric_candidate,tier_1,high,primary,state_specific_pocket,1,open,well_distributed,1.000,1.000,pending_moderate,3,0.500
-3GT8_raw,3GT8_raw_PKT02,97806,3,,,3,focused,,0,orthosteric_candidate,tier_2,medium,primary,state_specific_pocket,1,open,well_distributed,1.000,1.000,pending_moderate,3,0.500
-3GT8_raw,3GT8_raw_PKT01,VAX-C12_0,3,,,3,focused,,0,orthosteric_candidate,tier_1,high,primary,state_specific_pocket,1,open,well_distributed,1.000,1.000,pending_moderate,3,0.500
-3GT8_raw,3GT8_raw_PKT02,VAX-C12_0,3,,,3,focused,,0,orthosteric_candidate,tier_2,medium,primary,state_specific_pocket,1,open,well_distributed,1.000,1.000,pending_moderate,3,0.500

@@ -1,4 +1,0 @@
-pocket_id,receptor_id,center_x,center_y,center_z,box_size_x,box_size_y,box_size_z,box_source,docking_priority,relationship_class,dockable
-3GT8_raw_PKT01,3GT8_raw,44.454,32.261,18.584,14.4,13.7,13.2,phase2_fpocket,primary,orthosteric_candidate,True
-3GT8_raw_PKT02,3GT8_raw,28.490,45.493,12.601,11.2,11.6,12.3,phase2_fpocket,primary,orthosteric_candidate,True
-3GT8_raw_PKT03,3GT8_raw,60.790,25.173,31.012,11.3,10.6,10.4,phase2_fpocket,skip,low_relevance_candidate,False

@@ -1,8 +1,0 @@
-pocket_id,receptor_id,ligand_id,mechanistic_class,classification_confidence,A1_ppi_interface,A2_druggability,A3_perturbation_relevance,A4_state_robustness,A1_weighted,A2_weighted,A3_weighted,A4_weighted,perturbation_score,rank
-3GT8_raw_PKT01,3GT8_raw,173940,orthosteric_disruptor_candidate,high,0.3927,0.947,0.7229,0.5333,0.1178,0.2367,0.2169,0.08,0.6514,1
-3GT8_raw_PKT01,3GT8_raw,97806,orthosteric_disruptor_candidate,high,0.3927,0.947,0.7229,0.5333,0.1178,0.2367,0.2169,0.08,0.6514,2
-3GT8_raw_PKT01,3GT8_raw,VAX-C12_0,orthosteric_disruptor_candidate,high,0.3927,0.947,0.7229,0.5333,0.1178,0.2367,0.2169,0.08,0.6514,3
-3GT8_raw_PKT02,3GT8_raw,173940,orthosteric_disruptor_candidate,high,0.3359,0.5884,0.6871,0.5333,0.1008,0.1471,0.2061,0.08,0.534,4
-3GT8_raw_PKT02,3GT8_raw,97806,orthosteric_disruptor_candidate,high,0.3359,0.5884,0.6871,0.5333,0.1008,0.1471,0.2061,0.08,0.534,5
-3GT8_raw_PKT02,3GT8_raw,VAX-C12_0,orthosteric_disruptor_candidate,high,0.3359,0.5884,0.6871,0.5333,0.1008,0.1471,0.2061,0.08,0.534,6
-3GT8_raw_PKT03,3GT8_raw,,ligandable_but_ppi_irrelevant_candidate,high,0.1643,0.236,0.045,0.2833,0.0493,0.059,0.0135,0.0425,0.1493,7

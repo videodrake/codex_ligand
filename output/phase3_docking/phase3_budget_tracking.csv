@@ -1,1 +1,0 @@
-round_id,pocket_id,receptor_id,ligand_id,seed_index,status_before,status_after,poses_this_round,acceptable_poses_this_round,best_affinity_this_round,cumulative_poses,cumulative_acceptable,budget_action

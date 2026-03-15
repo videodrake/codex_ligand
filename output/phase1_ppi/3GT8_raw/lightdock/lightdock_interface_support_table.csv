@@ -1,8 +1,0 @@
-model_id,receptor_id,swarm_id,pose_rank,scoring_value,chain,residue_id,residue_num,residue_name,lobe_label,source
-swarm0_rank1,3GT8_raw,0,1,-45.2,A,ASP855,855,ASP,C-lobe,lightdock
-swarm0_rank1,3GT8_raw,0,1,-45.2,A,GLU866,866,GLU,C-lobe,lightdock
-swarm0_rank1,3GT8_raw,0,1,-45.2,A,THR847,847,THR,C-lobe,lightdock
-swarm0_rank1,3GT8_raw,0,1,-45.2,A,ALA848,848,ALA,C-lobe,lightdock
-swarm0_rank1,3GT8_raw,0,1,-45.2,B,VAL962,962,VAL,partner,lightdock
-swarm1_rank1,3GT8_raw,1,1,-42.8,A,ASP855,855,ASP,C-lobe,lightdock
-swarm1_rank1,3GT8_raw,1,1,-42.8,A,THR847,847,THR,C-lobe,lightdock

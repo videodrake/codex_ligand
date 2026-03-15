@@ -1,4 +1,0 @@
-receptor_id,candidate_pocket_id,proposal_source,pocket_rank,proposal_score,druggability_score,centroid_x,centroid_y,centroid_z,volume_A3,n_alpha_spheres,residue_ids,residue_nums,n_residues,box_center_x,box_center_y,box_center_z,box_size_x,box_size_y,box_size_z
-3GT8_raw,3GT8_raw_fpocket_P01,fpocket,1,0.8234,0.712,44.454,32.261,18.584,892.34,42,LEU838;ASP855;ILE857;GLU866,838;855;857;866,4,44.454,32.261,18.584,14.4,13.7,13.2
-3GT8_raw,3GT8_raw_fpocket_P02,fpocket,2,0.5612,0.445,28.490,45.493,12.601,567.89,28,LEU819;ALA822;VAL834,819;822;834,3,28.490,45.493,12.601,11.2,11.6,12.3
-3GT8_raw,3GT8_raw_fpocket_P03,fpocket,3,0.3201,0.198,60.790,25.173,31.012,312.45,15,ARG748;GLY750,748;750,2,60.790,25.173,31.012,11.3,10.6,10.4

@@ -1,3 +1,0 @@
-receptor_id,source,n_final_models,n_clusters,n_interface_residues,top_residues,best_dg,mean_dg,best_dsasa
-3GT8_raw,pyrosetta_ppi:MYO1D_TH1,20,67,74,B:ILE953;B:ASP954;B:GLU928;B:GLU709;B:LEU887;B:ILE941;A:GLN701;A:ILE706;A:ASN756;B:PRO753,-15.473,-11.977,1185.6
-3GT8_raw,pyrosetta_ppi:MYO1D_beta,20,36,69,B:PRO753;B:GLN701;B:SER784;B:ILE706;B:ARG832;B:SER752;A:THR993;B:ALA702;B:ILE941;B:MET945,-12.45,-9.948,985.9
