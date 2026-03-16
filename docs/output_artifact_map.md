@@ -91,10 +91,18 @@ These are the artifacts most relevant to the current Vina-centered operational b
 | PPI residue summary | `ppi_pyrosetta_residues.csv` | `output/egfr_myo1d_vina/ppi_pyrosetta_residues.csv` | Project-root PPI residue extraction table used by the current step layer | Yes -> contributes to verdict and report in the routine baseline | `P2` |
 | PPI run summary | `ppi_pyrosetta_summary.csv` | `output/egfr_myo1d_vina/ppi_pyrosetta_summary.csv` | Aggregated summary of PyRosetta-derived PPI results | Supporting only | `P3` |
 | Cross-method agreement | `cross_method_agreement.csv` | `output/egfr_myo1d_vina/cross_method_agreement.csv` | Main Vina-vs-PPI overlap and proximity table for the routine baseline | Yes -> used by report and validate; presentation-facing | `P1` |
-| Site verdicts | `valid_sites.csv` | `output/egfr_myo1d_vina/valid_sites.csv` | Final rule-based site judgment table from `egfr_pipeline/verdict.py` | Yes -> used by report and validate; often the first baseline judgment table | `P1` |
+| Site verdicts | `valid_sites.csv` | `output/egfr_myo1d_vina/valid_sites.csv` | Reproducibility-aware site evidence table from `egfr_pipeline/verdict.py`; combines blind-docking quality, pose-resampling stability, ligand diversity, PPI support, and cross-state recurrence | Yes -> used by report and validate; often the first baseline judgment table | `P1` |
 | Consensus site map | `vina_consensus_sites.csv` | `output/egfr_myo1d_vina/vina_consensus_sites.csv` | Consensus pocket/site grouping across receptor states | No direct next step in baseline; review and presentation support | `P2` |
-| Combined residue evidence | `combined_residue_evidence.csv` | `output/egfr_myo1d_vina/combined_residue_evidence.csv` | Residue-level integrated evidence view used for report support | No direct next step; interpretation support | `P2` |
-| Top-level report | `project_report.txt` | `output/egfr_myo1d_vina/project_report.txt` | Human-readable summary report for the current baseline | No; presentation/report endpoint | `P1` |
+| Combined residue evidence | `combined_residue_evidence.csv` | `output/egfr_myo1d_vina/combined_residue_evidence.csv` | Residue-level integrated evidence view; includes best supporting Vina verdict annotations plus PPI reproducibility fields | No direct next step; interpretation support | `P2` |
+| Top-level report | `project_report.txt` | `output/egfr_myo1d_vina/project_report.txt` | Human-readable summary report for the current baseline; explicitly separates exploratory evidence from recurrent or multi-run-supported evidence | No; presentation/report endpoint | `P1` |
+
+### How To Read The Routine Verdict Layer
+
+- Treat `valid_sites.csv` as an evidence-ranking table, not as a binary ground-truth binding call.
+- `vina_quality_score` now mixes four ideas: affinity, within-run convergence, pose-resampling stability, and ligand diversity.
+- `ppi_proximity_score` is stronger when a pocket is both geometrically close to PPI evidence and supported by reproducible PPI residues across runs.
+- `cross_receptor_score` is no longer just a count of same-patch matches; it also carries match quality via `cross_receptor_support`.
+- `evidence_profile` is the quickest way to separate exploratory pockets from `stable`, `recurrent`, `multi_ligand`, or `ppi_supported` pockets.
 
 ## 2. Phase 1 Structured PPI Artifacts
 
@@ -209,6 +217,8 @@ Use these shortcuts when a new GPT needs to answer a narrow question quickly.
 ## 7. Current Cautions
 
 - Do not confuse the routine baseline judgment files (`valid_sites.csv`, `project_report.txt`) with the advanced Phase 4 perturbation-ranking outputs.
+- Do not read `STRONG` in `valid_sites.csv` as "confirmed binder". In the current baseline it means "strong integrated evidence under the blind-docking and PPI-support heuristics".
+- Do not treat `ppi_supported` in `evidence_profile` as equivalent to direct interface competition without checking `spatial_dist_A`, `shared_residue_list`, and `ppi_frac_runs_supporting`.
 - Do not treat all files under `output/egfr_myo1d_vina/` as canonical payloads without checking whether they are pointer stubs.
 - Treat `orientation_validation_status` as source-dependent: structured `output/phase1_ppi/` runs can carry calibrated classes, while legacy `output/egfr_myo1d_vina/ppi/` postprocess tables often use `not_available`.
 - Do not assume that a phase-separated artifact is automatically consumed by the default CLI or production flow just because the file exists.

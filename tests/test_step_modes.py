@@ -69,6 +69,10 @@ def _seed_phase456_outputs(project_root: Path, *, token: str = "seed") -> None:
         f"receptor_id,pocket_id,pocket_exists_frac\n3GT8_raw,3GT8_raw_PKT01_{token},0.9\n",
     )
     _write_text(
+        project_root / "vina_postprocess_coverage.csv",
+        "receptor_id,ligand_id,status\n3GT8_raw,173940,parsed\n",
+    )
+    _write_text(
         project_root / "valid_sites.csv",
         f"receptor_id,pocket_id,verdict\n3GT8_raw,3GT8_raw_PKT01_{token},STRONG\n",
     )

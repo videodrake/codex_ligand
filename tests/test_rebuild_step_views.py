@@ -100,6 +100,10 @@ def _seed_project_root(project_root: Path) -> None:
         "receptor_id,pocket_id,pocket_exists_frac\n3GT8_raw,3GT8_raw_PKT01,0.9\n",
     )
     _write_text(
+        project_root / "vina_postprocess_coverage.csv",
+        "receptor_id,ligand_id,status\n3GT8_raw,173940,parsed\n",
+    )
+    _write_text(
         project_root / "ppi_pyrosetta_residues.csv",
         "receptor_id,residue_id,occupancy\n3GT8_raw,A:ALA699,0.8\n",
     )

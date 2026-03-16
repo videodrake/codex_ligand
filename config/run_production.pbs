@@ -40,7 +40,7 @@ PRECHECK_STATUS_FILE="${PBS_O_WORKDIR}/output/pre_qsub_status/last_pass.json"
 
 echo "============================================"
 echo "  EGFR-MYO1D Production Pipeline"
-echo "  Vina(256exh/50poses) + PPI(50Kx2)"
+echo "  Vina(project-config driven blind discovery) + PPI(seed0)"
 echo "  Started: $(date)"
 echo "  Node: $(hostname)"
 echo "  Cores: $(nproc)"

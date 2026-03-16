@@ -1,6 +1,6 @@
 ﻿# Documentation Index
 
-Last updated: 2026-03-13
+Last updated: 2026-03-16
 
 This folder contains the main documentation set for the `codex_ligand` project. Start with onboarding and environment prerequisites, then move to operations and phase planning.
 
@@ -38,6 +38,7 @@ This folder contains the main documentation set for the `codex_ligand` project. 
 - [project_context.md](project_context.md)
 - [architecture.md](architecture.md)
 - [data_flow_guide.md](data_flow_guide.md)
+- [phase1_sampling_rationale.md](phase1_sampling_rationale.md)
 - [compute_scaling_estimate.md](compute_scaling_estimate.md)
 
 ## Phase Planning Documents
@@ -55,6 +56,7 @@ This folder contains the main documentation set for the `codex_ligand` project. 
 ## Phase Notes And Handoffs
 
 - [phase1_pyrosetta_execution_note.md](phase1_pyrosetta_execution_note.md)
+- [phase1_sampling_rationale.md](phase1_sampling_rationale.md)
 - [phase1_ppi_handoff_note.md](phase1_ppi_handoff_note.md)
 - [phase1_lightdock_validation_note.md](phase1_lightdock_validation_note.md)
 - [phase1_output_chain_note.md](phase1_output_chain_note.md)
@@ -65,6 +67,13 @@ This folder contains the main documentation set for the `codex_ligand` project. 
 
 - [output_artifact_map.md](output_artifact_map.md)
 - [../output/README.md](../output/README.md)
+
+Current routine baseline reading order:
+
+1. `output/{project}/step_index.md`
+2. `output/{project}/step6_report/project_report.txt`
+3. `output/{project}/step5_verdict/valid_sites.csv`
+4. `output/{project}/step4_vina_postprocess/vina_pocket_table.csv`
 
 ## Historical And Assistant Notes
 

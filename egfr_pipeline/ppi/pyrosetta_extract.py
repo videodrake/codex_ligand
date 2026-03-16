@@ -1,24 +1,33 @@
 """PyRosetta PPI residue extraction.
 
-Reads PyRosetta pipeline outputs (final_ranking.csv, cluster_summary.csv,
-InterfaceEnergies CSVs) and produces a standardized receptor-side residue
-summary that can be compared alongside Vina pocket residues.
+Reads PyRosetta pipeline outputs and produces:
 
-PPI outputs are explicitly **auxiliary evidence** -- they inform receptor
-surface analysis but do not override Vina-derived pocket definitions.
+- project-level receptor-side residue summaries for downstream verdict/report
+- project-level partner-aware run summaries
+- long-form per-model residue tables for provenance and reproducibility checks
+- per-model score tables for run/seed auditing
+
+PPI outputs are auxiliary evidence. They inform receptor surface analysis but do
+not override Vina-derived pocket definitions.
 """
+
+from __future__ import annotations
+
 import csv
+import json
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
-from egfr_pipeline.residue_utils import normalize_residue_id, extract_resnum
 from egfr_pipeline.config import load_config
+from egfr_pipeline.phase1.extract_interface import extract_run
+from egfr_pipeline.residue_utils import extract_resnum, normalize_residue_id
 
 
 # ---------------------------------------------------------------------------
 # CSV helpers
 # ---------------------------------------------------------------------------
+
 
 def load_csv(path: Path) -> List[dict]:
     if not path.exists():
@@ -27,9 +36,19 @@ def load_csv(path: Path) -> List[dict]:
         return list(csv.DictReader(f))
 
 
+def write_csv_rows(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
 # ---------------------------------------------------------------------------
 # Field definitions
 # ---------------------------------------------------------------------------
+
 
 PPI_RESIDUE_FIELDS = [
     "receptor_id",
@@ -42,6 +61,10 @@ PPI_RESIDUE_FIELDS = [
     "lobe_label",
     "construct_type",
     "orientation_validation_status",
+    "n_runs_total",
+    "n_runs_supporting",
+    "frac_runs_supporting",
+    "supporting_seed_indices",
     "frequency_final_ranking",
     "frequency_cluster_summary",
     "n_models_final_ranking",
@@ -56,6 +79,9 @@ PPI_SUMMARY_FIELDS = [
     "source",
     "construct_type",
     "orientation_validation_status",
+    "n_runs_total",
+    "n_runs_completed",
+    "seed_indices",
     "n_final_models",
     "n_clusters",
     "n_interface_residues",
@@ -67,34 +93,68 @@ PPI_SUMMARY_FIELDS = [
     "best_dsasa",
 ]
 
+PPI_RESIDUE_LONG_FIELDS = [
+    "model_id",
+    "receptor_id",
+    "partner_id",
+    "source",
+    "construct_type",
+    "orientation_validation_status",
+    "seed_index",
+    "run_label",
+    "run_dir",
+    "rank",
+    "cluster_id",
+    "chain",
+    "residue_id",
+    "residue_num",
+    "residue_name",
+    "lobe_label",
+    "delta_e_total",
+    "delta_e_fa_atr",
+    "delta_e_fa_rep",
+    "delta_e_fa_sol",
+    "delta_e_fa_elec",
+    "source_file",
+]
+
+PPI_MODEL_FIELDS = [
+    "model_id",
+    "receptor_id",
+    "partner_id",
+    "source",
+    "construct_type",
+    "orientation_validation_status",
+    "seed_index",
+    "run_label",
+    "run_dir",
+    "rank",
+    "cluster_id",
+    "dG_separated",
+    "dSASA",
+    "sc_value",
+    "packstat",
+    "nres_int",
+    "n_receptor_interface_residues",
+    "n_partner_interface_residues",
+    "n_nlobe_interface_residues",
+    "n_clobe_interface_residues",
+    "receptor_interface_residues",
+    "partner_interface_residues",
+    "source_file",
+]
+
 
 # ---------------------------------------------------------------------------
-# Output writers
+# PyRosetta output helpers
 # ---------------------------------------------------------------------------
 
-def write_csv_rows(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
-    return path
-
-
-# ---------------------------------------------------------------------------
-# PyRosetta output parsers
-# ---------------------------------------------------------------------------
 
 NLOBE_CLOBE_BOUNDARY = 838
 
 
 def _parse_receptor_residue(raw: str) -> dict:
-    """Parse a receptor-side residue reference while preserving chain identity.
-
-    Restored PyRosetta outputs may contain receptor residues on both chain A and
-    chain B after EGFR dimer chain restoration. These should remain receptor-side
-    evidence, not be treated as partner residues.
-    """
+    """Parse a receptor-side residue reference while preserving chain identity."""
     normalized = normalize_residue_id(raw.strip(), keep_chain=True)
     chain = ""
     residue_id = normalized
@@ -127,12 +187,8 @@ def _parse_receptor_residue(raw: str) -> dict:
 
 
 def parse_binding_residues(raw: str) -> List[str]:
-    """Parse receptor-side residue refs while preserving restored chain IDs.
-
-    Example:
-      'A:LEU819,B:ASP855' -> ['A:LEU819', 'B:ASP855']
-    """
-    if not raw or raw in ("None", "No_Chain_2", "Analysis_Failed"):
+    """Parse receptor-side residue refs while preserving restored chain IDs."""
+    if not raw or raw in ("None", "No_Chain_2", "Analysis_Failed", ""):
         return []
     return [
         normalize_residue_id(r.strip(), keep_chain=True)
@@ -141,204 +197,8 @@ def parse_binding_residues(raw: str) -> List[str]:
     ]
 
 
-def _interface_csv_name(csv_path: str) -> str:
-    name = Path(csv_path).name
-    if name.endswith("_InterfaceEnergies.csv"):
-        return name
-    if name.endswith("_Energies.csv"):
-        return name.replace("_Energies.csv", "_InterfaceEnergies.csv")
-    return name
-
-
-def _resolve_interface_csv_path(result_dir: Path, csv_path: str) -> Optional[Path]:
-    """Resolve InterfaceEnergies CSV from a File_CSV value.
-
-    PyRosetta final_ranking.csv may store File_CSV as:
-      - a bare filename
-      - a relative path
-      - an absolute path
-    while InterfaceEnergies files often live under ``final_result/``.
-    """
-    if not csv_path:
-        return None
-
-    raw = Path(csv_path)
-    iface_name = _interface_csv_name(csv_path)
-    candidates = []
-
-    if raw.is_absolute():
-        candidates.append(raw.with_name(iface_name))
-    else:
-        candidates.append(result_dir / raw.with_name(iface_name))
-        candidates.append(result_dir / raw)
-
-    candidates.append(result_dir / iface_name)
-    candidates.append(result_dir / "final_result" / iface_name)
-
-    seen = set()
-    for candidate in candidates:
-        normalized = str(candidate)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def extract_pyrosetta_interface_residues(
-    result_dir: Path,
-    receptor_id: str,
-    partner_id: str = "",
-    construct_type: str = "full_kinase_domain",
-    orientation_validation_status: str = "not_available",
-) -> Dict[str, object]:
-    """Extract receptor-side interface residues from a PyRosetta result directory.
-
-    Reads final_ranking.csv and cluster_summary.csv to build:
-    - Union of all receptor-side (Chain A) contact residues
-    - Per-residue frequency (how many models contact this residue)
-    - Per-residue best energy (from InterfaceEnergies CSVs if available)
-
-    Returns a dict with all extracted data.
-    """
-    final_ranking = load_csv(result_dir / "final_ranking.csv")
-    if not final_ranking:
-        # Try nested path
-        final_ranking = load_csv(result_dir / "final_result" / "final_ranking.csv")
-
-    cluster_summary = load_csv(result_dir / "cluster_results" / "cluster_summary.csv")
-
-    # --- Collect receptor-side binding residues across all models ---
-    residue_counter: Counter = Counter()
-    model_count = 0
-    model_energies: Dict[str, List[float]] = defaultdict(list)
-
-    for row in final_ranking:
-        binding_a = row.get("Binding_Residues_A", "") or row.get("Binding_Residues", "")
-        residues = parse_binding_residues(binding_a)
-        if residues:
-            model_count += 1
-            residue_counter.update(residues)
-
-        # Try to read per-residue interface energies
-        csv_path = row.get("File_CSV", "")
-        if csv_path:
-            iface_csv = _resolve_interface_csv_path(result_dir, csv_path)
-            if iface_csv is not None:
-                for erow in load_csv(iface_csv):
-                    resid = erow.get("Residue_ID", "")
-                    chain = erow.get("Chain", "")
-                    delta_e = erow.get("DeltaE_total", "")
-                    if chain == "A" and delta_e:
-                        residue_num = extract_resnum(resid)
-                        residue_name = normalize_residue_id(
-                            erow.get("Residue_Name", "")
-                        )
-                        if residue_num is None or not residue_name:
-                            continue
-                        norm = f"{chain}:{residue_name}{residue_num}"
-                        try:
-                            model_energies[norm].append(float(delta_e))
-                        except ValueError:
-                            pass
-
-    # --- Also collect from cluster_summary for broader coverage ---
-    cluster_residue_counter: Counter = Counter()
-    for row in cluster_summary:
-        binding_a = row.get("Binding_Residues_A", "") or row.get("Binding_Residues", "")
-        residues = parse_binding_residues(binding_a)
-        cluster_residue_counter.update(residues)
-
-    # Merge: union from both sources
-    all_residues = set(residue_counter.keys()) | set(cluster_residue_counter.keys())
-
-    # --- Build per-residue summary rows ---
-    residue_rows = []
-    n_nlobe = 0
-    n_clobe = 0
-    for res in sorted(all_residues, key=lambda r: (extract_resnum(r) or 0, r)):
-        residue_info = _parse_receptor_residue(res)
-        freq_final = residue_counter.get(res, 0)
-        freq_cluster = cluster_residue_counter.get(res, 0)
-        occupancy = freq_final / model_count if model_count > 0 else 0.0
-        energies = model_energies.get(res, [])
-        mean_delta_e = sum(energies) / len(energies) if energies else None
-        min_delta_e = min(energies) if energies else None
-        if residue_info["lobe_label"] == "N-lobe":
-            n_nlobe += 1
-        elif residue_info["lobe_label"] == "C-lobe":
-            n_clobe += 1
-
-        residue_rows.append({
-            "receptor_id": receptor_id,
-            "partner_id": partner_id,
-            "source": "pyrosetta_ppi",
-            "chain": residue_info["chain"],
-            "residue_id": residue_info["residue_id"],
-            "residue_num": residue_info["residue_num"] if residue_info["residue_num"] is not None else "",
-            "residue_name": residue_info["residue_name"],
-            "lobe_label": residue_info["lobe_label"],
-            "construct_type": construct_type,
-            "orientation_validation_status": orientation_validation_status,
-            "frequency_final_ranking": freq_final,
-            "frequency_cluster_summary": freq_cluster,
-            "n_models_final_ranking": model_count,
-            "occupancy": round(occupancy, 4),
-            "mean_interface_delta_e": round(mean_delta_e, 3) if mean_delta_e is not None else "",
-            "best_interface_delta_e": round(min_delta_e, 3) if min_delta_e is not None else "",
-        })
-
-    # --- Summary metrics ---
-    dg_values = []
-    dsasa_values = []
-    for row in final_ranking:
-        try:
-            dg_values.append(float(row.get("dG_separated", "nan")))
-        except (ValueError, TypeError):
-            pass
-        try:
-            dsasa_values.append(float(row.get("dSASA", "nan")))
-        except (ValueError, TypeError):
-            pass
-
-    summary = {
-        "receptor_id": receptor_id,
-        "partner_id": partner_id,
-        "source": "pyrosetta_ppi",
-        "construct_type": construct_type,
-        "orientation_validation_status": orientation_validation_status,
-        "n_final_models": len(final_ranking),
-        "n_clusters": len(cluster_summary),
-        "n_interface_residues": len(all_residues),
-        "n_nlobe_interface_residues": n_nlobe,
-        "n_clobe_interface_residues": n_clobe,
-        "top_residues": ";".join(
-            r for r, _ in residue_counter.most_common(10)
-        ),
-        "best_dg": round(min(dg_values), 3) if dg_values else "",
-        "mean_dg": round(sum(dg_values) / len(dg_values), 3) if dg_values else "",
-        "best_dsasa": round(max(dsasa_values), 1) if dsasa_values else "",
-    }
-
-    return {
-        "residue_rows": residue_rows,
-        "summary": summary,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Batch extraction from project config
-# ---------------------------------------------------------------------------
-
 def _normalize_result_dirs(raw) -> List[dict]:
-    """Normalize pyrosetta_result_dirs value to list-of-dicts.
-
-    Supports three formats:
-      - str: legacy single path  -> [{"path": "...", "partner": ""}]
-      - list of dicts: [{path, partner}, ...]
-      - list of str: ["path1", "path2"]  -> [{"path": "...", "partner": ""}, ...]
-    """
+    """Normalize pyrosetta_result_dirs value to list-of-dicts."""
     if not raw:
         return []
     if isinstance(raw, str):
@@ -354,24 +214,405 @@ def _normalize_result_dirs(raw) -> List[dict]:
     return []
 
 
+def _safe_float(value: object) -> Optional[float]:
+    try:
+        if value in ("", None):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_seed_index(value: object) -> str:
+    if value in ("", None):
+        return ""
+    return str(value).strip()
+
+
+def _join_sorted(values: Iterable[object]) -> str:
+    cleaned = []
+    for value in values:
+        if value in ("", None):
+            continue
+        cleaned.append(str(value).strip())
+    unique = sorted(set(cleaned), key=lambda v: (v.isdigit(), int(v) if v.isdigit() else v))
+    return ";".join(unique)
+
+
+def _source_tag(partner_id: str) -> str:
+    return f"pyrosetta_ppi:{partner_id}" if partner_id else "pyrosetta_ppi"
+
+
+def _cluster_summary_path(result_dir: Path) -> Path:
+    return result_dir / "cluster_results" / "cluster_summary.csv"
+
+
+def _load_cluster_residue_counter(result_dir: Path) -> Tuple[Counter, int]:
+    cluster_rows = load_csv(_cluster_summary_path(result_dir))
+    counter: Counter = Counter()
+    for row in cluster_rows:
+        binding_a = row.get("Binding_Residues_A", "") or row.get("Binding_Residues", "")
+        counter.update(parse_binding_residues(binding_a))
+    return counter, len(cluster_rows)
+
+
+def _load_run_metadata(
+    result_dir: Path,
+    *,
+    receptor_id: str,
+    partner_id: str,
+    construct_type: str,
+    orientation_validation_status: str,
+) -> dict:
+    meta = {}
+    meta_path = result_dir / "pyrosetta_run_metadata.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            meta = {}
+
+    resolved_partner = partner_id or str(meta.get("partner_id", "")).strip()
+    resolved_construct = construct_type or str(meta.get("construct_type", "")).strip() or "full_kinase_domain"
+
+    meta["receptor_id"] = receptor_id or str(meta.get("receptor_id", "")).strip()
+    meta["partner_id"] = resolved_partner
+    meta["construct_type"] = resolved_construct
+    meta["orientation_validation_status"] = orientation_validation_status or "not_available"
+    meta["seed_index"] = meta.get("seed_index", 0)
+    meta["run_dir"] = str(result_dir)
+    meta["run_label"] = result_dir.name
+    return meta
+
+
+def _build_run_payload(
+    result_dir: Path,
+    *,
+    receptor_id: str,
+    partner_id: str,
+    construct_type: str,
+    orientation_validation_status: str,
+) -> Optional[dict]:
+    metadata = _load_run_metadata(
+        result_dir,
+        receptor_id=receptor_id,
+        partner_id=partner_id,
+        construct_type=construct_type,
+        orientation_validation_status=orientation_validation_status,
+    )
+    residue_rows, model_rows = extract_run(result_dir, metadata)
+    cluster_counter, cluster_row_count = _load_cluster_residue_counter(result_dir)
+
+    if not residue_rows and not model_rows and cluster_row_count == 0:
+        return None
+
+    source = _source_tag(metadata.get("partner_id", ""))
+    run_label = metadata.get("run_label", result_dir.name)
+    run_dir_str = metadata.get("run_dir", str(result_dir))
+    seed_index = _normalize_seed_index(metadata.get("seed_index", ""))
+    orientation = metadata.get("orientation_validation_status", "not_available")
+
+    enriched_residue_rows = []
+    for row in residue_rows:
+        enriched = dict(row)
+        enriched["source"] = source
+        enriched["orientation_validation_status"] = orientation
+        enriched["run_label"] = run_label
+        enriched["run_dir"] = run_dir_str
+        enriched["seed_index"] = _normalize_seed_index(enriched.get("seed_index", seed_index))
+        enriched_residue_rows.append(enriched)
+
+    enriched_model_rows = []
+    for row in model_rows:
+        enriched = dict(row)
+        enriched["source"] = source
+        enriched["orientation_validation_status"] = orientation
+        enriched["run_label"] = run_label
+        enriched["run_dir"] = run_dir_str
+        enriched["seed_index"] = _normalize_seed_index(enriched.get("seed_index", seed_index))
+        enriched_model_rows.append(enriched)
+
+    return {
+        "metadata": metadata,
+        "source": source,
+        "run_label": run_label,
+        "run_dir": run_dir_str,
+        "seed_index": seed_index,
+        "residue_rows": enriched_residue_rows,
+        "model_rows": enriched_model_rows,
+        "cluster_counter": cluster_counter,
+        "cluster_row_count": cluster_row_count,
+    }
+
+
+def _payload_group_key(payload: dict) -> Tuple[str, str, str, str, str]:
+    meta = payload["metadata"]
+    return (
+        str(meta.get("receptor_id", "")),
+        str(meta.get("partner_id", "")),
+        payload["source"],
+        str(meta.get("construct_type", "full_kinase_domain")),
+        str(meta.get("orientation_validation_status", "not_available")),
+    )
+
+
+def _sort_residue_rows(rows: List[dict]) -> List[dict]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            row.get("receptor_id", ""),
+            row.get("partner_id", ""),
+            _safe_float(row.get("residue_num")) or -999999,
+            row.get("chain", ""),
+            row.get("residue_id", ""),
+        ),
+    )
+
+
+def _sort_long_rows(rows: List[dict]) -> List[dict]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            row.get("receptor_id", ""),
+            row.get("partner_id", ""),
+            row.get("seed_index", ""),
+            _safe_float(row.get("rank")) or 999999,
+            row.get("model_id", ""),
+            row.get("chain", ""),
+            _safe_float(row.get("residue_num")) or -999999,
+            row.get("residue_id", ""),
+        ),
+    )
+
+
+def _sort_summary_rows(rows: List[dict]) -> List[dict]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            row.get("receptor_id", ""),
+            row.get("partner_id", ""),
+            row.get("construct_type", ""),
+        ),
+    )
+
+
+def _aggregate_run_payloads(run_payloads: List[dict]) -> Tuple[List[dict], List[dict]]:
+    groups: Dict[Tuple[str, str, str, str, str], dict] = {}
+
+    for payload in run_payloads:
+        key = _payload_group_key(payload)
+        receptor_id, partner_id, source, construct_type, orientation = key
+        state = groups.setdefault(
+            key,
+            {
+                "receptor_id": receptor_id,
+                "partner_id": partner_id,
+                "source": source,
+                "construct_type": construct_type,
+                "orientation_validation_status": orientation,
+                "run_labels": [],
+                "seed_indices": set(),
+                "n_models_total": 0,
+                "n_clusters_total": 0,
+                "dg_values": [],
+                "dsasa_values": [],
+                "residue_aggs": {},
+            },
+        )
+
+        state["run_labels"].append(payload["run_label"])
+        if payload["seed_index"]:
+            state["seed_indices"].add(payload["seed_index"])
+        state["n_models_total"] += len(payload["model_rows"])
+        state["n_clusters_total"] += payload["cluster_row_count"]
+
+        for model_row in payload["model_rows"]:
+            dg = _safe_float(model_row.get("dG_separated"))
+            if dg is not None:
+                state["dg_values"].append(dg)
+            dsasa = _safe_float(model_row.get("dSASA"))
+            if dsasa is not None:
+                state["dsasa_values"].append(dsasa)
+
+        for row in payload["residue_rows"]:
+            if row.get("lobe_label") == "partner":
+                continue
+            res_key = (
+                row.get("chain", ""),
+                row.get("residue_id", ""),
+                row.get("residue_num", ""),
+                row.get("residue_name", ""),
+                row.get("lobe_label", ""),
+            )
+            agg = state["residue_aggs"].setdefault(
+                res_key,
+                {
+                    "chain": row.get("chain", ""),
+                    "residue_id": row.get("residue_id", ""),
+                    "residue_num": row.get("residue_num", ""),
+                    "residue_name": row.get("residue_name", ""),
+                    "lobe_label": row.get("lobe_label", ""),
+                    "frequency_final_ranking": 0,
+                    "frequency_cluster_summary": 0,
+                    "supporting_runs": set(),
+                    "supporting_seed_indices": set(),
+                    "energies": [],
+                },
+            )
+            agg["frequency_final_ranking"] += 1
+            agg["supporting_runs"].add(payload["run_label"])
+            if payload["seed_index"]:
+                agg["supporting_seed_indices"].add(payload["seed_index"])
+            delta_e = _safe_float(row.get("delta_e_total"))
+            if delta_e is not None:
+                agg["energies"].append(delta_e)
+
+        for residue_ref, count in payload["cluster_counter"].items():
+            residue_info = _parse_receptor_residue(residue_ref)
+            res_key = (
+                residue_info["chain"],
+                residue_info["residue_id"],
+                residue_info["residue_num"] if residue_info["residue_num"] is not None else "",
+                residue_info["residue_name"],
+                residue_info["lobe_label"],
+            )
+            agg = state["residue_aggs"].setdefault(
+                res_key,
+                {
+                    "chain": residue_info["chain"],
+                    "residue_id": residue_info["residue_id"],
+                    "residue_num": residue_info["residue_num"] if residue_info["residue_num"] is not None else "",
+                    "residue_name": residue_info["residue_name"],
+                    "lobe_label": residue_info["lobe_label"],
+                    "frequency_final_ranking": 0,
+                    "frequency_cluster_summary": 0,
+                    "supporting_runs": set(),
+                    "supporting_seed_indices": set(),
+                    "energies": [],
+                },
+            )
+            agg["frequency_cluster_summary"] += count
+            agg["supporting_runs"].add(payload["run_label"])
+            if payload["seed_index"]:
+                agg["supporting_seed_indices"].add(payload["seed_index"])
+
+    residue_rows: List[dict] = []
+    summary_rows: List[dict] = []
+
+    for state in groups.values():
+        run_count = len(state["run_labels"])
+        n_models_total = state["n_models_total"]
+        residue_aggs = state["residue_aggs"]
+
+        top_residue_pairs = sorted(
+            residue_aggs.values(),
+            key=lambda agg: (-agg["frequency_final_ranking"], agg["residue_id"]),
+        )[:10]
+
+        n_nlobe = sum(1 for agg in residue_aggs.values() if agg["lobe_label"] == "N-lobe")
+        n_clobe = sum(1 for agg in residue_aggs.values() if agg["lobe_label"] == "C-lobe")
+
+        for agg in residue_aggs.values():
+            n_support = len(agg["supporting_runs"])
+            occupancy = (
+                agg["frequency_final_ranking"] / n_models_total if n_models_total > 0 else 0.0
+            )
+            mean_delta_e = (
+                sum(agg["energies"]) / len(agg["energies"]) if agg["energies"] else None
+            )
+            best_delta_e = min(agg["energies"]) if agg["energies"] else None
+
+            residue_rows.append(
+                {
+                    "receptor_id": state["receptor_id"],
+                    "partner_id": state["partner_id"],
+                    "source": state["source"],
+                    "chain": agg["chain"],
+                    "residue_id": agg["residue_id"],
+                    "residue_num": agg["residue_num"],
+                    "residue_name": agg["residue_name"],
+                    "lobe_label": agg["lobe_label"],
+                    "construct_type": state["construct_type"],
+                    "orientation_validation_status": state["orientation_validation_status"],
+                    "n_runs_total": run_count,
+                    "n_runs_supporting": n_support,
+                    "frac_runs_supporting": round(n_support / run_count, 4) if run_count else 0.0,
+                    "supporting_seed_indices": _join_sorted(agg["supporting_seed_indices"]),
+                    "frequency_final_ranking": agg["frequency_final_ranking"],
+                    "frequency_cluster_summary": agg["frequency_cluster_summary"],
+                    "n_models_final_ranking": n_models_total,
+                    "occupancy": round(occupancy, 4),
+                    "mean_interface_delta_e": round(mean_delta_e, 3) if mean_delta_e is not None else "",
+                    "best_interface_delta_e": round(best_delta_e, 3) if best_delta_e is not None else "",
+                }
+            )
+
+        dg_values = state["dg_values"]
+        dsasa_values = state["dsasa_values"]
+        summary_rows.append(
+            {
+                "receptor_id": state["receptor_id"],
+                "partner_id": state["partner_id"],
+                "source": state["source"],
+                "construct_type": state["construct_type"],
+                "orientation_validation_status": state["orientation_validation_status"],
+                "n_runs_total": run_count,
+                "n_runs_completed": run_count,
+                "seed_indices": _join_sorted(state["seed_indices"]),
+                "n_final_models": n_models_total,
+                "n_clusters": state["n_clusters_total"],
+                "n_interface_residues": len(residue_aggs),
+                "n_nlobe_interface_residues": n_nlobe,
+                "n_clobe_interface_residues": n_clobe,
+                "top_residues": ";".join(agg["residue_id"] for agg in top_residue_pairs),
+                "best_dg": round(min(dg_values), 3) if dg_values else "",
+                "mean_dg": round(sum(dg_values) / len(dg_values), 3) if dg_values else "",
+                "best_dsasa": round(max(dsasa_values), 1) if dsasa_values else "",
+            }
+        )
+
+    return _sort_residue_rows(residue_rows), _sort_summary_rows(summary_rows)
+
+
+def extract_pyrosetta_interface_residues(
+    result_dir: Path,
+    receptor_id: str,
+    partner_id: str = "",
+    construct_type: str = "full_kinase_domain",
+    orientation_validation_status: str = "not_available",
+) -> Dict[str, object]:
+    """Extract receptor-side interface residues from a single PyRosetta run dir."""
+    payload = _build_run_payload(
+        result_dir,
+        receptor_id=receptor_id,
+        partner_id=partner_id,
+        construct_type=construct_type,
+        orientation_validation_status=orientation_validation_status,
+    )
+    if payload is None:
+        return {"residue_rows": [], "summary": {}}
+
+    residue_rows, summary_rows = _aggregate_run_payloads([payload])
+    summary = summary_rows[0] if summary_rows else {}
+    return {
+        "residue_rows": residue_rows,
+        "summary": summary,
+        "residue_long_rows": _sort_long_rows(payload["residue_rows"]),
+        "model_rows": _sort_long_rows(payload["model_rows"]),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch extraction from project config
+# ---------------------------------------------------------------------------
+
+
 def extract_pyrosetta_batch(
     config_path: str,
     output_dir: Optional[str] = None,
     pyrosetta_result_dirs: Optional[Dict[str, object]] = None,
 ) -> Tuple[Path, Path]:
-    """Extract PyRosetta PPI residues for all receptors in config.
-
-    Supports multiple PPI result directories per receptor:
-      ppi:
-        pyrosetta_result_dirs:
-          3GT8_raw:
-            - path: EGFR_dimer_beta_meander/restored
-              partner: beta_meander
-            - path: EGFR_dimer_TH1/restored
-              partner: TH1
-
-    Also supports legacy single-path format for backward compatibility.
-    """
+    """Extract PyRosetta PPI evidence for all receptors in config."""
     config = load_config(config_path)
     out_root = Path(output_dir) if output_dir else Path(config.get("output_root", "./output"))
     project_name = config.get("project_name", "")
@@ -381,8 +622,7 @@ def extract_pyrosetta_batch(
     ppi_config = config.get("ppi", {})
     pyrosetta_dirs = pyrosetta_result_dirs or ppi_config.get("pyrosetta_result_dirs", {})
 
-    all_residue_rows: List[dict] = []
-    all_summaries: List[dict] = []
+    run_payloads: List[dict] = []
 
     for receptor in config.get("receptors", []):
         receptor_id = receptor["id"]
@@ -392,42 +632,60 @@ def extract_pyrosetta_batch(
 
         for entry in entries:
             result_dir = Path(entry["path"])
-            partner = entry.get("partner", "")
-            construct_type = entry.get("construct_type", "full_kinase_domain")
-            orientation_validation_status = entry.get(
-                "orientation_validation_status",
-                "not_available",
-            )
+            partner = str(entry.get("partner", "")).strip()
+            construct_type = str(entry.get("construct_type", "full_kinase_domain")).strip() or "full_kinase_domain"
+            orientation_validation_status = str(
+                entry.get("orientation_validation_status", "not_available")
+            ).strip() or "not_available"
+
             if not result_dir.exists():
-                print(f"[WARN] PyRosetta result dir not found for {receptor_id}"
-                      f"{f' ({partner})' if partner else ''}: {result_dir}")
+                print(
+                    f"[WARN] PyRosetta result dir not found for {receptor_id}"
+                    f"{f' ({partner})' if partner else ''}: {result_dir}"
+                )
                 continue
 
-            data = extract_pyrosetta_interface_residues(
+            payload = _build_run_payload(
                 result_dir,
-                receptor_id,
+                receptor_id=receptor_id,
                 partner_id=partner,
                 construct_type=construct_type,
                 orientation_validation_status=orientation_validation_status,
             )
+            if payload is None:
+                print(
+                    f"[WARN] PyRosetta result dir has no extractable final_ranking.csv for "
+                    f"{receptor_id}{f' ({partner})' if partner else ''}: {result_dir}"
+                )
+                continue
+            run_payloads.append(payload)
 
-            # Tag source with partner name for multi-PPI distinction
-            source_tag = f"pyrosetta_ppi:{partner}" if partner else "pyrosetta_ppi"
-            for row in data["residue_rows"]:
-                row["source"] = source_tag
-            data["summary"]["source"] = source_tag
-
-            all_residue_rows.extend(data["residue_rows"])
-            all_summaries.append(data["summary"])
+    residue_rows, summary_rows = _aggregate_run_payloads(run_payloads)
+    residue_long_rows = _sort_long_rows(
+        [row for payload in run_payloads for row in payload["residue_rows"]]
+    )
+    model_rows = _sort_long_rows(
+        [row for payload in run_payloads for row in payload["model_rows"]]
+    )
 
     residue_csv = write_csv_rows(
         out_root / "ppi_pyrosetta_residues.csv",
-        all_residue_rows,
+        residue_rows,
         PPI_RESIDUE_FIELDS,
     )
     summary_csv = write_csv_rows(
         out_root / "ppi_pyrosetta_summary.csv",
-        all_summaries,
+        summary_rows,
         PPI_SUMMARY_FIELDS,
+    )
+    write_csv_rows(
+        out_root / "ppi_pyrosetta_residue_long.csv",
+        residue_long_rows,
+        PPI_RESIDUE_LONG_FIELDS,
+    )
+    write_csv_rows(
+        out_root / "ppi_pyrosetta_model_table.csv",
+        model_rows,
+        PPI_MODEL_FIELDS,
     )
     return residue_csv, summary_csv

@@ -1,9 +1,51 @@
 #!/usr/bin/env python3
 import csv
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.vina.dock import derive_docking_seed
+
+
+POSE_TABLE_FIELDS = [
+    "receptor_id",
+    "ligand_id",
+    "pose_rank",
+    "affinity",
+    "rmsd_lb",
+    "rmsd_ub",
+    "centroid_x",
+    "centroid_y",
+    "centroid_z",
+    "raw_pose_file",
+    "docking_mode",
+    "exhaustiveness",
+    "requested_n_poses",
+    "energy_range",
+    "cpu_per_job",
+    "vina_seed",
+    "pose_source_status",
+    "pocket_id",
+    "contact_residues",
+    "n_contact_residues",
+    "contact_distances",
+]
+
+POSE_COVERAGE_FIELDS = [
+    "receptor_id",
+    "ligand_id",
+    "raw_pose_file",
+    "status",
+    "parsed_n_poses",
+    "requested_n_poses",
+    "coverage_fraction",
+    "docking_mode",
+    "exhaustiveness",
+    "energy_range",
+    "cpu_per_job",
+    "base_seed",
+    "vina_seed",
+]
 
 
 def parse_pose_blocks(pdbqt_path: Path) -> List[dict]:
@@ -77,9 +119,35 @@ def parse_pose_blocks(pdbqt_path: Path) -> List[dict]:
     return poses
 
 
-def iter_pose_rows(config: dict) -> Iterable[dict]:
+def _safe_int(value: object) -> Optional[int]:
+    if value in ("", None):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pose_job_metadata(config: dict) -> Dict[str, object]:
+    vina_cfg = config.get("vina", {}) if isinstance(config.get("vina"), dict) else {}
+    return {
+        "mode": config.get("mode", vina_cfg.get("mode", "blind")),
+        "exhaustiveness": vina_cfg.get("exhaustiveness", ""),
+        "requested_n_poses": vina_cfg.get("n_poses", ""),
+        "energy_range": vina_cfg.get("energy_range", ""),
+        "cpu_per_job": vina_cfg.get("cpu", ""),
+        "base_seed": vina_cfg.get("seed", ""),
+    }
+
+
+def collect_pose_rows(config: dict) -> Tuple[List[dict], List[dict]]:
     project_root = project_root_from_config(config)
-    mode = config.get("mode", config.get("vina", {}).get("mode", "blind"))
+    metadata = _pose_job_metadata(config)
+    mode = str(metadata["mode"])
+    requested_n_poses = _safe_int(metadata["requested_n_poses"])
+    base_seed = _safe_int(metadata["base_seed"])
+    rows: List[dict] = []
+    coverage_rows: List[dict] = []
 
     for receptor in config.get("receptors", []):
         receptor_id = receptor["id"]
@@ -88,10 +156,43 @@ def iter_pose_rows(config: dict) -> Iterable[dict]:
             ligand_id = ligand["id"]
             ligand_name = Path(ligand["pdbqt"]).stem.replace("_ligand", "")
             raw_pose_file = receptor_dir / f"{ligand_name}_{mode}.pdbqt"
-            if not raw_pose_file.exists():
-                continue
-            for pose in parse_pose_blocks(raw_pose_file):
-                yield {
+            poses: List[dict] = []
+            status = "missing"
+            if raw_pose_file.exists():
+                poses = parse_pose_blocks(raw_pose_file)
+                status = "parsed" if poses else "empty"
+
+            vina_seed = (
+                derive_docking_seed(base_seed, receptor_id, ligand_id)
+                if base_seed is not None
+                else ""
+            )
+            parsed_n_poses = len(poses)
+            coverage_fraction = ""
+            if requested_n_poses and requested_n_poses > 0:
+                coverage_fraction = round(parsed_n_poses / requested_n_poses, 4)
+
+            coverage_rows.append(
+                {
+                    "receptor_id": receptor_id,
+                    "ligand_id": ligand_id,
+                    "raw_pose_file": str(raw_pose_file),
+                    "status": status,
+                    "parsed_n_poses": parsed_n_poses,
+                    "requested_n_poses": metadata["requested_n_poses"],
+                    "coverage_fraction": coverage_fraction,
+                    "docking_mode": mode,
+                    "exhaustiveness": metadata["exhaustiveness"],
+                    "energy_range": metadata["energy_range"],
+                    "cpu_per_job": metadata["cpu_per_job"],
+                    "base_seed": metadata["base_seed"],
+                    "vina_seed": vina_seed,
+                }
+            )
+
+            for pose in poses:
+                rows.append(
+                    {
                     "receptor_id": receptor_id,
                     "ligand_id": ligand_id,
                     "pose_rank": pose["pose_rank"],
@@ -102,41 +203,57 @@ def iter_pose_rows(config: dict) -> Iterable[dict]:
                     "centroid_y": round(pose["centroid_y"], 4),
                     "centroid_z": round(pose["centroid_z"], 4),
                     "raw_pose_file": str(raw_pose_file),
+                    "docking_mode": mode,
+                    "exhaustiveness": metadata["exhaustiveness"],
+                    "requested_n_poses": metadata["requested_n_poses"],
+                    "energy_range": metadata["energy_range"],
+                    "cpu_per_job": metadata["cpu_per_job"],
+                    "vina_seed": vina_seed,
+                    "pose_source_status": status,
                     "pocket_id": "",
                     "contact_residues": "",
                     "n_contact_residues": 0,
                     "contact_distances": "",
-                }
+                    }
+                )
+
+    return rows, coverage_rows
+
+
+def iter_pose_rows(config: dict) -> Iterable[dict]:
+    rows, _coverage_rows = collect_pose_rows(config)
+    yield from rows
 
 
 def write_pose_table(rows: List[dict], output_csv: Path) -> Path:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = [
-        "receptor_id",
-        "ligand_id",
-        "pose_rank",
-        "affinity",
-        "rmsd_lb",
-        "rmsd_ub",
-        "centroid_x",
-        "centroid_y",
-        "centroid_z",
-        "raw_pose_file",
-        "pocket_id",
-        "contact_residues",
-        "n_contact_residues",
-        "contact_distances",
-    ]
     with open(output_csv, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer = csv.DictWriter(handle, fieldnames=POSE_TABLE_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
     return output_csv
 
 
-def build_pose_table_from_config(config_path: str, output_csv: Optional[str] = None) -> Path:
+def write_pose_coverage_table(rows: List[dict], output_csv: Path) -> Path:
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_csv, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=POSE_COVERAGE_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    return output_csv
+
+
+def build_pose_table_from_config(
+    config_path: str,
+    output_csv: Optional[str] = None,
+    coverage_csv: Optional[str] = None,
+) -> Path:
     config = load_config(config_path)
     project_root = project_root_from_config(config)
     target = Path(output_csv) if output_csv else project_root / "vina_pose_table.csv"
-    rows = list(iter_pose_rows(config))
+    coverage_target = (
+        Path(coverage_csv) if coverage_csv else project_root / "vina_postprocess_coverage.csv"
+    )
+    rows, coverage_rows = collect_pose_rows(config)
+    write_pose_coverage_table(coverage_rows, coverage_target)
     return write_pose_table(rows, target)

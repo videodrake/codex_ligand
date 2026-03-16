@@ -151,6 +151,10 @@ def _phase4_writer(project_root: Path, call_log: list[str], *, token: str):
             project_root / "vina_pocket_bootstrap.csv",
             f"receptor_id,pocket_id,pocket_exists_frac\n3GT8_raw,3GT8_raw_PKT01_{token},0.9\n",
         )
+        _write_text(
+            project_root / "vina_postprocess_coverage.csv",
+            "receptor_id,ligand_id,status\n3GT8_raw,173940,parsed\n",
+        )
 
     return _phase4
 
@@ -298,6 +302,7 @@ def _build_checks(project_root: Path, th1_dir: Path, beta_dir: Path) -> dict[int
                 project_root / "vina_drug_pocket_map.csv",
                 project_root / "vina_pocket_comparison.csv",
                 project_root / "vina_pocket_bootstrap.csv",
+                project_root / "vina_postprocess_coverage.csv",
             ),
         ),
         5: (
@@ -512,6 +517,7 @@ def test_root_output_compatibility_e2e_keeps_canonical_files_in_place(
         project_root / "vina_drug_pocket_map.csv",
         project_root / "vina_pocket_comparison.csv",
         project_root / "vina_pocket_bootstrap.csv",
+        project_root / "vina_postprocess_coverage.csv",
         project_root / "ppi_pyrosetta_residues.csv",
         project_root / "ppi_pyrosetta_summary.csv",
         project_root / "valid_sites.csv",

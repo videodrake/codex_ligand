@@ -95,6 +95,7 @@ CORE_OUTPUTS = [
 
 OPTIONAL_OUTPUTS = [
     "vina_pocket_comparison.csv",
+    "vina_postprocess_coverage.csv",
     "ppi_pyrosetta_residues.csv",
     "ppi_pyrosetta_summary.csv",
     "ppi_afm_residues.csv",
@@ -145,6 +146,7 @@ def check_id_consistency(project_root: Path, config: dict, result: ValidationRes
         "vina_pose_table.csv": ("receptor_id", "ligand_id"),
         "vina_pocket_table.csv": ("receptor_id", None),
         "vina_drug_pocket_map.csv": ("receptor_id", "ligand_id"),
+        "vina_postprocess_coverage.csv": ("receptor_id", "ligand_id"),
     }
 
     for filename, (rec_col, lig_col) in files_to_check.items():
@@ -180,14 +182,16 @@ EXPECTED_SCHEMAS = {
     "vina_pose_table.csv": [
         "receptor_id", "ligand_id", "pose_rank", "affinity",
         "rmsd_lb", "rmsd_ub", "centroid_x", "centroid_y", "centroid_z",
-        "raw_pose_file", "pocket_id", "contact_residues", "n_contact_residues",
-        "contact_distances",
+        "raw_pose_file", "docking_mode", "exhaustiveness", "requested_n_poses",
+        "energy_range", "cpu_per_job", "vina_seed", "pose_source_status",
+        "pocket_id", "contact_residues", "n_contact_residues", "contact_distances",
     ],
     "vina_pocket_table.csv": [
         "receptor_id", "pocket_id", "centroid_x", "centroid_y", "centroid_z",
         "n_pose", "n_ligand", "best_affinity", "mean_affinity",
         "union_contact_residues", "top_residues",
         "centroid_spread_A", "affinity_std", "affinity_iqr",
+        "dominant_ligand_fraction", "ligand_pose_entropy",
     ],
     "vina_drug_pocket_map.csv": [
         "receptor_id", "ligand_id", "dominant_pocket_id",
@@ -207,10 +211,34 @@ EXPECTED_SCHEMAS = {
         "centroid_dist_bootstrap_ci",
     ],
     "ppi_pyrosetta_residues.csv": [
-        "receptor_id", "source", "residue_id", "residue_num",
+        "receptor_id", "partner_id", "source", "chain", "residue_id", "residue_num",
+        "residue_name", "lobe_label", "construct_type", "orientation_validation_status",
+        "n_runs_total", "n_runs_supporting", "frac_runs_supporting", "supporting_seed_indices",
         "frequency_final_ranking", "frequency_cluster_summary",
         "n_models_final_ranking", "occupancy",
         "mean_interface_delta_e", "best_interface_delta_e",
+    ],
+    "ppi_pyrosetta_summary.csv": [
+        "receptor_id", "partner_id", "source", "construct_type", "orientation_validation_status",
+        "n_runs_total", "n_runs_completed", "seed_indices",
+        "n_final_models", "n_clusters", "n_interface_residues",
+        "n_nlobe_interface_residues", "n_clobe_interface_residues",
+        "top_residues", "best_dg", "mean_dg", "best_dsasa",
+    ],
+    "ppi_pyrosetta_residue_long.csv": [
+        "model_id", "receptor_id", "partner_id", "source", "construct_type",
+        "orientation_validation_status", "seed_index", "run_label", "run_dir",
+        "rank", "cluster_id", "chain", "residue_id", "residue_num",
+        "residue_name", "lobe_label", "delta_e_total", "delta_e_fa_atr",
+        "delta_e_fa_rep", "delta_e_fa_sol", "delta_e_fa_elec", "source_file",
+    ],
+    "ppi_pyrosetta_model_table.csv": [
+        "model_id", "receptor_id", "partner_id", "source", "construct_type",
+        "orientation_validation_status", "seed_index", "run_label", "run_dir",
+        "rank", "cluster_id", "dG_separated", "dSASA", "sc_value", "packstat",
+        "nres_int", "n_receptor_interface_residues", "n_partner_interface_residues",
+        "n_nlobe_interface_residues", "n_clobe_interface_residues",
+        "receptor_interface_residues", "partner_interface_residues", "source_file",
     ],
     "ppi_afm_residues.csv": [
         "receptor_id", "source", "residue_id", "residue_num",
@@ -218,27 +246,37 @@ EXPECTED_SCHEMAS = {
     ],
     "combined_residue_evidence.csv": [
         "receptor_id", "residue_id", "vina_pockets", "n_vina_pockets",
-        "ppi_occupancy", "ppi_frequency", "ppi_delta_e", "evidence_sources",
+        "vina_best_affinity", "vina_best_pocket_stability",
+        "vina_best_confidence_score", "vina_cross_receptor_support",
+        "vina_evidence_profile",
+        "ppi_occupancy", "ppi_frequency", "ppi_delta_e",
+        "ppi_frac_runs_supporting", "ppi_partners", "evidence_sources",
     ],
     "cross_method_agreement.csv": [
         "receptor_id", "pocket_id", "n_vina_residues", "n_ppi_residues",
         "n_shared_residues", "jaccard", "overlap_coeff", "shared_residue_list",
         "ppi_mean_occupancy_of_shared", "spatial_dist_A", "spatial_proximity",
         "closest_ppi_partner", "n_ppi_partners_near",
+        "ppi_frac_runs_supporting", "ppi_best_frac_runs_supporting",
+        "ppi_best_interface_delta_e", "ppi_shared_partner_count",
         "vina_best_affinity_kcal", "ppi_best_dg_REU", "agreement_level",
     ],
     "valid_sites.csv": [
         "receptor_id", "pocket_id", "verdict", "confidence_score",
         "vina_quality_score", "ppi_proximity_score", "cross_receptor_score",
-        "vina_affinity_pts", "vina_convergence_pts", "vina_consensus_pts",
-        "ppi_spatial_pts", "ppi_overlap_pts", "cross_receptor_pts",
+        "vina_affinity_pts", "vina_convergence_pts", "vina_stability_pts",
+        "vina_diversity_pts", "vina_consensus_pts",
+        "ppi_spatial_pts", "ppi_overlap_pts", "ppi_reproducibility_pts",
+        "cross_receptor_pts", "cross_receptor_support_pts",
         "score_denominator",
         "ppi_data_available", "best_affinity", "n_pose", "n_ligand",
+        "dominant_ligand_fraction", "ligand_pose_entropy",
         "spatial_dist_to_ppi", "closest_ppi_partner", "n_ppi_partners_near",
-        "n_shared_with_ppi",
+        "n_shared_with_ppi", "ppi_frac_runs_supporting", "ppi_best_interface_delta_e",
+        "cross_receptor_support",
         "cross_receptor_matches", "consensus_site_id",
         "exp_sensitivity", "exp_specificity", "exp_enrichment", "exp_rank_impact",
-        "pocket_stability",
+        "pocket_stability", "evidence_profile", "reason_tags", "decision_trace",
         "reasons",
     ],
     "vina_consensus_sites.csv": [
@@ -249,7 +287,14 @@ EXPECTED_SCHEMAS = {
     "vina_pocket_bootstrap.csv": [
         "receptor_id", "pocket_id", "pocket_exists_frac", "centroid_std_A",
         "affinity_mean", "affinity_std", "affinity_iqr",
-        "n_pose_mean", "n_pose_std", "n_replicates",
+        "n_pose_mean", "n_pose_std", "n_replicates", "sample_fraction",
+        "stability_scope",
+    ],
+    "vina_postprocess_coverage.csv": [
+        "receptor_id", "ligand_id", "raw_pose_file", "status",
+        "parsed_n_poses", "requested_n_poses", "coverage_fraction",
+        "docking_mode", "exhaustiveness", "energy_range",
+        "cpu_per_job", "base_seed", "vina_seed",
     ],
 }
 
@@ -651,6 +696,32 @@ def check_traceability(project_root: Path, result: ValidationResult):
         result.warn(f"{missing_raw}/{checked} raw pose files are inaccessible")
 
 
+def check_vina_postprocess_coverage(project_root: Path, config: dict, result: ValidationResult):
+    """8.1: Verify Step 4 coverage/provenance spans all expected docking pairs."""
+    coverage_rows, _ = load_csv_safe(project_root / "vina_postprocess_coverage.csv")
+    if not coverage_rows:
+        result.warn("vina_postprocess_coverage.csv not found or empty")
+        return
+
+    expected_pairs = len(config.get("receptors", [])) * len(config.get("ligands", []))
+    if len(coverage_rows) == expected_pairs:
+        result.ok(f"vina_postprocess_coverage.csv covers all {expected_pairs} expected receptor/ligand pairs")
+    else:
+        result.warn(
+            f"vina_postprocess_coverage.csv covers {len(coverage_rows)}/{expected_pairs} expected receptor/ligand pairs"
+        )
+
+    problematic = [
+        row for row in coverage_rows
+        if str(row.get("status", "")).strip().lower() != "parsed"
+    ]
+    if not problematic:
+        result.ok("Vina postprocess coverage shows all expected raw pose files were parsed")
+    else:
+        labels = [f"{row.get('receptor_id', '?')}/{row.get('ligand_id', '?')}={row.get('status', 'unknown')}" for row in problematic]
+        result.warn(f"Vina postprocess coverage has non-parsed inputs: {labels}")
+
+
 # ---------------------------------------------------------------------------
 # Main validation runner
 # ---------------------------------------------------------------------------
@@ -676,6 +747,7 @@ def run_validation(
     check_output_existence(project_root, result)
     check_id_consistency(project_root, config, result)
     check_traceability(project_root, result)
+    check_vina_postprocess_coverage(project_root, config, result)
 
     # 8.2
     print("[8.2] CSV schema regression checks...")

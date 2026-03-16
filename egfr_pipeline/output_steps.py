@@ -10,10 +10,13 @@ from __future__ import annotations
 import configparser
 import csv
 import json
+import re
 import shutil
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
@@ -78,12 +81,16 @@ STEP_SPECS: Dict[int, StepSpec] = {
         folder_name="step3_ppi_postprocess",
         purpose="Receptor-side PPI residue evidence extracted from docking.",
         summary_description=(
-            "This step converts raw PPI docking into receptor residue evidence "
-            "that can be compared with Vina pockets."
+            "This step converts raw PPI docking into receptor residue evidence, "
+            "partner-aware summaries, and provenance-preserving long-form tables."
         ),
         primary_files=("ppi_pyrosetta_residues.csv", "ppi_pyrosetta_summary.csv"),
         required_artifacts=("ppi_pyrosetta_residues.csv", "ppi_pyrosetta_summary.csv"),
-        optional_artifacts=("phase1_interface_report.md",),
+        optional_artifacts=(
+            "ppi_pyrosetta_residue_long.csv",
+            "ppi_pyrosetta_model_table.csv",
+            "phase1_interface_report.md",
+        ),
         upstream_steps=(2,),
         next_step_reads=(
             "step5_verdict/cross_method_agreement.csv",
@@ -98,15 +105,26 @@ STEP_SPECS: Dict[int, StepSpec] = {
         purpose="Pocket-level interpretation of Vina docking outputs.",
         summary_description=(
             "This step turns raw Vina poses into pocket tables, ligand-pocket "
-            "mappings, and cross-receptor comparisons."
+            "mappings, coverage/provenance summaries, and cross-receptor comparisons."
         ),
-        primary_files=("vina_pocket_table.csv", "vina_pose_table.csv"),
+        primary_files=(
+            "vina_pocket_table.csv",
+            "vina_postprocess_coverage.csv",
+            "vina_pose_table.csv",
+        ),
         required_artifacts=(
             "vina_pose_table.csv",
             "vina_pocket_table.csv",
             "vina_drug_pocket_map.csv",
             "vina_pocket_comparison.csv",
             "vina_pocket_bootstrap.csv",
+            "vina_postprocess_coverage.csv",
+        ),
+        optional_artifacts=(
+            "vina_contact_distances.csv",
+            "vina_pocket_residue_occupancy.csv",
+            "vina_clustering_merge_log.csv",
+            "vina_clustering_parameters.json",
         ),
         upstream_steps=(1,),
         next_step_reads=(
@@ -119,10 +137,10 @@ STEP_SPECS: Dict[int, StepSpec] = {
         phase_number=5,
         step_name="verdict",
         folder_name="step5_verdict",
-        purpose="Evidence strength classification for candidate sites.",
+        purpose="Reproducibility-aware evidence classification for candidate sites.",
         summary_description=(
-            "This step combines Vina pocket evidence with PPI support to "
-            "prioritize sites for interpretation."
+            "This step combines blind-docking, PPI, and cross-state recurrence "
+            "signals to prioritize sites for interpretation."
         ),
         primary_files=("valid_sites.csv", "cross_method_agreement.csv"),
         required_artifacts=("valid_sites.csv", "cross_method_agreement.csv"),
@@ -137,7 +155,8 @@ STEP_SPECS: Dict[int, StepSpec] = {
         folder_name="step6_report",
         purpose="Narrative project summary and combined residue evidence.",
         summary_description=(
-            "This step is the report-first view for reading a completed run."
+            "This step is the report-first view for reading a completed run with "
+            "exploratory versus recurrent evidence separated."
         ),
         primary_files=("project_report.txt", "combined_residue_evidence.csv"),
         required_artifacts=("project_report.txt", "combined_residue_evidence.csv"),
@@ -155,6 +174,7 @@ STEP_SPECS: Dict[int, StepSpec] = {
         ),
         primary_files=("validation_status.json", "validation_summary.txt"),
         required_artifacts=("validation_status.json", "validation_summary.txt"),
+        optional_artifacts=("validation_recovery_plan.json", "validation_recovery_playbook.md"),
         upstream_steps=(1, 2, 3, 4, 5, 6),
         next_step_reads=(),
     ),
@@ -163,6 +183,148 @@ STEP_SPECS: Dict[int, StepSpec] = {
 
 STEP_NAME_TO_FOLDER = {
     spec.step_name: spec.folder_name for spec in STEP_SPECS.values()
+}
+
+
+def _validation_artifact_phase_map() -> Dict[str, int]:
+    artifact_phase: Dict[str, int] = {}
+    for step_num, spec in STEP_SPECS.items():
+        if step_num == 7:
+            continue
+        for name in (*spec.required_artifacts, *spec.optional_artifacts, *spec.primary_files):
+            if name and name not in artifact_phase:
+                artifact_phase[name] = spec.phase_number
+    artifact_phase.setdefault("ppi_afm_residues.csv", 3)
+    return artifact_phase
+
+
+VALIDATION_ARTIFACT_PHASES = _validation_artifact_phase_map()
+
+VALIDATION_CATEGORY_METADATA = {
+    "missing_artifact": {
+        "label": "Missing artifact",
+        "priority_rank": 0,
+        "action_type": "rerun_then_validate",
+    },
+    "schema": {
+        "label": "Schema mismatch",
+        "priority_rank": 0,
+        "action_type": "rerun_then_validate",
+    },
+    "validation_error": {
+        "label": "Validation runtime error",
+        "priority_rank": 0,
+        "action_type": "manual_then_validate",
+    },
+    "id_consistency": {
+        "label": "ID consistency mismatch",
+        "priority_rank": 1,
+        "action_type": "manual_then_rerun",
+    },
+    "residue_consistency": {
+        "label": "Residue numbering or identity review",
+        "priority_rank": 1,
+        "action_type": "manual_then_validate",
+    },
+    "handoff": {
+        "label": "Repository or handoff file issue",
+        "priority_rank": 1,
+        "action_type": "manual_then_validate",
+    },
+    "empty_output": {
+        "label": "Empty output",
+        "priority_rank": 1,
+        "action_type": "manual_then_rerun",
+    },
+    "coverage": {
+        "label": "Coverage or parse gap",
+        "priority_rank": 1,
+        "action_type": "manual_then_rerun",
+    },
+    "coverage_gap": {
+        "label": "Coverage gap",
+        "priority_rank": 1,
+        "action_type": "manual_then_rerun",
+    },
+    "schema_warning": {
+        "label": "Schema warning",
+        "priority_rank": 2,
+        "action_type": "manual_then_validate",
+    },
+    "validation_check": {
+        "label": "Validation follow-up",
+        "priority_rank": 2,
+        "action_type": "manual_then_validate",
+    },
+}
+
+VALIDATION_ACTION_LABELS = {
+    "rerun_then_validate": "Rerun upstream phase, then validate",
+    "manual_then_rerun": "Manual review first, then rerun upstream phase",
+    "manual_then_validate": "Manual review first, then rerun validation",
+}
+
+VALIDATION_PRIORITY_LABELS = {
+    0: "immediate",
+    1: "high",
+    2: "medium",
+    3: "low",
+}
+
+VALIDATION_SEVERITY_RANKS = {
+    "error": 0,
+    "failure": 1,
+    "warning": 2,
+}
+
+OPERATIONAL_CATEGORY_METADATA = {
+    "step_not_generated": {
+        "label": "Step view missing",
+        "priority_rank": 0,
+        "action_type": "rerun_upstream",
+    },
+    "missing_raw_pose": {
+        "label": "Missing raw pose coverage",
+        "priority_rank": 0,
+        "action_type": "rerun_upstream",
+    },
+    "missing_ppi_ranking": {
+        "label": "Missing PyRosetta ranking summary",
+        "priority_rank": 0,
+        "action_type": "rerun_upstream",
+    },
+    "missing_ppi_evidence": {
+        "label": "Missing PPI evidence table",
+        "priority_rank": 0,
+        "action_type": "rerun_upstream",
+    },
+    "stale_step_view": {
+        "label": "Stale derived step view",
+        "priority_rank": 1,
+        "action_type": "refresh_step_view",
+    },
+    "metadata_review": {
+        "label": "PyRosetta metadata review",
+        "priority_rank": 1,
+        "action_type": "manual_then_rerun",
+    },
+    "fallback_source": {
+        "label": "Fallback canonical source in use",
+        "priority_rank": 1,
+        "action_type": "manual_review",
+    },
+    "optional_supporting_artifact": {
+        "label": "Optional supporting artifact missing",
+        "priority_rank": 2,
+        "action_type": "manual_review",
+    },
+}
+
+OPERATIONAL_ACTION_LABELS = {
+    "rerun_upstream": "Rerun upstream phase",
+    "refresh_step_view": "Refresh this derived step view",
+    "manual_then_rerun": "Manual review first, then rerun upstream phase",
+    "manual_review": "Manual review only",
 }
 
 
@@ -622,6 +784,505 @@ def _validation_message_groups(messages: Sequence[str]) -> Tuple[List[str], List
     return missing_files, schema_errors
 
 
+def _phase_title(phase_number: Optional[int]) -> str:
+    if phase_number in STEP_SPECS:
+        spec = STEP_SPECS[int(phase_number)]
+        return f"Phase {phase_number}: {spec.step_name.replace('_', ' ').title()}"
+    return "Manual review"
+
+
+def _rerun_command_for_phase(phase_number: Optional[int]) -> str:
+    if phase_number in STEP_SPECS and int(phase_number) < 7:
+        return f"python run_production.py --from {int(phase_number)}"
+    return "python run_production.py --only 7"
+
+
+def _validation_category_meta(category: str) -> dict:
+    return dict(
+        VALIDATION_CATEGORY_METADATA.get(
+            category,
+            {
+                "label": "Validation follow-up",
+                "priority_rank": 2,
+                "action_type": "manual_then_validate",
+            },
+        )
+    )
+
+
+def _validation_action_label(action_type: str) -> str:
+    return VALIDATION_ACTION_LABELS.get(action_type, "Manual review first, then rerun validation")
+
+
+def _validation_priority_label(priority_rank: int) -> str:
+    return VALIDATION_PRIORITY_LABELS.get(int(priority_rank), "low")
+
+
+def _extract_validation_artifacts(message: str) -> List[str]:
+    matches = re.findall(
+        r"[A-Za-z0-9_./-]+\.(?:csv|txt|json|md|ya?ml|ini|pdb|pdbqt|py)",
+        message,
+    )
+    artifacts: List[str] = []
+    seen = set()
+    for match in matches:
+        name = Path(match).name
+        if name not in seen:
+            seen.add(name)
+            artifacts.append(name)
+    return artifacts
+
+
+def _validation_issue_category(message: str) -> str:
+    lowered = message.lower()
+    if "schema" in lowered or "missing expected columns" in lowered or "could not read header" in lowered:
+        return "schema"
+    if "extra columns" in lowered:
+        return "schema_warning"
+    if "required doc missing" in lowered or "optional doc missing" in lowered or "module missing" in lowered:
+        return "handoff"
+    if "exists but is empty" in lowered:
+        return "empty_output"
+    if "missing" in lowered or "not found" in lowered:
+        return "missing_artifact"
+    if "unexpected receptor ids" in lowered or "unexpected ligand ids" in lowered:
+        return "id_consistency"
+    if "missing receptor ids" in lowered:
+        return "coverage_gap"
+    if "raw pose" in lowered or "raw_pose_file" in lowered or "coverage" in lowered:
+        return "coverage"
+    if (
+        "overlap" in lowered
+        or "identity mismatches" in lowered
+        or "numbering offset" in lowered
+        or "mutation" in lowered
+        or "receptor pdb" in lowered
+    ):
+        return "residue_consistency"
+    if "validation crashed" in lowered or "exception" in lowered:
+        return "validation_error"
+    return "validation_check"
+
+
+def _validation_issue_phase(message: str) -> Tuple[Optional[int], Optional[str]]:
+    for artifact_name in _extract_validation_artifacts(message):
+        phase_number = VALIDATION_ARTIFACT_PHASES.get(artifact_name)
+        if phase_number is not None:
+            return phase_number, artifact_name
+
+    lowered = message.lower()
+    if "raw pose" in lowered or "raw_pose_file" in lowered:
+        return 1, None
+    if "vina postprocess coverage" in lowered:
+        return 4, "vina_postprocess_coverage.csv"
+    if "validation crashed" in lowered or "exception" in lowered:
+        return 7, None
+    return None, None
+
+
+def _validation_resolution_hint(
+    *,
+    message: str,
+    artifact_name: Optional[str],
+    phase_number: Optional[int],
+    category: str,
+) -> str:
+    if category == "validation_error":
+        return "Fix the validation exception itself, then rerun Phase 7."
+    if phase_number in STEP_SPECS and int(phase_number) < 7:
+        phase_label = _phase_title(phase_number)
+        if artifact_name:
+            return f"Rebuild `{artifact_name}` starting from {phase_label} so downstream outputs stay in sync."
+        return f"Inspect {phase_label} outputs, correct the issue, and rerun validation."
+    if category == "handoff":
+        return "Review the referenced repository file manually, then rerun Phase 7 if you changed anything."
+    return "Inspect the referenced input or validation finding manually, then rerun Phase 7."
+
+
+def _validation_checklist_for_issue(
+    *,
+    category: str,
+    artifact_name: Optional[str],
+    phase_number: Optional[int],
+    recommended_command: str,
+) -> List[str]:
+    artifact_label = f"`{artifact_name}`" if artifact_name else "the affected output"
+    phase_label = _phase_title(phase_number)
+    if category == "missing_artifact":
+        return [
+            f"Confirm whether {artifact_label} is missing from the canonical project root, not only from the step view.",
+            f"Review {phase_label} inputs and manifest data to see why the artifact was not produced.",
+            f"Rerun with `{recommended_command}`, then rerun validation.",
+        ]
+    if category == "schema":
+        return [
+            f"Compare the columns in {artifact_label} against the schema expected by `egfr_pipeline/validate.py`.",
+            f"Inspect the writer behind {phase_label} and confirm all required fields are still emitted.",
+            f"Rerun with `{recommended_command}`, then rerun validation.",
+        ]
+    if category == "schema_warning":
+        return [
+            f"Check whether the extra columns in {artifact_label} are intentional and backward-compatible.",
+            "If the schema change is expected, decide whether the validator should be updated to accept it.",
+            "Rerun Phase 7 after that decision is made.",
+        ]
+    if category == "empty_output":
+        return [
+            f"Open {artifact_label} and confirm whether zero rows are expected for this project.",
+            f"Review filters, thresholds, or coverage inputs upstream of {phase_label}.",
+            f"If the file should not be empty, rerun with `{recommended_command}` before rerunning validation.",
+        ]
+    if category == "id_consistency":
+        return [
+            f"Compare receptor and ligand IDs in {artifact_label} against the project config.",
+            "Check for renamed receptors, stale aliases, or mixed inputs from another run.",
+            f"After correcting the IDs, rerun with `{recommended_command}` and then rerun validation.",
+        ]
+    if category in {"coverage", "coverage_gap"}:
+        return [
+            "Inspect the expected receptor/ligand pairs and the raw pose or coverage inputs that feed this check.",
+            f"Confirm whether {artifact_label} reflects all expected parsed records.",
+            f"If coverage is incomplete, rerun with `{recommended_command}` and validate again.",
+        ]
+    if category == "residue_consistency":
+        return [
+            "Inspect receptor PDB numbering, chain assignments, and mutation notes used in cross-receptor comparison.",
+            "Decide whether cross-receptor interpretation is still safe, or whether the inputs need to be corrected first.",
+            "After documenting or fixing the issue, rerun Phase 7. If you changed receptor inputs, rerun the affected upstream phases manually first.",
+        ]
+    if category == "handoff":
+        return [
+            "Restore the missing repository file or documentation artifact referenced by validation.",
+            "Confirm the file lives in the expected repository path and is readable from this workspace.",
+            "Rerun Phase 7 after the repository artifact has been restored.",
+        ]
+    if category == "validation_error":
+        return [
+            "Inspect the console traceback or run telemetry to identify where validation crashed.",
+            "Fix the validation code path or malformed input that triggered the exception.",
+            "Rerun Phase 7 after the validation exception is resolved.",
+        ]
+    return [
+        "Review the validation message in context and identify the source input or artifact.",
+        "Decide whether the issue requires a content fix, a rerun, or a validation-only follow-up.",
+        "Rerun Phase 7 after the issue is resolved or documented.",
+    ]
+
+
+def _validation_issue_entry(message: str, severity: str) -> dict:
+    phase_number, artifact_name = _validation_issue_phase(message)
+    if severity == "error" and phase_number is None:
+        phase_number = 7
+    category = "validation_error" if severity == "error" else _validation_issue_category(message)
+    meta = _validation_category_meta(category)
+    action_type = str(meta["action_type"])
+    recommended_command = _rerun_command_for_phase(phase_number)
+    requires_manual_review = action_type != "rerun_then_validate" or phase_number is None
+    return {
+        "message": message,
+        "severity": severity,
+        "category": category,
+        "category_label": str(meta["label"]),
+        "artifact_name": artifact_name or "",
+        "phase_number": phase_number,
+        "phase_label": _phase_title(phase_number),
+        "recommended_command": recommended_command,
+        "requires_manual_review": requires_manual_review,
+        "action_type": action_type,
+        "action_label": _validation_action_label(action_type),
+        "priority_rank": int(meta["priority_rank"]),
+        "priority_label": _validation_priority_label(int(meta["priority_rank"])),
+        "resolution_hint": _validation_resolution_hint(
+            message=message,
+            artifact_name=artifact_name,
+            phase_number=phase_number,
+            category=category,
+        ),
+        "checklist": _validation_checklist_for_issue(
+            category=category,
+            artifact_name=artifact_name,
+            phase_number=phase_number,
+            recommended_command=recommended_command,
+        ),
+    }
+
+
+def _sorted_validation_issues(issues: Sequence[dict]) -> List[dict]:
+    return sorted(
+        issues,
+        key=lambda issue: (
+            int(issue.get("priority_rank", 2)),
+            VALIDATION_SEVERITY_RANKS.get(str(issue.get("severity", "warning")), 9),
+            99 if issue.get("phase_number") is None else int(issue.get("phase_number")),
+            str(issue.get("message", "")),
+        ),
+    )
+
+
+def _validation_action_groups(issues: Sequence[dict]) -> List[dict]:
+    groups: Dict[Tuple[str, Optional[int], str], dict] = {}
+    for issue in _sorted_validation_issues(issues):
+        key = (
+            str(issue.get("category", "validation_check")),
+            issue.get("phase_number"),
+            str(issue.get("recommended_command", "")),
+        )
+        group = groups.get(key)
+        if group is None:
+            group = {
+                "category": issue["category"],
+                "category_label": issue.get("category_label", issue["category"]),
+                "phase_number": issue.get("phase_number"),
+                "phase_label": issue.get("phase_label", "Manual review"),
+                "recommended_command": issue.get("recommended_command", ""),
+                "action_type": issue.get("action_type", "manual_then_validate"),
+                "action_label": issue.get("action_label", "Manual review first, then rerun validation"),
+                "priority_rank": int(issue.get("priority_rank", 2)),
+                "priority_label": issue.get("priority_label", "medium"),
+                "manual_review_required": bool(issue.get("requires_manual_review")),
+                "checklist": list(issue.get("checklist") or []),
+                "issue_count": 0,
+                "artifacts": [],
+                "findings": [],
+            }
+            groups[key] = group
+        group["issue_count"] += 1
+        artifact_name = str(issue.get("artifact_name", "")).strip()
+        if artifact_name and artifact_name not in group["artifacts"]:
+            group["artifacts"].append(artifact_name)
+        group["findings"].append(
+            {
+                "message": issue["message"],
+                "severity": issue["severity"],
+                "resolution_hint": issue["resolution_hint"],
+            }
+        )
+    return sorted(
+        groups.values(),
+        key=lambda group: (
+            int(group.get("priority_rank", 2)),
+            99 if group.get("phase_number") is None else int(group.get("phase_number")),
+            str(group.get("category_label", "")),
+        ),
+    )
+
+
+def build_validation_recovery_plan(
+    project_root: Union[Path, str],
+    validation_status: dict,
+) -> dict:
+    project_root = _as_path(project_root)
+    issues: List[dict] = []
+    for message in validation_status.get("failure_messages") or []:
+        issues.append(_validation_issue_entry(str(message), "failure"))
+    for message in validation_status.get("warnings") or []:
+        issues.append(_validation_issue_entry(str(message), "warning"))
+    if validation_status.get("error_message"):
+        issues.append(_validation_issue_entry(str(validation_status["error_message"]), "error"))
+    issues = _sorted_validation_issues(issues)
+    action_groups = _validation_action_groups(issues)
+
+    upstream_phases = sorted(
+        {
+            int(issue["phase_number"])
+            for issue in issues
+            if issue.get("phase_number") in STEP_SPECS and int(issue["phase_number"]) < 7
+        }
+    )
+    primary_phase = upstream_phases[0] if upstream_phases else (7 if issues else None)
+    primary_command = _rerun_command_for_phase(primary_phase) if primary_phase is not None else ""
+    primary_reason = ""
+    if primary_phase is not None:
+        primary_issue = next(
+            (issue for issue in issues if issue.get("phase_number") == primary_phase),
+            None,
+        )
+        if primary_issue is not None:
+            primary_reason = str(primary_issue.get("resolution_hint", ""))
+
+    rerun_commands: List[dict] = []
+    seen_commands = set()
+    for phase_number in upstream_phases:
+        command = _rerun_command_for_phase(phase_number)
+        if command in seen_commands:
+            continue
+        seen_commands.add(command)
+        rerun_commands.append(
+            {
+                "phase_number": phase_number,
+                "phase_label": _phase_title(phase_number),
+                "command": command,
+                "reason": f"Refresh outputs starting from {_phase_title(phase_number)}.",
+            }
+        )
+
+    validation_only_command = "python run_production.py --only 7"
+    if issues or validation_status.get("status") == "error":
+        rerun_commands.append(
+            {
+                "phase_number": 7,
+                "phase_label": _phase_title(7),
+                "command": validation_only_command,
+                "reason": "Use this after manual fixes or after upstream reruns to confirm validation is clean.",
+            }
+        )
+
+    triage_counts = {
+        "rerun_then_validate": len(
+            [group for group in action_groups if group.get("action_type") == "rerun_then_validate"]
+        ),
+        "manual_then_rerun": len(
+            [group for group in action_groups if group.get("action_type") == "manual_then_rerun"]
+        ),
+        "manual_then_validate": len(
+            [group for group in action_groups if group.get("action_type") == "manual_then_validate"]
+        ),
+    }
+
+    return {
+        "status": str(validation_status.get("status", "unknown")),
+        "generated_at": utc_now_iso(),
+        "project_root": _display_path(project_root, project_root.parent.parent),
+        "recommended_phase_number": primary_phase,
+        "recommended_phase_label": _phase_title(primary_phase),
+        "recommended_command": primary_command,
+        "recommended_reason": primary_reason or "Review the findings below before rerunning validation.",
+        "validation_only_command": validation_only_command,
+        "manual_review_required": any(bool(issue.get("requires_manual_review")) for issue in issues),
+        "issues": issues,
+        "action_groups": action_groups,
+        "triage": triage_counts,
+        "rerun_commands": rerun_commands,
+        "summary": {
+            "issue_count": len(issues),
+            "failure_count": _safe_int(validation_status.get("failure_count"), 0),
+            "warning_count": _safe_int(validation_status.get("warning_count"), 0),
+            "upstream_issue_count": len(
+                [issue for issue in issues if issue.get("phase_number") in STEP_SPECS and int(issue["phase_number"]) < 7]
+            ),
+            "manual_review_count": len([issue for issue in issues if issue.get("requires_manual_review")]),
+            "action_group_count": len(action_groups),
+        },
+    }
+
+
+def write_validation_recovery_outputs(
+    step_dir: Union[Path, str],
+    recovery_plan: dict,
+) -> Tuple[Path, Path]:
+    """Write Step 7 recovery artifacts for validation follow-up."""
+
+    step_dir = _as_path(step_dir)
+    json_path = _atomic_write_json(step_dir / "validation_recovery_plan.json", recovery_plan)
+
+    lines = [
+        "# Validation Recovery Playbook",
+        "",
+        "## Status",
+        f"- Validation status: `{recovery_plan['status']}`",
+        f"- Finding count: `{recovery_plan['summary']['issue_count']}`",
+        f"- Failure count: `{recovery_plan['summary']['failure_count']}`",
+        f"- Warning count: `{recovery_plan['summary']['warning_count']}`",
+    ]
+    if recovery_plan.get("recommended_command"):
+        lines.append(f"- Safest repair command: `{recovery_plan['recommended_command']}`")
+        lines.append(f"- Earliest affected phase: `{recovery_plan['recommended_phase_label']}`")
+    lines.append(f"- Validation-only rerun: `{recovery_plan['validation_only_command']}`")
+    lines.append(
+        f"- Manual review required: `{'yes' if recovery_plan.get('manual_review_required') else 'no'}`"
+    )
+    lines.append(f"- Action groups: `{recovery_plan['summary'].get('action_group_count', 0)}`")
+
+    lines.extend(
+        [
+            "",
+            "## Triage Summary",
+            (
+                f"- `{recovery_plan['triage'].get('rerun_then_validate', 0)}` group(s) can be repaired by rerunning an upstream phase."
+            ),
+            (
+                f"- `{recovery_plan['triage'].get('manual_then_rerun', 0)}` group(s) need manual review before an upstream rerun."
+            ),
+            (
+                f"- `{recovery_plan['triage'].get('manual_then_validate', 0)}` group(s) need manual review before a validation-only rerun."
+            ),
+            "",
+            "## Why This Command",
+            f"- {recovery_plan.get('recommended_reason') or 'No repair command is required.'}",
+            "",
+            "## Action Groups",
+        ]
+    )
+    if recovery_plan["action_groups"]:
+        for index, group in enumerate(recovery_plan["action_groups"], start=1):
+            lines.extend(
+                [
+                    f"### Action Group {index}: {group['category_label']}",
+                    f"- Priority: `{group['priority_label']}`",
+                    f"- Action path: `{group['action_label']}`",
+                    f"- Likely source phase: `{group['phase_label']}`",
+                    f"- Suggested command: `{group['recommended_command']}`",
+                    f"- Finding count: `{group['issue_count']}`",
+                    "",
+                ]
+            )
+            if group["artifacts"]:
+                lines.append("- Related artifacts: " + ", ".join(f"`{name}`" for name in group["artifacts"]))
+            lines.append("- Checklist:")
+            lines.extend(f"  - {item}" for item in group["checklist"])
+            lines.append("- Findings:")
+            lines.extend(
+                f"  - [{finding['severity'].upper()}] {finding['message']}"
+                for finding in group["findings"]
+            )
+            lines.append("")
+    else:
+        lines.extend(
+            [
+                "- No grouped recovery actions were recorded.",
+                "",
+            ]
+        )
+
+    lines.append("## Individual Findings")
+    if recovery_plan["issues"]:
+        for index, issue in enumerate(recovery_plan["issues"], start=1):
+            lines.extend(
+                [
+                    f"### Finding {index}",
+                    f"- Message: {issue['message']}",
+                    f"- Severity: `{issue['severity']}`",
+                    f"- Category: `{issue['category_label']}`",
+                    f"- Priority: `{issue['priority_label']}`",
+                    f"- Action path: `{issue['action_label']}`",
+                    f"- Likely source phase: `{issue['phase_label']}`",
+                    f"- Suggested command: `{issue['recommended_command']}`",
+                    f"- Guidance: {issue['resolution_hint']}",
+                    "",
+                ]
+            )
+    else:
+        lines.extend(
+            [
+                "- No actionable validation findings were recorded.",
+                "",
+            ]
+        )
+
+    lines.append("## Rerun Options")
+    if recovery_plan["rerun_commands"]:
+        for item in recovery_plan["rerun_commands"]:
+            lines.append(f"- `{item['command']}`: {item['reason']}")
+    else:
+        lines.append("- No rerun command is required based on the current validation record.")
+
+    markdown_path = _atomic_write_text(
+        step_dir / "validation_recovery_playbook.md",
+        "\n".join(lines).rstrip() + "\n",
+    )
+    return json_path, markdown_path
+
+
 def _validation_payload(
     project_root: Path,
     validation_result: Optional[object] = None,
@@ -646,6 +1307,7 @@ def _validation_payload(
         "missing_files": missing_files,
         "schema_errors": schema_errors,
         "warnings": warnings,
+        "failure_messages": failures,
         "validated_steps": [1, 2, 3, 4, 5, 6, 7],
         "pass_count": len(passes),
         "warning_count": len(warnings),
@@ -788,6 +1450,8 @@ def _record_copy_step(
         ]
         if spec.step_number == 4:
             key_files[0]["description"] = "Pocket cluster view. Inspect this first."
+            if len(key_files) > 1 and key_files[1]["path"] == "vina_postprocess_coverage.csv":
+                key_files[1]["description"] = "Coverage/provenance matrix for expected receptor-ligand raw pose files."
         elif spec.step_number == 5:
             key_files[0]["description"] = "Final site prioritization. Inspect this first."
         elif spec.step_number == 6:
@@ -1165,6 +1829,29 @@ def record_step3_outputs(
                 }
             )
 
+        for name in ("ppi_pyrosetta_residue_long.csv", "ppi_pyrosetta_model_table.csv"):
+            source = _resolve_project_artifact_path(project_root, name)
+            copied = False
+            if source is not None:
+                copy_artifact_if_exists(source, temp_dir / name, [], name)
+                copied = True
+                if source.parent.name == "ppi":
+                    warnings.append(
+                        f"Using fallback canonical source for {name}: {_display_path(source, repo_root_path)}"
+                    )
+            else:
+                warnings.append(f"Optional artifact missing: {name}")
+
+            artifact_entries.append(
+                {
+                    "name": name,
+                    "required": False,
+                    "status": "copied" if copied else "missing",
+                    "canonical_path": _display_path(source, repo_root_path) if source else "",
+                    "step_path": name if copied else "",
+                }
+            )
+
         interface_report = _phase1_interface_report_path(repo_root_path)
         if interface_report is not None:
             copy_artifact_if_exists(
@@ -1185,7 +1872,10 @@ def record_step3_outputs(
         else:
             warnings.append("Optional Phase 1 interface report is not available.")
 
-        notes = "Step 3 reflects the residue evidence files used by the current report and verdict logic."
+        notes = (
+            "Step 3 reflects the aggregated residue evidence used by verdict/report plus "
+            "optional long-form provenance tables for run/seed tracing."
+        )
         manifest = _build_step_manifest(
             spec=spec,
             config_path=config_path,
@@ -1212,6 +1902,24 @@ def record_step3_outputs(
                 "status": "missing" if "ppi_pyrosetta_summary.csv" in missing_required else "",
             },
         ]
+        for optional_name, description in (
+            (
+                "ppi_pyrosetta_residue_long.csv",
+                "Per-model residue provenance table for seed/run reproducibility checks.",
+            ),
+            (
+                "ppi_pyrosetta_model_table.csv",
+                "Per-model score table with run/seed metadata and interface counts.",
+            ),
+        ):
+            if (temp_dir / optional_name).exists():
+                key_files.append(
+                    {
+                        "path": optional_name,
+                        "description": description,
+                        "status": "",
+                    }
+                )
         if interface_report is not None:
             key_files.append(
                 {
@@ -1289,6 +1997,7 @@ def record_step7_outputs(
         validation_result=validation_result,
         error_message=error_message,
     )
+    recovery_plan = build_validation_recovery_plan(project_root, validation_status)
 
     summary_lines = [
         f"Overall status: {validation_status['status']}",
@@ -1323,12 +2032,22 @@ def record_step7_outputs(
         summary_lines.append("- Resolve the failed validation checks before interpreting downstream results.")
     else:
         summary_lines.append("- Review step_index.md and proceed with report/verdict interpretation.")
+    if recovery_plan.get("recommended_command"):
+        summary_lines.append(
+            f"- Safest repair command: {recovery_plan['recommended_command']} ({recovery_plan['recommended_phase_label']})."
+        )
+    summary_lines.append("- Open validation_recovery_playbook.md for phase-by-phase recovery guidance.")
+    summary_lines.append(f"- Validation-only rerun: {recovery_plan['validation_only_command']}.")
 
     with _staged_step_dir(project_root, 7) as (temp_dir, _, existed):
         status_path, summary_path = write_validation_outputs(
             temp_dir,
             validation_status,
             summary_lines,
+        )
+        recovery_json_path, recovery_md_path = write_validation_recovery_outputs(
+            temp_dir,
+            recovery_plan,
         )
 
         artifact_entries = [
@@ -1345,6 +2064,20 @@ def record_step7_outputs(
                 "status": "generated",
                 "canonical_path": "",
                 "step_path": summary_path.name,
+            },
+            {
+                "name": "validation_recovery_plan.json",
+                "required": False,
+                "status": "generated",
+                "canonical_path": "",
+                "step_path": recovery_json_path.name,
+            },
+            {
+                "name": "validation_recovery_playbook.md",
+                "required": False,
+                "status": "generated",
+                "canonical_path": "",
+                "step_path": recovery_md_path.name,
             },
         ]
 
@@ -1381,6 +2114,14 @@ def record_step7_outputs(
                 {
                     "path": "validation_summary.txt",
                     "description": "Human-readable validation summary and next action.",
+                },
+                {
+                    "path": "validation_recovery_playbook.md",
+                    "description": "Phase-by-phase recovery guide with safest rerun commands.",
+                },
+                {
+                    "path": "validation_recovery_plan.json",
+                    "description": "Structured recovery plan for tooling or downstream dashboards.",
                 },
             ],
             next_step_reads=[
@@ -1445,7 +2186,16 @@ def clear_step_views(
         removed_paths.append(step_dir)
 
     if include_root_files:
-        for name in ("current_run_manifest.json", "step_index.md"):
+        for name in (
+            "current_run_manifest.json",
+            "step_index.md",
+            "run_status.json",
+            "run_overview.md",
+            "run_overview.html",
+            "report_digest.md",
+            "operational_recovery_playbook.md",
+            "operational_recovery_plan.json",
+        ):
             path = project_root / name
             if not path.exists():
                 continue
@@ -1531,8 +2281,2423 @@ def _load_current_run_manifest(project_root: Path) -> Optional[dict]:
         return None
 
 
+def _load_run_status(project_root: Path) -> Optional[dict]:
+    path = project_root / "run_status.json"
+    if not path.exists():
+        return None
+    try:
+        return _read_json(path)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def write_run_status(project_root: Union[Path, str], status_data: dict) -> Path:
+    """Write ``run_status.json`` at the project root."""
+
+    return _atomic_write_json(_as_path(project_root) / "run_status.json", status_data)
+
+
 def _step_primary_paths(spec: StepSpec) -> str:
     return ", ".join(f"`{spec.folder_name}/{name}`" for name in spec.primary_files) or "-"
+
+
+def _load_csv_rows(path: Path) -> List[dict]:
+    if not path.exists():
+        return []
+    try:
+        delimiter = "\t" if path.suffix.lower() == ".tsv" else ","
+        with open(path, newline="", encoding="utf-8") as handle:
+            return list(csv.DictReader(handle, delimiter=delimiter))
+    except OSError:
+        return []
+
+
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        if value in ("", None):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    try:
+        if value in ("", None):
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _status_label(status: str) -> str:
+    return str(status or "unknown").replace("_", " ").strip() or "unknown"
+
+
+def _load_step_manifest(project_root: Path, step_num: int) -> Optional[dict]:
+    path = project_root / STEP_SPECS[step_num].folder_name / "step_manifest.json"
+    if not path.exists():
+        return None
+    try:
+        return _read_json(path)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _operational_category_meta(category: str) -> dict:
+    return dict(
+        OPERATIONAL_CATEGORY_METADATA.get(
+            category,
+            {
+                "label": "Operational follow-up",
+                "priority_rank": 2,
+                "action_type": "manual_review",
+            },
+        )
+    )
+
+
+def _operational_action_label(action_type: str) -> str:
+    return OPERATIONAL_ACTION_LABELS.get(action_type, "Manual review only")
+
+
+def _operational_command_for_step(step_number: int, action_type: str) -> str:
+    if action_type == "refresh_step_view":
+        return f"python run_production.py --only {step_number}"
+    if action_type in {"rerun_upstream", "manual_then_rerun"}:
+        return f"python run_production.py --from {step_number}"
+    return ""
+
+
+def _operational_checklist_for_issue(
+    *,
+    category: str,
+    step_number: int,
+    artifact_name: str,
+    recommended_command: str,
+) -> List[str]:
+    phase_label = _phase_title(step_number)
+    artifact_label = f"`{artifact_name}`" if artifact_name else "the affected step artifact"
+    if category == "step_not_generated":
+        return [
+            f"Confirm whether {phase_label} was skipped entirely or whether the derived step folder was never refreshed.",
+            f"Inspect canonical outputs that feed {phase_label} before rerunning.",
+            f"Use `{recommended_command}` to rebuild this phase and its downstream views.",
+        ]
+    if category == "missing_raw_pose":
+        return [
+            f"Inspect the receptor/ligand pair behind {artifact_label} and confirm the canonical `.pdbqt` file exists.",
+            "Check whether the docking job failed upstream or whether the file path changed after the run.",
+            f"Use `{recommended_command}` to refresh raw poses and downstream interpretation.",
+        ]
+    if category == "missing_ppi_ranking":
+        return [
+            f"Open `step2_ppi_raw/raw_run_paths.tsv` and confirm which target is missing {artifact_label}.",
+            "Check whether the raw PyRosetta run finished and whether `final_result/final_ranking.csv` exists.",
+            f"Use `{recommended_command}` to rebuild Phase 2 and downstream PPI interpretation.",
+        ]
+    if category == "missing_ppi_evidence":
+        return [
+            f"Confirm whether {artifact_label} is absent from the canonical project root or only from the derived step view.",
+            "Review whether Phase 3 postprocess completed and whether Step 2 supplied the required raw ranking inputs.",
+            f"Use `{recommended_command}` to rebuild Phase 3 and downstream consumers.",
+        ]
+    if category == "stale_step_view":
+        return [
+            f"Compare the timestamp of {phase_label} against `current_run_manifest.json` to confirm the stale state.",
+            "Decide whether only the derived step view is stale or whether the upstream canonical outputs changed too.",
+            f"Use `{recommended_command}` to refresh this step view before mixing interpretations.",
+        ]
+    if category == "metadata_review":
+        return [
+            "Check whether the referenced PyRosetta metadata JSON is missing, unreadable, or malformed.",
+            f"Confirm that the raw run directory recorded for {phase_label} still exists and is readable.",
+            f"After fixing the metadata issue, use `{recommended_command}` to rebuild the affected scope.",
+        ]
+    if category == "fallback_source":
+        return [
+            f"Confirm why {artifact_label} was loaded from a fallback canonical location instead of the project root.",
+            "Decide whether the fallback is intentional for this run or whether outputs from another location are being mixed in.",
+            "Document the reason before relying on downstream verdict/report interpretation.",
+        ]
+    if category == "optional_supporting_artifact":
+        return [
+            f"Decide whether {artifact_label} is actually needed for this review or only for deeper provenance/debugging.",
+            "If it should exist, restore or regenerate it before sharing the run externally.",
+            "If it is optional for the current interpretation, document the omission and continue carefully.",
+        ]
+    return [
+        "Inspect the step manifest and the referenced artifact in context.",
+        "Decide whether the issue requires a rerun, a step refresh, or manual documentation.",
+        "Reopen the overview after the issue is addressed.",
+    ]
+
+
+def _build_operational_issue(
+    *,
+    step_number: int,
+    category: str,
+    message: str,
+    artifact_name: str = "",
+) -> dict:
+    meta = _operational_category_meta(category)
+    action_type = str(meta["action_type"])
+    recommended_command = _operational_command_for_step(step_number, action_type)
+    return {
+        "step_number": step_number,
+        "step_label": _phase_title(step_number),
+        "category": category,
+        "category_label": str(meta["label"]),
+        "message": message,
+        "artifact_name": artifact_name,
+        "priority_rank": int(meta["priority_rank"]),
+        "priority_label": _validation_priority_label(int(meta["priority_rank"])),
+        "action_type": action_type,
+        "action_label": _operational_action_label(action_type),
+        "recommended_command": recommended_command,
+        "requires_manual_review": action_type in {"manual_then_rerun", "manual_review"},
+        "checklist": _operational_checklist_for_issue(
+            category=category,
+            step_number=step_number,
+            artifact_name=artifact_name,
+            recommended_command=recommended_command,
+        ),
+    }
+
+
+def _operational_issues_for_step(
+    step_number: int,
+    step_status: str,
+    manifest: Optional[dict],
+) -> List[dict]:
+    issues: List[dict] = []
+    if step_status in {"stale"}:
+        issues.append(
+            _build_operational_issue(
+                step_number=step_number,
+                category="stale_step_view",
+                message=f"{_phase_title(step_number)} is marked stale in the current manifest.",
+            )
+        )
+    if manifest is None:
+        if step_status in {"not_generated", "incomplete"}:
+            issues.append(
+                _build_operational_issue(
+                    step_number=step_number,
+                    category="step_not_generated",
+                    message=f"{_phase_title(step_number)} has not generated its derived step outputs yet.",
+                )
+            )
+        return issues
+
+    missing_files = list(manifest.get("missing_files") or [])
+    warnings = [str(item) for item in (manifest.get("warnings") or [])]
+
+    if step_number == 1:
+        for item in missing_files:
+            issues.append(
+                _build_operational_issue(
+                    step_number=1,
+                    category="missing_raw_pose",
+                    message=f"Missing raw pose file: {item}",
+                    artifact_name=str(item),
+                )
+            )
+    elif step_number == 2:
+        for item in missing_files:
+            issues.append(
+                _build_operational_issue(
+                    step_number=2,
+                    category="missing_ppi_ranking",
+                    message=f"Missing PyRosetta final ranking: {item}",
+                    artifact_name=str(item),
+                )
+            )
+        for warning in warnings:
+            if warning.startswith("Optional metadata JSON missing for ") or warning.startswith(
+                "Unable to read metadata JSON for "
+            ):
+                issues.append(
+                    _build_operational_issue(
+                        step_number=2,
+                        category="metadata_review",
+                        message=warning,
+                    )
+                )
+    elif step_number == 3:
+        for item in missing_files:
+            issues.append(
+                _build_operational_issue(
+                    step_number=3,
+                    category="missing_ppi_evidence",
+                    message=f"Missing PPI evidence artifact: {item}",
+                    artifact_name=str(item),
+                )
+            )
+        for warning in warnings:
+            if warning.startswith("Using fallback canonical source for "):
+                artifact_name = warning.split("Using fallback canonical source for ", 1)[1].split(":", 1)[0].strip()
+                issues.append(
+                    _build_operational_issue(
+                        step_number=3,
+                        category="fallback_source",
+                        message=warning,
+                        artifact_name=artifact_name,
+                    )
+                )
+            elif warning.startswith("Optional artifact missing: ") or warning == "Optional Phase 1 interface report is not available.":
+                artifact_name = warning.split(": ", 1)[1].strip() if ": " in warning else "phase1_interface_report.md"
+                issues.append(
+                    _build_operational_issue(
+                        step_number=3,
+                        category="optional_supporting_artifact",
+                        message=warning,
+                        artifact_name=artifact_name,
+                    )
+                )
+    return issues
+
+
+def _sorted_operational_issues(issues: Sequence[dict]) -> List[dict]:
+    return sorted(
+        issues,
+        key=lambda issue: (
+            int(issue.get("priority_rank", 2)),
+            int(issue.get("step_number", 99)),
+            str(issue.get("category_label", "")),
+            str(issue.get("message", "")),
+        ),
+    )
+
+
+def _operational_action_groups(issues: Sequence[dict]) -> List[dict]:
+    groups: Dict[Tuple[int, str, str], dict] = {}
+    for issue in _sorted_operational_issues(issues):
+        key = (
+            int(issue.get("step_number", 99)),
+            str(issue.get("category", "")),
+            str(issue.get("recommended_command", "")),
+        )
+        group = groups.get(key)
+        if group is None:
+            group = {
+                "step_number": issue["step_number"],
+                "step_label": issue["step_label"],
+                "category": issue["category"],
+                "category_label": issue["category_label"],
+                "priority_rank": issue["priority_rank"],
+                "priority_label": issue["priority_label"],
+                "action_type": issue["action_type"],
+                "action_label": issue["action_label"],
+                "recommended_command": issue["recommended_command"],
+                "manual_review_required": issue["requires_manual_review"],
+                "checklist": list(issue.get("checklist") or []),
+                "issue_count": 0,
+                "artifacts": [],
+                "findings": [],
+            }
+            groups[key] = group
+        group["issue_count"] += 1
+        artifact_name = str(issue.get("artifact_name", "")).strip()
+        if artifact_name and artifact_name not in group["artifacts"]:
+            group["artifacts"].append(artifact_name)
+        group["findings"].append({"message": issue["message"]})
+    return sorted(
+        groups.values(),
+        key=lambda group: (
+            int(group.get("priority_rank", 2)),
+            int(group.get("step_number", 99)),
+            str(group.get("category_label", "")),
+        ),
+    )
+
+
+def build_operational_recovery_plan(
+    project_root: Union[Path, str],
+    *,
+    current_manifest: Optional[dict] = None,
+) -> dict:
+    project_root = _as_path(project_root)
+    current_manifest = current_manifest or _load_current_run_manifest(project_root) or {}
+    step_status = current_manifest.get("step_status") or _step_status_map(project_root)
+    issues: List[dict] = []
+    for step_number in (1, 2, 3):
+        issues.extend(
+            _operational_issues_for_step(
+                step_number,
+                str(step_status.get(f"step{step_number}", "not_generated")),
+                _load_step_manifest(project_root, step_number),
+            )
+        )
+    issues = _sorted_operational_issues(issues)
+    action_groups = _operational_action_groups(issues)
+
+    rerun_groups = [group for group in action_groups if group.get("recommended_command")]
+    primary_group = rerun_groups[0] if rerun_groups else None
+    summary = {
+        "issue_count": len(issues),
+        "action_group_count": len(action_groups),
+        "manual_review_count": len([issue for issue in issues if issue.get("requires_manual_review")]),
+        "blocking_count": len([issue for issue in issues if int(issue.get("priority_rank", 2)) == 0]),
+        "stale_count": len([issue for issue in issues if issue.get("category") == "stale_step_view"]),
+    }
+    triage = {
+        "rerun_upstream": len([group for group in action_groups if group.get("action_type") == "rerun_upstream"]),
+        "refresh_step_view": len([group for group in action_groups if group.get("action_type") == "refresh_step_view"]),
+        "manual_then_rerun": len([group for group in action_groups if group.get("action_type") == "manual_then_rerun"]),
+        "manual_review": len([group for group in action_groups if group.get("action_type") == "manual_review"]),
+    }
+
+    return {
+        "generated_at": utc_now_iso(),
+        "project_root": _display_path(project_root, project_root.parent.parent),
+        "issues": issues,
+        "action_groups": action_groups,
+        "recommended_step_number": primary_group.get("step_number") if primary_group else None,
+        "recommended_step_label": primary_group.get("step_label", "No rerun required") if primary_group else "No rerun required",
+        "recommended_command": primary_group.get("recommended_command", "") if primary_group else "",
+        "recommended_reason": (
+            f"Address {primary_group['category_label']} in {primary_group['step_label']} first."
+            if primary_group
+            else "No upstream operational blockers are currently recorded for Steps 1-3."
+        ),
+        "triage": triage,
+        "summary": summary,
+    }
+
+
+def write_operational_recovery_outputs(
+    project_root: Union[Path, str],
+    recovery_plan: dict,
+) -> Tuple[Path, Path]:
+    project_root = _as_path(project_root)
+    json_path = _atomic_write_json(project_root / "operational_recovery_plan.json", recovery_plan)
+
+    lines = [
+        "# Operational Recovery Playbook",
+        "",
+        "## Status",
+        f"- Action groups: `{recovery_plan['summary']['action_group_count']}`",
+        f"- Findings: `{recovery_plan['summary']['issue_count']}`",
+        f"- Blocking findings: `{recovery_plan['summary']['blocking_count']}`",
+        f"- Manual review findings: `{recovery_plan['summary']['manual_review_count']}`",
+        f"- Stale step findings: `{recovery_plan['summary']['stale_count']}`",
+    ]
+    if recovery_plan.get("recommended_command"):
+        lines.append(f"- Safest repair command: `{recovery_plan['recommended_command']}`")
+        lines.append(f"- Earliest affected step: `{recovery_plan['recommended_step_label']}`")
+    lines.extend(
+        [
+            "",
+            "## Triage Summary",
+            f"- `{recovery_plan['triage']['rerun_upstream']}` group(s) need an upstream rerun.",
+            f"- `{recovery_plan['triage']['refresh_step_view']}` group(s) only need a derived-step refresh.",
+            f"- `{recovery_plan['triage']['manual_then_rerun']}` group(s) need manual review before rerun.",
+            f"- `{recovery_plan['triage']['manual_review']}` group(s) are manual review only.",
+            "",
+            "## Why This Command",
+            f"- {recovery_plan['recommended_reason']}",
+            "",
+            "## Action Groups",
+        ]
+    )
+    if recovery_plan["action_groups"]:
+        for index, group in enumerate(recovery_plan["action_groups"], start=1):
+            lines.extend(
+                [
+                    f"### Action Group {index}: {group['category_label']}",
+                    f"- Priority: `{group['priority_label']}`",
+                    f"- Scope: `{group['step_label']}`",
+                    f"- Action path: `{group['action_label']}`",
+                    (
+                        f"- Suggested command: `{group['recommended_command']}`"
+                        if group.get("recommended_command")
+                        else "- Suggested command: manual review only"
+                    ),
+                    f"- Finding count: `{group['issue_count']}`",
+                ]
+            )
+            if group["artifacts"]:
+                lines.append("- Related artifacts: " + ", ".join(f"`{item}`" for item in group["artifacts"]))
+            lines.append("- Checklist:")
+            lines.extend(f"  - {item}" for item in group["checklist"])
+            lines.append("- Findings:")
+            lines.extend(f"  - {finding['message']}" for finding in group["findings"])
+            lines.append("")
+    else:
+        lines.extend(["- No upstream operational blockers were recorded for Steps 1-3.", ""])
+
+    markdown_path = _atomic_write_text(
+        project_root / "operational_recovery_playbook.md",
+        "\n".join(lines).rstrip() + "\n",
+    )
+    return json_path, markdown_path
+
+
+def _progress_summary(phase_states: Sequence[dict]) -> Tuple[int, int, int]:
+    total = len(phase_states)
+    resolved = sum(
+        1
+        for entry in phase_states
+        if str(entry.get("status", "")) in {"completed", "skipped", "failed"}
+    )
+    percent = int((resolved / total) * 100) if total else 0
+    return resolved, total, percent
+
+
+def _step_health_summary(current_manifest: Optional[dict], project_root: Path) -> Dict[str, object]:
+    step_status = (current_manifest or {}).get("step_status") or _step_status_map(project_root)
+    counts: Counter = Counter(step_status.values())
+    return {
+        "statuses": step_status,
+        "counts": dict(counts),
+        "complete_count": int(counts.get("complete", 0)),
+        "partial_count": int(counts.get("partial", 0)),
+        "stale_count": int(counts.get("stale", 0)),
+        "failed_count": int(counts.get("failed", 0) + counts.get("error", 0)),
+        "not_generated_count": int(counts.get("not_generated", 0)),
+    }
+
+
+def _step1_input_summary(project_root: Path) -> dict:
+    path = project_root / STEP_SPECS[1].folder_name / "raw_pose_index.csv"
+    rows = _load_csv_rows(path)
+    manifest = _load_step_manifest(project_root, 1)
+    if not rows:
+        return {
+            "title": "Step 1 Raw Pose Health",
+            "available": False,
+            "path": f"{STEP_SPECS[1].folder_name}/raw_pose_index.csv",
+            "headline": "Raw Vina pose coverage is not indexed yet.",
+            "details": [],
+        }
+
+    expected = len(rows)
+    found = sum(1 for row in rows if str(row.get("raw_pose_file", "")).strip())
+    missing_pairs = [
+        f"{row.get('receptor_id', '?')}/{row.get('ligand_id', '?')}"
+        for row in rows
+        if not str(row.get("raw_pose_file", "")).strip()
+    ]
+    model_counts = [_safe_int(row.get("n_models"), 0) for row in rows if _safe_int(row.get("n_models"), 0) > 0]
+    return {
+        "title": "Step 1 Raw Pose Health",
+        "available": True,
+        "path": f"{STEP_SPECS[1].folder_name}/raw_pose_index.csv",
+        "headline": f"Indexed raw poses for {found}/{expected} receptor-ligand pair(s).",
+        "details": [
+            (
+                f"Missing raw pose pairs: {', '.join(missing_pairs[:3])}."
+                + (f" (+{len(missing_pairs) - 3} more)" if len(missing_pairs) > 3 else "")
+                if missing_pairs
+                else "All expected raw pose pairs are present."
+            ),
+            (
+                f"Observed pose model count range: {min(model_counts)}-{max(model_counts)}."
+                if model_counts
+                else "No pose model counts were recorded."
+            ),
+            (
+                f"Step status: {manifest.get('status', 'unknown')}."
+                if manifest
+                else "Step manifest is not available."
+            ),
+        ],
+    }
+
+
+def _step2_ppi_summary(project_root: Path) -> dict:
+    path = project_root / STEP_SPECS[2].folder_name / "raw_run_paths.tsv"
+    rows = _load_csv_rows(path)
+    manifest = _load_step_manifest(project_root, 2)
+    if not rows:
+        return {
+            "title": "Step 2 PPI Run Health",
+            "available": False,
+            "path": f"{STEP_SPECS[2].folder_name}/raw_run_paths.tsv",
+            "headline": "Raw PyRosetta run coverage is not indexed yet.",
+            "details": [],
+        }
+
+    ranking_ready = [row for row in rows if str(row.get("final_ranking_csv", "")).strip()]
+    metadata_ready = [row for row in rows if str(row.get("metadata_json", "")).strip()]
+    missing_targets = [
+        str(row.get("target_name", "?"))
+        for row in rows
+        if not str(row.get("final_ranking_csv", "")).strip()
+    ]
+    return {
+        "title": "Step 2 PPI Run Health",
+        "available": True,
+        "path": f"{STEP_SPECS[2].folder_name}/raw_run_paths.tsv",
+        "headline": f"PyRosetta ranking summaries are available for {len(ranking_ready)}/{len(rows)} target(s).",
+        "details": [
+            (
+                f"Targets missing final ranking files: {', '.join(missing_targets[:3])}."
+                + (f" (+{len(missing_targets) - 3} more)" if len(missing_targets) > 3 else "")
+                if missing_targets
+                else "All indexed raw runs include a final ranking file."
+            ),
+            f"Targets with metadata JSON: {len(metadata_ready)}/{len(rows)}.",
+            (
+                f"Step status: {manifest.get('status', 'unknown')}."
+                if manifest
+                else "Step manifest is not available."
+            ),
+        ],
+    }
+
+
+def _step3_evidence_summary(project_root: Path) -> dict:
+    path = project_root / STEP_SPECS[3].folder_name / "ppi_pyrosetta_residues.csv"
+    rows = _load_csv_rows(path)
+    summary_rows = _load_csv_rows(project_root / STEP_SPECS[3].folder_name / "ppi_pyrosetta_summary.csv")
+    manifest = _load_step_manifest(project_root, 3)
+    if not rows:
+        return {
+            "title": "Step 3 PPI Evidence",
+            "available": False,
+            "path": f"{STEP_SPECS[3].folder_name}/ppi_pyrosetta_residues.csv",
+            "headline": "Aggregated PPI residue evidence is not available yet.",
+            "details": [],
+        }
+
+    def _priority(row: dict) -> Tuple[float, float, float]:
+        return (
+            _safe_float(row.get("frac_runs_supporting"), 0.0),
+            _safe_float(row.get("occupancy"), 0.0),
+            _safe_float(row.get("n_runs_supporting"), 0.0),
+        )
+
+    ranked = sorted(rows, key=_priority, reverse=True)
+    top_residues = [
+        f"{row.get('receptor_id', '?')}:{row.get('residue_id', '?')} occ={row.get('occupancy', 'n/a')}"
+        for row in ranked[:3]
+    ]
+    receptors = sorted({str(row.get("receptor_id", "")).strip() for row in rows if row.get("receptor_id")})
+    return {
+        "title": "Step 3 PPI Evidence",
+        "available": True,
+        "path": f"{STEP_SPECS[3].folder_name}/ppi_pyrosetta_residues.csv",
+        "headline": f"PPI residue evidence contains {len(rows)} row(s) across {len(receptors)} receptor state(s).",
+        "details": [
+            "Top residues: " + ", ".join(top_residues) + "." if top_residues else "Top residues are not available.",
+            f"Summary rows available: {len(summary_rows)}.",
+            (
+                f"Step status: {manifest.get('status', 'unknown')}."
+                if manifest
+                else "Step manifest is not available."
+            ),
+        ],
+    }
+
+
+def _pocket_summary(project_root: Path) -> dict:
+    rows = _load_csv_rows(project_root / "vina_pocket_table.csv")
+    if not rows:
+        return {
+            "available": False,
+            "path": "step4_vina_postprocess/vina_pocket_table.csv",
+            "headline": "Pocket summary is not available yet.",
+            "details": [],
+        }
+
+    receptors = sorted({str(row.get("receptor_id", "")).strip() for row in rows if row.get("receptor_id")})
+    best_row = min(rows, key=lambda row: _safe_float(row.get("best_affinity"), default=9999.0))
+    multi_ligand = sum(1 for row in rows if _safe_int(row.get("n_ligand"), 0) >= 2)
+    coverage_rows = _load_csv_rows(project_root / "vina_postprocess_coverage.csv")
+    parsed_pairs = sum(1 for row in coverage_rows if str(row.get("status", "")).strip().lower() == "parsed")
+    comparison_rows = _load_csv_rows(project_root / "vina_pocket_comparison.csv")
+    same_patch_candidates = sum(
+        1
+        for row in comparison_rows
+        if str(row.get("same_patch_candidate", "")).strip().lower() == "true"
+    )
+    top_residues = str(best_row.get("top_residues", "")).strip()
+    return {
+        "available": True,
+        "path": "step4_vina_postprocess/vina_pocket_table.csv",
+        "headline": f"{len(rows)} pockets summarized across {len(receptors)} receptor state(s).",
+        "details": [
+            (
+                "Best affinity pocket: "
+                f"{best_row.get('receptor_id', '?')}/{best_row.get('pocket_id', '?')} "
+                f"({best_row.get('best_affinity', 'n/a')} kcal/mol)."
+            ),
+            f"Multi-ligand pockets: {multi_ligand}.",
+            (
+                f"Parsed receptor-ligand pairs: {parsed_pairs}/{len(coverage_rows)}."
+                if coverage_rows
+                else "Coverage table is not available."
+            ),
+            (
+                f"Cross-receptor same-patch candidates: {same_patch_candidates}."
+                if comparison_rows
+                else "Cross-receptor comparison table is not available."
+            ),
+            (f"Top residues for the strongest pocket: {top_residues}." if top_residues else "Top residues are not available."),
+        ],
+    }
+
+
+def _verdict_summary(project_root: Path) -> dict:
+    rows = _load_csv_rows(project_root / "valid_sites.csv")
+    if not rows:
+        return {
+            "available": False,
+            "path": "step5_verdict/valid_sites.csv",
+            "headline": "Verdict summary is not available yet.",
+            "details": [],
+        }
+
+    verdict_counts: Counter = Counter(
+        str(row.get("verdict", "unknown")).strip().upper() or "UNKNOWN"
+        for row in rows
+    )
+    ranked = sorted(
+        rows,
+        key=lambda row: (
+            -_safe_float(row.get("confidence_score"), default=-1.0),
+            _safe_float(row.get("best_affinity"), default=9999.0),
+        ),
+    )
+    consensus_sites = {
+        str(row.get("consensus_site_id", "")).strip()
+        for row in rows
+        if str(row.get("consensus_site_id", "")).strip()
+    }
+    top_row = ranked[0] if ranked else {}
+    top_labels = [
+        (
+            f"{row.get('receptor_id', '?')}/{row.get('pocket_id', '?')}"
+            f" [{row.get('verdict', 'UNKNOWN')}, score={row.get('confidence_score', 'n/a')}]"
+        )
+        for row in ranked[:3]
+    ]
+    return {
+        "available": True,
+        "path": "step5_verdict/valid_sites.csv",
+        "headline": (
+            f"{len(rows)} verdict row(s). "
+            + ", ".join(f"{label}={count}" for label, count in sorted(verdict_counts.items()))
+        ),
+        "details": [
+            "Top ranked sites: " + ", ".join(top_labels) + "." if top_labels else "Top ranked sites are not available.",
+            f"Consensus site groups: {len(consensus_sites)}." if consensus_sites else "Consensus site groups were not assigned.",
+            (
+                f"Top site reasons: {top_row.get('reasons', '')}."
+                if str(top_row.get("reasons", "")).strip()
+                else "Top site reasons are not available."
+            ),
+        ],
+    }
+
+
+def _validation_summary_for_overview(project_root: Path) -> dict:
+    path = project_root / STEP_SPECS[7].folder_name / "validation_status.json"
+    if not path.exists():
+        return {
+            "available": False,
+            "path": f"{STEP_SPECS[7].folder_name}/validation_summary.txt",
+            "headline": "Validation has not been recorded yet.",
+            "details": [],
+            "status": "not_run",
+            "recommended_command": "",
+            "validation_only_command": "python run_production.py --only 7",
+            "playbook_path": f"{STEP_SPECS[7].folder_name}/validation_recovery_playbook.md",
+        }
+
+    payload = _read_json(path)
+    recovery_plan_path = project_root / STEP_SPECS[7].folder_name / "validation_recovery_plan.json"
+    recovery_plan = _read_json(recovery_plan_path) if recovery_plan_path.exists() else {}
+    status = str(payload.get("status", "unknown"))
+    warnings = _safe_int(payload.get("warning_count"), 0)
+    failures = _safe_int(payload.get("failure_count"), 0)
+    details: List[str] = []
+    if payload.get("missing_files"):
+        details.append(f"Missing artifacts: {len(payload['missing_files'])}.")
+    if payload.get("schema_errors"):
+        details.append(f"Schema mismatches: {len(payload['schema_errors'])}.")
+    if payload.get("error_message"):
+        details.append(f"Last error: {payload['error_message']}.")
+    if recovery_plan.get("recommended_command"):
+        details.append(f"Safest repair command: {recovery_plan['recommended_command']}.")
+    if recovery_plan.get("recommended_phase_number") in STEP_SPECS:
+        details.append(f"Earliest affected phase: {recovery_plan['recommended_phase_label']}.")
+    manual_review_count = _safe_int((recovery_plan.get("summary") or {}).get("manual_review_count"), 0)
+    action_group_count = _safe_int((recovery_plan.get("summary") or {}).get("action_group_count"), 0)
+    if manual_review_count:
+        details.append(f"Manual review findings: {manual_review_count}.")
+    if action_group_count:
+        details.append(f"Recovery checklist groups: {action_group_count}.")
+    if recovery_plan_path.exists():
+        details.append("Recovery playbook: step7_validate/validation_recovery_playbook.md.")
+    return {
+        "available": True,
+        "path": f"{STEP_SPECS[7].folder_name}/validation_summary.txt",
+        "headline": f"Validation status: {status}. {warnings} warning(s), {failures} failure(s).",
+        "details": details,
+        "status": status,
+        "recommended_command": str(recovery_plan.get("recommended_command", "")),
+        "validation_only_command": str(
+            recovery_plan.get("validation_only_command", "python run_production.py --only 7")
+        ),
+        "playbook_path": f"{STEP_SPECS[7].folder_name}/validation_recovery_playbook.md",
+        "manual_review_count": manual_review_count,
+        "action_group_count": action_group_count,
+        "manual_review_required": bool(recovery_plan.get("manual_review_required", False)),
+    }
+
+
+def _load_validation_recovery_plan(project_root: Path) -> Optional[dict]:
+    path = project_root / STEP_SPECS[7].folder_name / "validation_recovery_plan.json"
+    if not path.exists():
+        return None
+    try:
+        return _read_json(path)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _load_operational_recovery_plan(project_root: Path) -> Optional[dict]:
+    path = project_root / "operational_recovery_plan.json"
+    if not path.exists():
+        return None
+    try:
+        return _read_json(path)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _operational_recovery_summary_for_overview(
+    project_root: Path,
+    *,
+    current_manifest: Optional[dict] = None,
+    recovery_plan: Optional[dict] = None,
+) -> dict:
+    plan = recovery_plan or build_operational_recovery_plan(project_root, current_manifest=current_manifest)
+    issue_count = _safe_int((plan.get("summary") or {}).get("issue_count"), 0)
+    action_group_count = _safe_int((plan.get("summary") or {}).get("action_group_count"), 0)
+    manual_review_count = _safe_int((plan.get("summary") or {}).get("manual_review_count"), 0)
+    if issue_count == 0:
+        return {
+            "title": "Operational Recovery",
+            "available": True,
+            "path": "operational_recovery_playbook.md",
+            "headline": "No upstream operational blockers are recorded for Steps 1-3.",
+            "details": [
+                "Raw pose coverage, raw PPI runs, and PPI residue evidence do not currently need recovery actions.",
+                "Open operational_recovery_playbook.md for the checklist format, even when there are no blockers.",
+            ],
+            "issue_count": 0,
+            "action_group_count": 0,
+            "manual_review_count": 0,
+            "recommended_command": "",
+        }
+
+    details: List[str] = []
+    if plan.get("recommended_command"):
+        details.append(f"Safest repair command: {plan['recommended_command']}.")
+    details.append(f"Action groups: {action_group_count}.")
+    details.append(f"Manual review findings: {manual_review_count}.")
+    details.append("Recovery playbook: operational_recovery_playbook.md.")
+    return {
+        "title": "Operational Recovery",
+        "available": True,
+        "path": "operational_recovery_playbook.md",
+        "headline": (
+            f"{action_group_count} upstream recovery group(s) across Steps 1-3."
+            + (f" {manual_review_count} finding(s) require manual review." if manual_review_count else "")
+        ),
+        "details": details,
+        "issue_count": issue_count,
+        "action_group_count": action_group_count,
+        "manual_review_count": manual_review_count,
+        "recommended_command": str(plan.get("recommended_command", "")),
+    }
+
+
+def _recovery_radar_item(
+    *,
+    source_kind: str,
+    source_label: str,
+    group: dict,
+    playbook_path: str,
+) -> dict:
+    findings = list(group.get("findings") or [])
+    messages = [str(item.get("message", "")).strip() for item in findings if str(item.get("message", "")).strip()]
+    artifacts = [str(item).strip() for item in (group.get("artifacts") or []) if str(item).strip()]
+    scope_label = str(group.get("phase_label") or group.get("step_label") or "Manual review")
+    return {
+        "source_kind": source_kind,
+        "source_label": source_label,
+        "title": str(group.get("category_label", "Recovery group")),
+        "scope_label": scope_label,
+        "priority_rank": _safe_int(group.get("priority_rank"), 2),
+        "priority_label": str(group.get("priority_label", "medium")),
+        "action_label": str(group.get("action_label", "Manual review")),
+        "recommended_command": str(group.get("recommended_command", "")).strip(),
+        "manual_review_required": bool(group.get("manual_review_required")),
+        "issue_count": _safe_int(group.get("issue_count"), len(messages)),
+        "messages": messages[:2],
+        "message_overflow_count": max(0, len(messages) - 2),
+        "artifacts": artifacts[:2],
+        "artifact_overflow_count": max(0, len(artifacts) - 2),
+        "playbook_path": playbook_path,
+    }
+
+
+def _build_recovery_radar(
+    *,
+    operational_recovery_plan: Optional[dict],
+    validation_recovery_plan: Optional[dict],
+) -> dict:
+    def _priority_counts(rows: Sequence[dict]) -> dict:
+        counts = {label: 0 for label in VALIDATION_PRIORITY_LABELS.values()}
+        for row in rows:
+            label = str(row.get("priority_label") or "low")
+            counts[label] = counts.get(label, 0) + 1
+        return counts
+
+    def _filter_view(*, filter_key: str, label: str, rows: Sequence[dict]) -> dict:
+        counts = _priority_counts(rows)
+        manual_review_groups = len([row for row in rows if row.get("manual_review_required")])
+        if not rows:
+            headline = "No groups currently match this filter."
+        else:
+            summary_parts = [f"{len(rows)} group(s)"]
+            for priority_label in ("immediate", "high", "medium", "low"):
+                count = int(counts.get(priority_label, 0))
+                if count:
+                    summary_parts.append(f"{count} {priority_label}")
+            if manual_review_groups and filter_key != "manual":
+                summary_parts.append(f"{manual_review_groups} manual review")
+            headline = ", ".join(summary_parts) + "."
+        return {
+            "filter_key": filter_key,
+            "label": label,
+            "group_count": len(rows),
+            "manual_review_groups": manual_review_groups,
+            "priority_counts": counts,
+            "headline": headline,
+        }
+
+    items: List[dict] = []
+    for group in (validation_recovery_plan or {}).get("action_groups") or []:
+        items.append(
+            _recovery_radar_item(
+                source_kind="validation",
+                source_label="Validation",
+                group=group,
+                playbook_path=f"{STEP_SPECS[7].folder_name}/validation_recovery_playbook.md",
+            )
+        )
+    for group in (operational_recovery_plan or {}).get("action_groups") or []:
+        items.append(
+            _recovery_radar_item(
+                source_kind="operational",
+                source_label="Operational",
+                group=group,
+                playbook_path="operational_recovery_playbook.md",
+            )
+        )
+
+    source_rank = {"validation": 0, "operational": 1}
+    items = sorted(
+        items,
+        key=lambda item: (
+            int(item.get("priority_rank", 2)),
+            source_rank.get(str(item.get("source_kind", "operational")), 9),
+            str(item.get("scope_label", "")),
+            str(item.get("title", "")),
+        ),
+    )
+    visible_items = items[:6]
+    filter_views = [
+        _filter_view(filter_key="all", label="All Groups", rows=items),
+        _filter_view(
+            filter_key="validation",
+            label="Validation",
+            rows=[item for item in items if item.get("source_kind") == "validation"],
+        ),
+        _filter_view(
+            filter_key="operational",
+            label="Operational",
+            rows=[item for item in items if item.get("source_kind") == "operational"],
+        ),
+        _filter_view(
+            filter_key="manual",
+            label="Manual Review",
+            rows=[item for item in items if item.get("manual_review_required")],
+        ),
+    ]
+    summary = {
+        "total_groups": len(items),
+        "visible_groups": len(visible_items),
+        "overflow_count": max(0, len(items) - len(visible_items)),
+        "immediate_count": len([item for item in items if int(item.get("priority_rank", 2)) == 0]),
+        "manual_review_groups": len([item for item in items if item.get("manual_review_required")]),
+        "validation_groups": len([item for item in items if item.get("source_kind") == "validation"]),
+        "operational_groups": len([item for item in items if item.get("source_kind") == "operational"]),
+        "priority_counts": _priority_counts(items),
+    }
+    headline = (
+        "No recovery action groups need attention right now."
+        if not items
+        else (
+            f"{summary['total_groups']} recovery action group(s): "
+            f"{summary['immediate_count']} immediate, "
+            f"{summary['manual_review_groups']} needing manual review."
+        )
+    )
+    return {
+        "headline": headline,
+        "items": visible_items,
+        "summary": summary,
+        "filter_views": filter_views,
+        "available": bool(items),
+    }
+
+
+def _report_summary(project_root: Path) -> dict:
+    report_path = project_root / "project_report.txt"
+    combined_path = project_root / "combined_residue_evidence.csv"
+    if not report_path.exists():
+        return {
+            "available": False,
+            "path": "step6_report/project_report.txt",
+            "headline": "Narrative report is not available yet.",
+            "details": [],
+        }
+
+    try:
+        raw_lines = report_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        raw_lines = []
+    digest_lines: List[str] = []
+    for line in raw_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if set(stripped) <= {"=", "-"}:
+            continue
+        digest_lines.append(stripped)
+        if len(digest_lines) >= 3:
+            break
+
+    combined_rows = _load_csv_rows(combined_path)
+    return {
+        "available": True,
+        "path": "step6_report/project_report.txt",
+        "headline": "Narrative report and combined residue evidence are available.",
+        "details": [
+            *(f"Report digest: {line}" for line in digest_lines),
+            (
+                f"Combined residue evidence rows: {len(combined_rows)}."
+                if combined_path.exists()
+                else "Combined residue evidence table is not available."
+            ),
+        ],
+    }
+
+
+def _quick_links(project_root: Path, *, expected_paths: Optional[Sequence[str]] = None) -> List[dict]:
+    expected = {str(item) for item in (expected_paths or [])}
+    link_specs = [
+        ("run_overview.md", "Markdown overview"),
+        ("run_overview.html", "HTML overview"),
+        ("report_digest.md", "Condensed report digest"),
+        ("operational_recovery_playbook.md", "Operational recovery playbook"),
+        ("operational_recovery_plan.json", "Operational recovery plan"),
+        ("step_index.md", "Step index"),
+        ("run_status.json", "Execution telemetry"),
+        ("current_run_manifest.json", "Derived step manifest"),
+        ("step6_report/project_report.txt", "Narrative report"),
+        ("step6_report/combined_residue_evidence.csv", "Combined residue evidence"),
+        ("step5_verdict/valid_sites.csv", "Prioritized site verdicts"),
+        ("step4_vina_postprocess/vina_pocket_table.csv", "Pocket summary table"),
+        ("step7_validate/validation_summary.txt", "Validation summary"),
+        ("step7_validate/validation_recovery_playbook.md", "Validation recovery playbook"),
+    ]
+    links: List[dict] = []
+    for rel_path, description in link_specs:
+        links.append(
+            {
+                "path": rel_path,
+                "description": description,
+                "available": (project_root / Path(rel_path)).exists() or rel_path in expected,
+            }
+        )
+    return links
+
+
+def _next_actions(
+    *,
+    run_status: Optional[dict],
+    current_manifest: Optional[dict],
+    validation_summary: dict,
+    operational_recovery_summary: dict,
+    quick_links: Sequence[dict],
+) -> List[str]:
+    step_status = (current_manifest or {}).get("step_status") or {}
+    stale_steps = sorted(
+        int(name.replace("step", ""))
+        for name, status in step_status.items()
+        if status == "stale" and name.startswith("step")
+    )
+    overall_status = str((run_status or {}).get("overall_status", "available"))
+    current_phase_name = str((run_status or {}).get("current_phase_name", "")).strip()
+    current_phase_number = (run_status or {}).get("current_phase_number")
+    last_error = str((run_status or {}).get("last_error", "")).strip()
+
+    if overall_status == "failed":
+        rerun_hint = (
+            f"Rerun from Phase {current_phase_number} with `python run_production.py --from {current_phase_number}`."
+            if current_phase_number
+            else "Rerun the failing phase after fixing the error."
+        )
+        return [
+            f"Execution stopped during {current_phase_name or 'an unknown phase'}.",
+            f"Last error: {last_error or 'check run_status.json for the traceback context.'}",
+            rerun_hint,
+        ]
+    if overall_status == "running":
+        return [
+            f"Current phase: {current_phase_name or 'preparing run metadata'}.",
+            "Refresh this overview or open `run_status.json` to monitor progress.",
+            "Avoid mixing partially refreshed derived steps with older results until the run finishes.",
+        ]
+    if validation_summary.get("status") in {"failed", "error"}:
+        playbook_path = str(
+            validation_summary.get("playbook_path", "step7_validate/validation_recovery_playbook.md")
+        )
+        recommended_command = str(validation_summary.get("recommended_command", "")).strip()
+        manual_review_count = _safe_int(validation_summary.get("manual_review_count"), 0)
+        return [
+            (
+                f"Open `{playbook_path}` first. {manual_review_count} finding(s) require manual review before rerun."
+                if manual_review_count
+                else f"Open `{playbook_path}` and `step7_validate/validation_summary.txt` before trusting the results."
+            ),
+            (
+                f"Safest repair path: `{recommended_command}`."
+                if recommended_command and recommended_command != "python run_production.py --only 7"
+                else "Fix the reported validation issues, then rerun Phase 7."
+            ),
+            "After upstream fixes, rerun `python run_production.py --only 7` to confirm the outputs are healthy.",
+            "Do not treat the report or verdict as final until validation passes.",
+        ]
+    if _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0:
+        recommended_command = str(operational_recovery_summary.get("recommended_command", "")).strip()
+        manual_review_count = _safe_int(operational_recovery_summary.get("manual_review_count"), 0)
+        return [
+            (
+                f"Open `operational_recovery_playbook.md` first. {manual_review_count} finding(s) need manual review."
+                if manual_review_count
+                else "Open `operational_recovery_playbook.md` before interpreting downstream results."
+            ),
+            (
+                f"Safest repair path: `{recommended_command}`."
+                if recommended_command
+                else "Review the operational action groups and clear them before trusting downstream outputs."
+            ),
+            "Refresh the affected upstream steps before relying on Step 4-6 outputs.",
+        ]
+    if stale_steps:
+        stale_text = ", ".join(f"Step {step_num}" for step_num in stale_steps)
+        return [
+            f"Rebuild stale derived views before interpretation: {stale_text}.",
+            "Start with `step_index.md` to confirm which steps are still stale.",
+            "Once refreshed, review the report and verdict outputs in order.",
+        ]
+    available_links = {item["path"] for item in quick_links if item["available"]}
+    if "step6_report/project_report.txt" in available_links:
+        return [
+            "Start with `step6_report/project_report.txt` for the narrative summary.",
+            "Then open `step5_verdict/valid_sites.csv` to inspect prioritized pockets.",
+            "Use `step4_vina_postprocess/vina_pocket_table.csv` for detailed pocket evidence.",
+        ]
+    return [
+        "Start with `step_index.md` to see which derived steps are available.",
+        "Use `run_status.json` for execution history and `current_run_manifest.json` for step health.",
+    ]
+
+
+def _command_suggestions(
+    *,
+    run_status: Optional[dict],
+    current_manifest: Optional[dict],
+    validation_summary: dict,
+    operational_recovery_summary: dict,
+    quick_links: Sequence[dict],
+) -> List[dict]:
+    suggestions: List[dict] = []
+    seen_commands = set()
+    step_status = (current_manifest or {}).get("step_status") or {}
+    stale_steps = sorted(
+        int(name.replace("step", ""))
+        for name, status in step_status.items()
+        if status == "stale" and name.startswith("step")
+    )
+    overall_status = str((run_status or {}).get("overall_status", "available"))
+    current_phase_number = (run_status or {}).get("current_phase_number")
+    last_error = str((run_status or {}).get("last_error", "")).strip()
+    available_links = {item["path"] for item in quick_links if item["available"]}
+
+    def _add(label: str, command: str, reason: str) -> None:
+        if command in seen_commands:
+            return
+        seen_commands.add(command)
+        suggestions.append({"label": label, "command": command, "reason": reason})
+
+    if overall_status == "failed" and current_phase_number:
+        _add(
+            "Resume from failed phase",
+            f"python run_production.py --from {current_phase_number}",
+            f"Use this after fixing the failure cause{': ' + last_error if last_error else ''}.",
+        )
+    if validation_summary.get("status") in {"failed", "error"}:
+        recommended_command = str(validation_summary.get("recommended_command", "")).strip()
+        if recommended_command and recommended_command != "python run_production.py --only 7":
+            _add(
+                "Repair validation findings",
+                recommended_command,
+                "Refresh the earliest affected phase and all downstream outputs before validating again.",
+            )
+        _add(
+            "Rerun validation",
+            str(validation_summary.get("validation_only_command", "python run_production.py --only 7")),
+            "Recheck output integrity after fixing missing files, schema issues, or manual validation blockers.",
+        )
+    operational_command = str(operational_recovery_summary.get("recommended_command", "")).strip()
+    if _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0 and operational_command:
+        _add(
+            "Repair upstream operational issues",
+            operational_command,
+            "Restore Step 1-3 readiness before relying on pocket, verdict, or report interpretation.",
+        )
+    if stale_steps:
+        _add(
+            "Refresh stale derived steps",
+            f"python run_production.py --only {','.join(str(step) for step in stale_steps)}",
+            "Regenerate the stale interpretation layers without rerunning unrelated phases.",
+        )
+    if "step5_verdict/valid_sites.csv" not in available_links and "step4_vina_postprocess/vina_pocket_table.csv" in available_links:
+        _add(
+            "Generate verdict and downstream views",
+            "python run_production.py --only 5,6,7",
+            "Build the site prioritization, report, and validation outputs from existing pocket summaries.",
+        )
+    if "step6_report/project_report.txt" not in available_links and "step5_verdict/valid_sites.csv" in available_links:
+        _add(
+            "Generate report and validation",
+            "python run_production.py --only 6,7",
+            "Create the narrative report and immediately validate it.",
+        )
+    if not suggestions:
+        _add(
+            "Run the standard production flow",
+            "python run_production.py",
+            "Use the default pipeline entry point when you want the normal end-to-end refresh.",
+        )
+    return suggestions
+
+
+def _guided_action_focus(
+    *,
+    recovery_radar: dict,
+    next_actions: Sequence[str],
+) -> List[dict]:
+    items: List[dict] = []
+    for index, radar_item in enumerate(recovery_radar.get("items") or [], start=1):
+        message_preview = str((radar_item.get("messages") or [""])[0]).strip()
+        preview_text = (
+            message_preview
+            if message_preview
+            else f"{radar_item.get('scope_label', 'This scope')} needs attention."
+        )
+        command_text = str(radar_item.get("recommended_command") or "").strip()
+        if command_text:
+            next_step = f"Suggested command: `{command_text}`."
+        elif radar_item.get("manual_review_required"):
+            next_step = "Manual review is required before any rerun."
+        else:
+            next_step = "Review this group before deciding whether a rerun is necessary."
+        items.append(
+            {
+                "title": f"{radar_item['source_label']}: {radar_item['title']}",
+                "summary": preview_text,
+                "detail": next_step,
+                "path": str(radar_item.get("playbook_path", "")),
+                "command": command_text,
+                "source_kind": str(radar_item.get("source_kind", "general")),
+                "source_label": str(radar_item.get("source_label", "General")),
+                "priority_label": str(radar_item.get("priority_label", "low")),
+                "priority_rank": _safe_int(radar_item.get("priority_rank"), 3),
+                "manual_review_required": bool(radar_item.get("manual_review_required")),
+                "default_order": index,
+            }
+        )
+    if items:
+        return items
+
+    fallback: List[dict] = []
+    for index, action in enumerate(next_actions, start=1):
+        fallback.append(
+            {
+                "title": f"Check {index}",
+                "summary": str(action),
+                "detail": "Default review order from the latest overview snapshot.",
+                "path": "",
+                "command": "",
+                "source_kind": "general",
+                "source_label": "General",
+                "priority_label": "low",
+                "priority_rank": 3,
+                "manual_review_required": False,
+                "default_order": index,
+            }
+        )
+    return fallback
+
+
+def _annotate_command_suggestions(
+    *,
+    command_suggestions: Sequence[dict],
+    recovery_radar: dict,
+    validation_summary: dict,
+    operational_recovery_summary: dict,
+    run_status: Optional[dict],
+) -> List[dict]:
+    command_matches: dict = {}
+    for radar_item in recovery_radar.get("items") or []:
+        command_text = str(radar_item.get("recommended_command") or "").strip()
+        if command_text:
+            command_matches.setdefault(command_text, []).append(radar_item)
+
+    annotated: List[dict] = []
+    failed_phase_command = ""
+    current_phase_number = (run_status or {}).get("current_phase_number")
+    if str((run_status or {}).get("overall_status", "")) == "failed" and current_phase_number:
+        failed_phase_command = f"python run_production.py --from {current_phase_number}"
+    validation_only_command = str(validation_summary.get("validation_only_command", "")).strip()
+    operational_command = str(operational_recovery_summary.get("recommended_command", "")).strip()
+
+    for index, item in enumerate(command_suggestions, start=1):
+        command_text = str(item.get("command", "")).strip()
+        source_kind = "general"
+        source_label = "General"
+        priority_rank = 3
+        priority_label = "low"
+        manual_review_required = False
+        matched_groups = command_matches.get(command_text) or []
+        if matched_groups:
+            best_group = min(
+                matched_groups,
+                key=lambda group: (
+                    _safe_int(group.get("priority_rank"), 3),
+                    0 if not group.get("manual_review_required") else 1,
+                ),
+            )
+            source_kind = str(best_group.get("source_kind", "general"))
+            source_label = str(best_group.get("source_label", "General"))
+            priority_rank = _safe_int(best_group.get("priority_rank"), 3)
+            priority_label = str(best_group.get("priority_label", _validation_priority_label(priority_rank)))
+            manual_review_required = any(group.get("manual_review_required") for group in matched_groups)
+        elif validation_only_command and command_text == validation_only_command:
+            source_kind = "validation"
+            source_label = "Validation"
+            priority_rank = 1 if validation_summary.get("status") in {"failed", "error"} else 2
+            priority_label = _validation_priority_label(priority_rank)
+            manual_review_required = _safe_int(validation_summary.get("manual_review_count"), 0) > 0
+        elif operational_command and command_text == operational_command:
+            source_kind = "operational"
+            source_label = "Operational"
+            priority_rank = 0 if _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0 else 2
+            priority_label = _validation_priority_label(priority_rank)
+            manual_review_required = _safe_int(operational_recovery_summary.get("manual_review_count"), 0) > 0
+        elif failed_phase_command and command_text == failed_phase_command:
+            priority_rank = 0
+            priority_label = _validation_priority_label(priority_rank)
+        elif str(item.get("label", "")).startswith("Refresh stale derived steps"):
+            source_kind = "operational"
+            source_label = "Operational"
+            priority_rank = 1
+            priority_label = _validation_priority_label(priority_rank)
+
+        annotated.append(
+            {
+                "label": str(item.get("label", "")),
+                "command": command_text,
+                "reason": str(item.get("reason", "")),
+                "source_kind": source_kind,
+                "source_label": source_label,
+                "priority_label": priority_label,
+                "priority_rank": priority_rank,
+                "manual_review_required": manual_review_required,
+                "default_order": index,
+            }
+        )
+    return annotated
+
+
+def build_run_overview_data(
+    project_root: Union[Path, str],
+    *,
+    current_run_manifest: Optional[dict] = None,
+    run_status: Optional[dict] = None,
+    operational_recovery_plan: Optional[dict] = None,
+    validation_recovery_plan: Optional[dict] = None,
+    expected_paths: Optional[Sequence[str]] = None,
+) -> dict:
+    """Build a user-facing overview payload for the project root."""
+
+    project_root = _as_path(project_root)
+    current = current_run_manifest or _load_current_run_manifest(project_root) or {}
+    status_payload = run_status or _load_run_status(project_root) or {}
+    operational_plan = operational_recovery_plan or _load_operational_recovery_plan(project_root)
+    validation_plan = validation_recovery_plan or _load_validation_recovery_plan(project_root)
+    phase_rows = list(status_payload.get("phase_states") or [])
+    if not phase_rows:
+        step_status = current.get("step_status") or _step_status_map(project_root)
+        for step_num, spec in STEP_SPECS.items():
+            phase_rows.append(
+                {
+                    "phase_number": step_num,
+                    "phase_name": f"Phase {step_num}: {spec.step_name}",
+                    "status": step_status.get(f"step{step_num}", "not_started"),
+                    "started_at": "",
+                    "completed_at": "",
+                    "duration_seconds": None,
+                    "skip_reason": "",
+                    "last_error": "",
+                }
+            )
+
+    resolved_count, total_count, progress_percent = _progress_summary(phase_rows)
+    step_health = _step_health_summary(current, project_root)
+    operational_recovery_summary = _operational_recovery_summary_for_overview(
+        project_root,
+        current_manifest=current or None,
+        recovery_plan=operational_plan,
+    )
+    operational_summaries = [
+        _step1_input_summary(project_root),
+        _step2_ppi_summary(project_root),
+        _step3_evidence_summary(project_root),
+        operational_recovery_summary,
+    ]
+    pockets = _pocket_summary(project_root)
+    verdicts = _verdict_summary(project_root)
+    reports = _report_summary(project_root)
+    validation_summary = _validation_summary_for_overview(project_root)
+    recovery_radar = _build_recovery_radar(
+        operational_recovery_plan=operational_plan,
+        validation_recovery_plan=validation_plan,
+    )
+    quick_links = _quick_links(project_root, expected_paths=expected_paths)
+    next_actions = _next_actions(
+        run_status=status_payload or None,
+        current_manifest=current or None,
+        validation_summary=validation_summary,
+        operational_recovery_summary=operational_recovery_summary,
+        quick_links=quick_links,
+    )
+    command_suggestions = _command_suggestions(
+        run_status=status_payload or None,
+        current_manifest=current or None,
+        validation_summary=validation_summary,
+        operational_recovery_summary=operational_recovery_summary,
+        quick_links=quick_links,
+    )
+    action_focus = _guided_action_focus(
+        recovery_radar=recovery_radar,
+        next_actions=next_actions,
+    )
+    annotated_command_suggestions = _annotate_command_suggestions(
+        command_suggestions=command_suggestions,
+        recovery_radar=recovery_radar,
+        validation_summary=validation_summary,
+        operational_recovery_summary=operational_recovery_summary,
+        run_status=status_payload or None,
+    )
+
+    overall_status = str(status_payload.get("overall_status", "available"))
+    current_phase_name = str(status_payload.get("current_phase_name", "")).strip()
+    if overall_status == "running":
+        hero_title = "Pipeline run is in progress."
+        hero_body = f"The latest update is tracking {current_phase_name or 'the current phase'}."
+    elif overall_status == "failed":
+        hero_title = "Pipeline run stopped before completion."
+        hero_body = "Review the failing phase and rerun only the affected scope."
+    elif validation_summary.get("status") in {"failed", "error"}:
+        hero_title = "Pipeline run finished, but validation found issues."
+        hero_body = "Resolve validation findings before treating the outputs as final."
+    elif overall_status == "completed":
+        hero_title = "Pipeline run completed."
+        hero_body = "Start with the report and verdict outputs for interpretation."
+    else:
+        hero_title = "Derived outputs are available for review."
+        hero_body = "This overview summarizes the latest known step and execution state."
+
+    return {
+        "project_name": current.get("project_name", status_payload.get("project_name", project_root.name)),
+        "overall_status": overall_status,
+        "hero_title": hero_title,
+        "hero_body": hero_body,
+        "execution_mode": current.get("execution_mode", status_payload.get("execution_mode", "unknown")),
+        "generated_at": current.get("generated_at", status_payload.get("updated_at", utc_now_iso())),
+        "updated_at": status_payload.get("updated_at", current.get("generated_at", utc_now_iso())),
+        "current_phase_name": current_phase_name,
+        "current_phase_number": status_payload.get("current_phase_number"),
+        "resolved_count": resolved_count,
+        "total_count": total_count,
+        "progress_percent": progress_percent,
+        "phase_rows": phase_rows,
+        "step_health": step_health,
+        "operational_summaries": operational_summaries,
+        "operational_recovery_summary": operational_recovery_summary,
+        "recovery_radar": recovery_radar,
+        "pocket_summary": pockets,
+        "verdict_summary": verdicts,
+        "report_summary": reports,
+        "validation_summary": validation_summary,
+        "quick_links": quick_links,
+        "next_actions": next_actions,
+        "command_suggestions": command_suggestions,
+        "action_focus": action_focus,
+        "annotated_command_suggestions": annotated_command_suggestions,
+    }
+
+
+def write_run_overview_markdown(project_root: Union[Path, str], overview_data: dict) -> Path:
+    """Write ``run_overview.md`` at the project root."""
+
+    project_root = _as_path(project_root)
+    recovery_radar = overview_data["recovery_radar"]
+    step_health = overview_data["step_health"]
+    validation_summary = overview_data["validation_summary"]
+    lines = [
+        "# Run Overview",
+        "",
+        f"## {overview_data['hero_title']}",
+        overview_data["hero_body"],
+        "",
+        "## At a Glance",
+        f"- Project name: `{overview_data['project_name']}`",
+        f"- Overall execution status: `{overview_data['overall_status']}`",
+        f"- Execution mode: `{overview_data['execution_mode']}`",
+        f"- Progress: `{overview_data['resolved_count']}/{overview_data['total_count']}` phase(s) resolved ({overview_data['progress_percent']}%).",
+        f"- Current phase: `{overview_data['current_phase_name'] or 'n/a'}`",
+        f"- Last update: `{overview_data['updated_at']}`",
+        (
+            f"- Validation: `{validation_summary['status']}`"
+            if validation_summary.get("available")
+            else "- Validation: `not recorded`"
+        ),
+        (
+            "- Derived step health: "
+            f"`{step_health['complete_count']}` complete, "
+            f"`{step_health['partial_count']}` partial, "
+            f"`{step_health['stale_count']}` stale, "
+            f"`{step_health['failed_count']}` failed/error, "
+            f"`{step_health['not_generated_count']}` not generated."
+        ),
+        "",
+        "## What To Check First",
+    ]
+    for idx, action in enumerate(overview_data["next_actions"], start=1):
+        lines.append(f"{idx}. {action}")
+
+    lines.extend(["", "## Recovery Radar", f"- {recovery_radar['headline']}"])
+    radar_summary = recovery_radar["summary"]
+    lines.append(
+        "- Radar counts: "
+        f"`{radar_summary['validation_groups']}` validation, "
+        f"`{radar_summary['operational_groups']}` operational, "
+        f"`{radar_summary['manual_review_groups']}` manual-review group(s)."
+    )
+    lines.extend(["", "### Filter Views"])
+    for filter_view in recovery_radar["filter_views"]:
+        lines.append(f"- {filter_view['label']}: {filter_view['headline']}")
+    if recovery_radar["items"]:
+        for index, item in enumerate(recovery_radar["items"], start=1):
+            lines.extend(
+                [
+                    f"### Radar {index}: {item['source_label']} - {item['title']}",
+                    f"- Scope: `{item['scope_label']}`",
+                    f"- Priority: `{item['priority_label']}`",
+                    f"- Action path: `{item['action_label']}`",
+                    (
+                        f"- Suggested command: `{item['recommended_command']}`"
+                        if item["recommended_command"]
+                        else "- Suggested command: manual review only"
+                    ),
+                    f"- Playbook: `{item['playbook_path']}`",
+                ]
+            )
+            if item["artifacts"]:
+                artifact_text = ", ".join(f"`{name}`" for name in item["artifacts"])
+                if item["artifact_overflow_count"]:
+                    artifact_text += f" (+{item['artifact_overflow_count']} more)"
+                lines.append(f"- Related artifacts: {artifact_text}")
+            if item["messages"]:
+                message_text = " | ".join(item["messages"])
+                if item["message_overflow_count"]:
+                    message_text += f" (+{item['message_overflow_count']} more)"
+                lines.append(f"- Findings: {message_text}")
+            lines.append("")
+    else:
+        lines.append("- No recovery action groups are active right now.")
+
+    lines.extend(
+        [
+            "",
+            "## Pipeline Progress",
+            "| Phase | Status | Started | Finished | Notes |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in overview_data["phase_rows"]:
+        note = str(row.get("skip_reason") or row.get("last_error") or "").replace("\n", " ").strip()
+        lines.append(
+            f"| {row.get('phase_number', '?')} | `{row.get('status', 'unknown')}` | "
+            f"`{row.get('started_at', '') or '-'}` | `{row.get('completed_at', '') or '-'}` | "
+            f"{note or '-'} |"
+        )
+
+    lines.extend(["", "## Operational Readiness"])
+    for item in overview_data["operational_summaries"]:
+        lines.append(f"- {item['title']}: {item['headline']}")
+        lines.extend(f"  - {detail}" for detail in item["details"])
+
+    lines.extend(
+        [
+            "",
+            "## Result Highlights",
+            f"- Pocket summary: {overview_data['pocket_summary']['headline']}",
+        ]
+    )
+    lines.extend(f"  - {detail}" for detail in overview_data["pocket_summary"]["details"])
+    lines.append(f"- Verdict summary: {overview_data['verdict_summary']['headline']}")
+    lines.extend(f"  - {detail}" for detail in overview_data["verdict_summary"]["details"])
+    lines.append(f"- Report summary: {overview_data['report_summary']['headline']}")
+    lines.extend(f"  - {detail}" for detail in overview_data["report_summary"]["details"])
+    lines.append(f"- Validation summary: {overview_data['validation_summary']['headline']}")
+    lines.extend(f"  - {detail}" for detail in overview_data["validation_summary"]["details"])
+
+    lines.extend(["", "## Quick Links"])
+    for item in overview_data["quick_links"]:
+        status = "available" if item["available"] else "missing"
+        lines.append(f"- `{item['path']}`: {item['description']} ({status})")
+    lines.extend(["", "## Suggested Commands"])
+    for item in overview_data["command_suggestions"]:
+        lines.append(f"- `{item['command']}`: {item['label']} - {item['reason']}")
+    lines.append("")
+    return _atomic_write_text(project_root / "run_overview.md", "\n".join(lines))
+
+
+def write_run_overview_html(project_root: Union[Path, str], overview_data: dict) -> Path:
+    """Write ``run_overview.html`` at the project root."""
+
+    project_root = _as_path(project_root)
+    phase_rows_html = []
+    for row in overview_data["phase_rows"]:
+        note = str(row.get("skip_reason") or row.get("last_error") or "").replace("\n", " ").strip() or "-"
+        phase_rows_html.append(
+            "<tr>"
+            f"<td>{escape(str(row.get('phase_number', '?')))}</td>"
+            f"<td><span class=\"badge badge-{escape(str(row.get('status', 'unknown')))}\">{escape(_status_label(str(row.get('status', 'unknown'))))}</span></td>"
+            f"<td>{escape(str(row.get('phase_name', '')))}</td>"
+            f"<td>{escape(str(row.get('started_at', '') or '-'))}</td>"
+            f"<td>{escape(str(row.get('completed_at', '') or '-'))}</td>"
+            f"<td>{escape(note)}</td>"
+            "</tr>"
+        )
+
+    quick_links_html = []
+    for item in overview_data["quick_links"]:
+        if item["available"]:
+            link_body = f"<a href=\"{escape(item['path'])}\"><code>{escape(item['path'])}</code></a>"
+        else:
+            link_body = f"<code>{escape(item['path'])}</code>"
+        quick_links_html.append(
+            "<li>"
+            f"{link_body} - {escape(item['description'])} "
+            f"(<strong>{'available' if item['available'] else 'missing'}</strong>)"
+            "</li>"
+        )
+
+    card_specs = [
+        ("Pocket Summary", overview_data["pocket_summary"]),
+        ("Verdict Summary", overview_data["verdict_summary"]),
+        ("Report Summary", overview_data["report_summary"]),
+        ("Validation Summary", overview_data["validation_summary"]),
+    ]
+    cards_html = []
+    for title, payload in card_specs:
+        details_html = "".join(f"<li>{escape(detail)}</li>" for detail in payload["details"]) or "<li>No extra details.</li>"
+        cards_html.append(
+            "<section class=\"card\">"
+            f"<h3>{escape(title)}</h3>"
+            f"<p>{escape(payload['headline'])}</p>"
+            f"<ul>{details_html}</ul>"
+            f"<p class=\"path\"><code>{escape(payload['path'])}</code></p>"
+            "</section>"
+        )
+
+    action_html = []
+    for item in overview_data.get("action_focus", []):
+        source_kind = escape(str(item.get("source_kind", "general")))
+        manual_review = "yes" if item.get("manual_review_required") else "no"
+        priority_label = escape(str(item.get("priority_label", "low")))
+        priority_rank = escape(str(_safe_int(item.get("priority_rank"), 3)))
+        default_order = escape(str(_safe_int(item.get("default_order"), 0)))
+        chips = [
+            f"<span class=\"tone tone-{source_kind}\">{escape(str(item.get('source_label', 'General')))}</span>",
+            f"<span class=\"tone priority-{priority_label}\">{escape(str(item.get('priority_label', 'low')).title())}</span>",
+        ]
+        if item.get("manual_review_required"):
+            chips.append("<span class=\"tone tone-manual\">Manual review</span>")
+        path_html = ""
+        if item.get("path"):
+            path_html = (
+                f"<p class=\"path\"><a href=\"{escape(str(item['path']))}\"><code>{escape(str(item['path']))}</code></a></p>"
+            )
+        command_line = (
+            f"<p><strong>Command:</strong> <code>{escape(str(item['command']))}</code></p>"
+            if item.get("command")
+            else ""
+        )
+        action_html.append(
+            f"<li class=\"guided-item guided-action\" "
+            f"data-source-kind=\"{source_kind}\" "
+            f"data-manual-review=\"{manual_review}\" "
+            f"data-priority=\"{priority_label}\" "
+            f"data-priority-rank=\"{priority_rank}\" "
+            f"data-default-order=\"{default_order}\">"
+            f"<div class=\"tone-row\">{''.join(chips)}</div>"
+            f"<strong>{escape(str(item.get('title', 'Action')))}</strong>"
+            f"<p>{escape(str(item.get('summary', '')))}</p>"
+            f"<p>{escape(str(item.get('detail', '')))}</p>"
+            f"{command_line}"
+            f"{path_html}"
+            "</li>"
+        )
+    operational_cards_html = []
+    for payload in overview_data["operational_summaries"]:
+        details_html = "".join(f"<li>{escape(detail)}</li>" for detail in payload["details"]) or "<li>No extra details.</li>"
+        operational_cards_html.append(
+            "<section class=\"card\">"
+            f"<h3>{escape(payload['title'])}</h3>"
+            f"<p>{escape(payload['headline'])}</p>"
+            f"<ul>{details_html}</ul>"
+            f"<p class=\"path\"><code>{escape(payload['path'])}</code></p>"
+            "</section>"
+        )
+    radar_summary = overview_data["recovery_radar"]["summary"]
+    radar_filter_views = {
+        item["filter_key"]: item for item in overview_data["recovery_radar"].get("filter_views", [])
+    }
+    radar_summary_html = "".join(
+        (
+            f"<span class=\"tone tone-summary\">Validation {escape(str(radar_summary['validation_groups']))}</span>"
+            f"<span class=\"tone tone-summary\">Operational {escape(str(radar_summary['operational_groups']))}</span>"
+            f"<span class=\"tone tone-summary\">Immediate {escape(str(radar_summary['immediate_count']))}</span>"
+            f"<span class=\"tone tone-summary\">Manual review {escape(str(radar_summary['manual_review_groups']))}</span>"
+        )
+    )
+    recovery_radar_html = []
+    for index, item in enumerate(overview_data["recovery_radar"]["items"], start=1):
+        chips = [
+            f"<span class=\"tone tone-{escape(item['source_kind'])}\">{escape(item['source_label'])}</span>",
+            f"<span class=\"tone priority-{escape(item['priority_label'])}\">{escape(item['priority_label'].title())}</span>",
+            f"<span class=\"tone tone-action\">{escape(item['action_label'])}</span>",
+        ]
+        if item["manual_review_required"]:
+            chips.append("<span class=\"tone tone-manual\">Manual review</span>")
+        findings_html = "".join(f"<li>{escape(message)}</li>" for message in item["messages"]) or "<li>No finding preview.</li>"
+        if item["message_overflow_count"]:
+            findings_html += f"<li>+{escape(str(item['message_overflow_count']))} more finding(s) in the playbook.</li>"
+        artifact_html = ""
+        if item["artifacts"]:
+            artifact_list = ", ".join(f"<code>{escape(name)}</code>" for name in item["artifacts"])
+            if item["artifact_overflow_count"]:
+                artifact_list += f" (+{escape(str(item['artifact_overflow_count']))} more)"
+            artifact_html = f"<p><strong>Artifacts:</strong> {artifact_list}</p>"
+        command_html_line = (
+            f"<code>{escape(item['recommended_command'])}</code>"
+            if item["recommended_command"]
+            else "manual review only"
+        )
+        source_kind = escape(item["source_kind"])
+        manual_review = "yes" if item["manual_review_required"] else "no"
+        priority_label = escape(item["priority_label"])
+        recovery_radar_html.append(
+            f"<article id=\"radar-card-{index}\" class=\"card radar-card\" "
+            f"data-source-kind=\"{source_kind}\" "
+            f"data-manual-review=\"{manual_review}\" "
+            f"data-priority=\"{priority_label}\">"
+            f"<div class=\"tone-row\">{''.join(chips)}</div>"
+            f"<h3>{escape(item['title'])}</h3>"
+            f"<p><strong>Scope:</strong> {escape(item['scope_label'])}</p>"
+            f"<p><strong>Suggested command:</strong> {command_html_line}</p>"
+            f"{artifact_html}"
+            f"<ul>{findings_html}</ul>"
+            f"<p class=\"path\"><a href=\"{escape(item['playbook_path'])}\"><code>{escape(item['playbook_path'])}</code></a></p>"
+            "</article>"
+        )
+    jump_links_html = "".join(
+        f"<a class=\"jump-link\" href=\"#{escape(target)}\">{escape(label)}</a>"
+        for target, label in (
+            ("what-to-check-first", "What To Check First"),
+            ("recovery-radar", "Recovery Radar"),
+            ("result-highlights", "Result Highlights"),
+            ("operational-readiness", "Operational Readiness"),
+            ("pipeline-progress", "Pipeline Progress"),
+            ("quick-links", "Quick Links"),
+            ("suggested-commands", "Suggested Commands"),
+        )
+    )
+    radar_filter_controls_html = ""
+    radar_filter_script = ""
+    if recovery_radar_html:
+        all_groups = radar_filter_views.get("all", {}).get("group_count", len(recovery_radar_html))
+        validation_groups = radar_filter_views.get("validation", {}).get("group_count", 0)
+        operational_groups = radar_filter_views.get("operational", {}).get("group_count", 0)
+        manual_groups = radar_filter_views.get("manual", {}).get("group_count", 0)
+        priority_counts = radar_summary.get("priority_counts", {})
+        radar_filter_controls_html = "".join(
+            (
+                '<div class="radar-filter-stack">'
+                '<div class="radar-filter-group">'
+                '<p class="filter-label">Scope</p>'
+                '<div class="radar-filters" role="toolbar" aria-label="Recovery radar scope filters">'
+                f'<button type="button" class="filter-chip is-active" data-radar-filter="all" aria-pressed="true">All Groups ({escape(str(all_groups))})</button>'
+                f'<button type="button" class="filter-chip" data-radar-filter="validation" aria-pressed="false">Validation ({escape(str(validation_groups))})</button>'
+                f'<button type="button" class="filter-chip" data-radar-filter="operational" aria-pressed="false">Operational ({escape(str(operational_groups))})</button>'
+                f'<button type="button" class="filter-chip" data-radar-filter="manual" aria-pressed="false">Manual Review ({escape(str(manual_groups))})</button>'
+                "</div>"
+                "</div>"
+                '<div class="radar-filter-group">'
+                '<p class="filter-label">Priority</p>'
+                '<div class="radar-filters" role="toolbar" aria-label="Recovery radar priority filters">'
+                f'<button type="button" class="filter-chip is-active" data-radar-priority-filter="all" aria-pressed="true">All Priorities ({escape(str(all_groups))})</button>'
+                f'<button type="button" class="filter-chip" data-radar-priority-filter="immediate" aria-pressed="false">Immediate ({escape(str(priority_counts.get("immediate", 0)))})</button>'
+                f'<button type="button" class="filter-chip" data-radar-priority-filter="high" aria-pressed="false">High ({escape(str(priority_counts.get("high", 0)))})</button>'
+                f'<button type="button" class="filter-chip" data-radar-priority-filter="medium" aria-pressed="false">Medium ({escape(str(priority_counts.get("medium", 0)))})</button>'
+                f'<button type="button" class="filter-chip" data-radar-priority-filter="low" aria-pressed="false">Low ({escape(str(priority_counts.get("low", 0)))})</button>'
+                "</div>"
+                "</div>"
+                "</div>"
+                f'<p id="radar-filter-status" class="filter-status" role="status">Showing {escape(str(len(recovery_radar_html)))} recovery group(s) for all scopes and all priorities.</p>'
+            )
+        )
+        radar_filter_script = """
+  <script>
+    (function () {
+      const scopeButtons = Array.from(document.querySelectorAll("[data-radar-filter]"));
+      const priorityButtons = Array.from(document.querySelectorAll("[data-radar-priority-filter]"));
+      const cards = Array.from(document.querySelectorAll(".radar-card"));
+      const actionList = document.getElementById("guided-action-list");
+      const actionItems = Array.from(document.querySelectorAll(".guided-action"));
+      const actionStatus = document.getElementById("action-filter-status");
+      const actionEmpty = document.getElementById("action-filter-empty");
+      const commandList = document.getElementById("guided-command-list");
+      const commandItems = Array.from(document.querySelectorAll(".guided-command"));
+      const commandStatus = document.getElementById("command-filter-status");
+      const commandEmpty = document.getElementById("command-filter-empty");
+      const status = document.getElementById("radar-filter-status");
+      const state = { scope: "all", priority: "all" };
+      if (!scopeButtons.length || !priorityButtons.length || !cards.length || !status) {
+        return;
+      }
+
+      function matchesScope(card, filterValue) {
+        if (filterValue === "all") {
+          return true;
+        }
+        if (filterValue === "manual") {
+          return card.dataset.manualReview === "yes";
+        }
+        return card.dataset.sourceKind === filterValue;
+      }
+
+      function matchesPriority(card, filterValue) {
+        if (filterValue === "all") {
+          return true;
+        }
+        return card.dataset.priority === filterValue;
+      }
+
+      function matchesCurrentFilters(item) {
+        return matchesScope(item, state.scope) && matchesPriority(item, state.priority);
+      }
+
+      function updateButtons(buttons, attributeName, activeValue) {
+        buttons.forEach(function (button) {
+          const active = button.getAttribute(attributeName) === activeValue;
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+      }
+
+      function filterLabel(filterValue, mode) {
+        if (filterValue === "all") {
+          return mode === "scope" ? "all scopes" : "all priorities";
+        }
+        if (filterValue === "manual") {
+          return "manual-review scope";
+        }
+        return filterValue + (mode === "scope" ? " scope" : " priority");
+      }
+
+      function sortByRank(items) {
+        return items.slice().sort(function (left, right) {
+          const priorityDiff = Number(left.dataset.priorityRank || 3) - Number(right.dataset.priorityRank || 3);
+          if (priorityDiff !== 0) {
+            return priorityDiff;
+          }
+          return Number(left.dataset.defaultOrder || 0) - Number(right.dataset.defaultOrder || 0);
+        });
+      }
+
+      function syncCollection(items, container, emptyState, statusNode, noun) {
+        if (!container || !statusNode) {
+          return;
+        }
+        const visibleItems = [];
+        const hiddenItems = [];
+        items.forEach(function (item) {
+          const visible = matchesCurrentFilters(item);
+          item.hidden = !visible;
+          if (visible) {
+            visibleItems.push(item);
+          } else {
+            hiddenItems.push(item);
+          }
+        });
+        sortByRank(visibleItems).concat(sortByRank(hiddenItems)).forEach(function (item) {
+          container.appendChild(item);
+        });
+        if (emptyState) {
+          emptyState.hidden = visibleItems.length !== 0;
+        }
+        if (visibleItems.length) {
+          statusNode.textContent = "Showing " + visibleItems.length + " " + noun + " for "
+            + filterLabel(state.scope, "scope") + " and "
+            + filterLabel(state.priority, "priority") + ".";
+        } else {
+          statusNode.textContent = "No " + noun + " match "
+            + filterLabel(state.scope, "scope") + " and "
+            + filterLabel(state.priority, "priority") + ".";
+        }
+      }
+
+      function applyFilters() {
+        let visibleCount = 0;
+        cards.forEach(function (card) {
+          const visible = matchesCurrentFilters(card);
+          card.hidden = !visible;
+          if (visible) {
+            visibleCount += 1;
+          }
+        });
+        updateButtons(scopeButtons, "data-radar-filter", state.scope);
+        updateButtons(priorityButtons, "data-radar-priority-filter", state.priority);
+        status.textContent = "Showing " + visibleCount + " recovery group(s) for "
+          + filterLabel(state.scope, "scope") + " and "
+          + filterLabel(state.priority, "priority") + ".";
+        syncCollection(actionItems, actionList, actionEmpty, actionStatus, "top action(s)");
+        syncCollection(commandItems, commandList, commandEmpty, commandStatus, "command suggestion(s)");
+      }
+
+      scopeButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          state.scope = button.dataset.radarFilter || "all";
+          applyFilters();
+        });
+      });
+      priorityButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          state.priority = button.dataset.radarPriorityFilter || "all";
+          applyFilters();
+        });
+      });
+      applyFilters();
+    }());
+  </script>"""
+    command_html = []
+    for item in overview_data.get("annotated_command_suggestions", overview_data["command_suggestions"]):
+        source_kind = escape(str(item.get("source_kind", "general")))
+        manual_review = "yes" if item.get("manual_review_required") else "no"
+        priority_label = escape(str(item.get("priority_label", "low")))
+        priority_rank = escape(str(_safe_int(item.get("priority_rank"), 3)))
+        default_order = escape(str(_safe_int(item.get("default_order"), 0)))
+        chips = [
+            f"<span class=\"tone tone-{source_kind}\">{escape(str(item.get('source_label', 'General')))}</span>",
+            f"<span class=\"tone priority-{priority_label}\">{escape(str(item.get('priority_label', 'low')).title())}</span>",
+        ]
+        if item.get("manual_review_required"):
+            chips.append("<span class=\"tone tone-manual\">Manual review</span>")
+        command_html.append(
+            f"<li class=\"guided-item guided-command\" "
+            f"data-source-kind=\"{source_kind}\" "
+            f"data-manual-review=\"{manual_review}\" "
+            f"data-priority=\"{priority_label}\" "
+            f"data-priority-rank=\"{priority_rank}\" "
+            f"data-default-order=\"{default_order}\">"
+            f"<div class=\"tone-row\">{''.join(chips)}</div>"
+            f"<strong>{escape(item['label'])}</strong><br>"
+            f"<code>{escape(item['command'])}</code><br>"
+            f"<span>{escape(item['reason'])}</span>"
+            "</li>"
+        )
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Run Overview - {escape(str(overview_data['project_name']))}</title>
+  <style>
+    :root {{
+      --bg: #f3efe7;
+      --surface: #fffdf8;
+      --ink: #1d1b18;
+      --muted: #615b53;
+      --line: #d2c7b8;
+      --accent: #0f6d58;
+      --warn: #9b5c00;
+      --danger: #9c2f1f;
+      --shadow: 0 18px 40px rgba(38, 31, 21, 0.08);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: radial-gradient(circle at top, #faf7f0 0%, var(--bg) 45%, #ece4d8 100%);
+      color: var(--ink);
+      line-height: 1.5;
+    }}
+    main {{
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }}
+    header, section {{
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 20px;
+    }}
+    h1, h2, h3 {{ margin-top: 0; }}
+    .lede {{ color: var(--muted); font-size: 1.05rem; }}
+    .stats {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }}
+    .section-nav {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }}
+    .jump-link {{
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fbf6ee;
+      color: #0a4d8c;
+      text-decoration: none;
+      font-weight: 600;
+    }}
+    .stat {{
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: #fcfaf5;
+    }}
+    .stat strong {{
+      display: block;
+      font-size: 1.3rem;
+    }}
+    .progress {{
+      height: 16px;
+      background: #e5ddd0;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 16px 0 8px;
+    }}
+    .bar {{
+      height: 100%;
+      width: {overview_data['progress_percent']}%;
+      background: linear-gradient(90deg, #3c947d, var(--accent));
+    }}
+    .cards {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }}
+    .tone-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }}
+    .tone {{
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      background: #f7f1e8;
+      color: var(--ink);
+    }}
+    .tone-summary {{
+      background: #f7f1e8;
+    }}
+    .tone-validation {{
+      background: #f9ece8;
+      border-color: #d9b0a6;
+      color: #8a2f1f;
+    }}
+    .tone-operational {{
+      background: #ebf4ef;
+      border-color: #9cc8b6;
+      color: #0f6d58;
+    }}
+    .tone-action {{
+      background: #f2ece3;
+    }}
+    .tone-manual {{
+      background: #fff4de;
+      border-color: #d8ba75;
+      color: #8a5a00;
+    }}
+    .priority-immediate {{
+      background: #f9e3df;
+      border-color: #d8a19a;
+      color: var(--danger);
+    }}
+    .priority-high {{
+      background: #fff0d8;
+      border-color: #d9b36b;
+      color: var(--warn);
+    }}
+    .priority-medium, .priority-low {{
+      background: #eef3ea;
+      border-color: #b9c8b2;
+      color: #49603f;
+    }}
+    .card {{
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      background: #fff;
+    }}
+    .radar-card {{
+      border-width: 2px;
+    }}
+    .radar-empty {{
+      color: var(--muted);
+      margin: 0;
+    }}
+    .radar-filter-stack {{
+      display: grid;
+      gap: 10px;
+      margin: 16px 0 8px;
+    }}
+    .radar-filter-group {{
+      display: grid;
+      gap: 6px;
+    }}
+    .filter-label {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }}
+    .radar-filters {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .filter-chip {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbf6ee;
+      color: var(--ink);
+      padding: 8px 12px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }}
+    .filter-chip.is-active {{
+      background: #e3f0ea;
+      border-color: #8db9aa;
+      color: var(--accent);
+    }}
+    .filter-status {{
+      color: var(--muted);
+      margin-top: 0;
+    }}
+    .guided-list {{
+      margin: 0;
+      padding-left: 20px;
+      display: grid;
+      gap: 12px;
+    }}
+    .guided-item {{
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fcfaf5;
+      padding: 14px 16px;
+    }}
+    .guided-item p {{
+      margin: 8px 0 0;
+    }}
+    .guided-empty {{
+      color: var(--muted);
+      margin-bottom: 0;
+    }}
+    .card .path {{
+      color: var(--muted);
+      margin-bottom: 0;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      background: #fff;
+    }}
+    .badge-completed, .badge-complete {{ color: var(--accent); }}
+    .badge-running {{ color: #0b4ea2; }}
+    .badge-partial, .badge-stale, .badge-skipped {{ color: var(--warn); }}
+    .badge-failed, .badge-error {{ color: var(--danger); }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }}
+    th, td {{
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 8px;
+    }}
+    th {{
+      color: var(--muted);
+      font-weight: 700;
+    }}
+    code {{
+      background: #f3eee6;
+      padding: 1px 5px;
+      border-radius: 6px;
+    }}
+    a {{ color: #0a4d8c; }}
+    @media (max-width: 720px) {{
+      header, section {{ padding: 18px; }}
+      table {{ font-size: 0.88rem; }}
+      .section-nav {{ gap: 8px; }}
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Run Overview</h1>
+      <h2>{escape(str(overview_data['hero_title']))}</h2>
+      <p class="lede">{escape(str(overview_data['hero_body']))}</p>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{overview_data['progress_percent']}" aria-label="Pipeline progress">
+        <div class="bar"></div>
+      </div>
+      <p>{escape(str(overview_data['resolved_count']))} of {escape(str(overview_data['total_count']))} phases resolved ({escape(str(overview_data['progress_percent']))}%).</p>
+      <div class="stats">
+        <div class="stat"><span>Overall status</span><strong>{escape(_status_label(str(overview_data['overall_status'])))}</strong></div>
+        <div class="stat"><span>Execution mode</span><strong>{escape(str(overview_data['execution_mode']))}</strong></div>
+        <div class="stat"><span>Current phase</span><strong>{escape(str(overview_data['current_phase_name'] or 'n/a'))}</strong></div>
+        <div class="stat"><span>Last update</span><strong>{escape(str(overview_data['updated_at']))}</strong></div>
+      </div>
+      <nav class="section-nav" aria-label="Overview sections">{jump_links_html}</nav>
+    </header>
+    <section id="what-to-check-first">
+      <h2>What To Check First</h2>
+      <p id="action-filter-status" class="filter-status" role="status">Showing {escape(str(len(action_html)))} top action(s) in urgency order.</p>
+      <ol id="guided-action-list" class="guided-list">{''.join(action_html)}</ol>
+      <p id="action-filter-empty" class="guided-empty" hidden>No top actions match the active recovery radar filter.</p>
+    </section>
+    <section id="recovery-radar">
+      <h2>Recovery Radar</h2>
+      <p class="lede">{escape(str(overview_data['recovery_radar']['headline']))}</p>
+      <div class="tone-row">{radar_summary_html}</div>
+      {radar_filter_controls_html}
+      {f'<div class="cards">{"".join(recovery_radar_html)}</div>' if recovery_radar_html else '<p class="radar-empty">No recovery action groups are active right now.</p>'}
+    </section>
+    <section id="result-highlights">
+      <h2>Result Highlights</h2>
+      <div class="cards">{''.join(cards_html)}</div>
+    </section>
+    <section id="operational-readiness">
+      <h2>Operational Readiness</h2>
+      <div class="cards">{''.join(operational_cards_html)}</div>
+    </section>
+    <section id="pipeline-progress">
+      <h2>Pipeline Progress</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Phase</th>
+            <th scope="col">Status</th>
+            <th scope="col">Name</th>
+            <th scope="col">Started</th>
+            <th scope="col">Finished</th>
+            <th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>{''.join(phase_rows_html)}</tbody>
+      </table>
+    </section>
+    <section id="quick-links">
+      <h2>Quick Links</h2>
+      <ul>{''.join(quick_links_html)}</ul>
+    </section>
+    <section id="suggested-commands">
+      <h2>Suggested Commands</h2>
+      <p id="command-filter-status" class="filter-status" role="status">Showing {escape(str(len(command_html)))} command suggestion(s) in urgency order.</p>
+      <ul id="guided-command-list" class="guided-list">{''.join(command_html)}</ul>
+      <p id="command-filter-empty" class="guided-empty" hidden>No command suggestions match the active recovery radar filter.</p>
+    </section>
+  </main>
+{radar_filter_script}
+</body>
+</html>
+"""
+    return _atomic_write_text(project_root / "run_overview.html", html)
+
+
+def write_report_digest(project_root: Union[Path, str], overview_data: dict) -> Path:
+    """Write a compact `report_digest.md` for fast report-first review."""
+
+    project_root = _as_path(project_root)
+    operational_recovery = overview_data["operational_recovery_summary"]
+    recovery_radar = overview_data["recovery_radar"]
+    validation_summary = overview_data["validation_summary"]
+    lines = [
+        "# Report Digest",
+        "",
+        "## At a Glance",
+        f"- {overview_data['hero_title']}",
+        f"- Pocket summary: {overview_data['pocket_summary']['headline']}",
+        f"- Verdict summary: {overview_data['verdict_summary']['headline']}",
+        f"- Report summary: {overview_data['report_summary']['headline']}",
+        f"- Validation summary: {overview_data['validation_summary']['headline']}",
+        "",
+        "## Recovery Snapshot",
+        f"- {recovery_radar['headline']}",
+    ]
+    lines.extend(["", "### Filter Views"])
+    for filter_view in recovery_radar["filter_views"]:
+        lines.append(f"- {filter_view['label']}: {filter_view['headline']}")
+    if recovery_radar["items"]:
+        for index, item in enumerate(recovery_radar["items"], start=1):
+            command_text = item["recommended_command"] or "manual review only"
+            lines.extend(
+                [
+                    f"{index}. {item['source_label']} - {item['title']} ({item['scope_label']})",
+                    f"Action: {item['action_label']}; Priority: {item['priority_label']}; Command: `{command_text}`",
+                    f"Playbook: `{item['playbook_path']}`",
+                ]
+            )
+        if recovery_radar["summary"]["overflow_count"]:
+            lines.append(
+                f"Additional recovery groups: {recovery_radar['summary']['overflow_count']} more in `run_overview.md` or `run_overview.html`."
+            )
+    else:
+        lines.append("- No recovery action groups are active right now.")
+
+    lines.extend(
+        [
+            "",
+        "## Narrative Highlights",
+        ]
+    )
+    report_details = overview_data["report_summary"]["details"] or ["Report digest is not available yet."]
+    lines.extend(f"- {detail}" for detail in report_details)
+    lines.extend(["", "## Priority Findings"])
+    verdict_details = overview_data["verdict_summary"]["details"] or ["Verdict details are not available yet."]
+    lines.extend(f"- {detail}" for detail in verdict_details)
+    lines.extend(["", "## Operational Follow-up", f"- {operational_recovery['headline']}"])
+    operational_details = operational_recovery["details"] or ["Operational recovery follow-up is not available yet."]
+    lines.extend(f"- {detail}" for detail in operational_details)
+    lines.extend(["", "## Validation Follow-up", f"- {validation_summary['headline']}"])
+    validation_details = validation_summary["details"] or ["Validation follow-up is not available yet."]
+    lines.extend(f"- {detail}" for detail in validation_details)
+    lines.extend(["", "## Suggested Commands"])
+    lines.extend(
+        f"- `{item['command']}`: {item['label']} - {item['reason']}"
+        for item in overview_data["command_suggestions"]
+    )
+    lines.extend(
+        [
+            "",
+            "## Open Next",
+            "1. `step6_report/project_report.txt`",
+            "2. `step5_verdict/valid_sites.csv`",
+            "3. `step4_vina_postprocess/vina_pocket_table.csv`",
+            "4. `operational_recovery_playbook.md`",
+            "5. `step7_validate/validation_recovery_playbook.md`",
+            "6. `step7_validate/validation_summary.txt`",
+            "",
+        ]
+    )
+    return _atomic_write_text(project_root / "report_digest.md", "\n".join(lines))
+
+
+def update_run_overview(
+    project_root: Union[Path, str],
+    *,
+    current_run_manifest: Optional[dict] = None,
+    run_status: Optional[dict] = None,
+) -> Tuple[Path, Path]:
+    """Refresh Markdown and HTML overview files for the project."""
+
+    project_root = _as_path(project_root)
+    operational_recovery_plan = build_operational_recovery_plan(
+        project_root,
+        current_manifest=current_run_manifest,
+    )
+    validation_recovery_plan = _load_validation_recovery_plan(project_root)
+    write_operational_recovery_outputs(project_root, operational_recovery_plan)
+    overview_data = build_run_overview_data(
+        project_root,
+        current_run_manifest=current_run_manifest,
+        run_status=run_status,
+        operational_recovery_plan=operational_recovery_plan,
+        validation_recovery_plan=validation_recovery_plan,
+        expected_paths=[
+            "report_digest.md",
+            "operational_recovery_playbook.md",
+            "operational_recovery_plan.json",
+        ],
+    )
+    markdown_path = write_run_overview_markdown(project_root, overview_data)
+    html_path = write_run_overview_html(project_root, overview_data)
+    write_report_digest(project_root, overview_data)
+    return markdown_path, html_path
 
 
 def write_step_index(project_root: Union[Path, str], index_data: dict) -> Path:
@@ -1651,10 +4816,20 @@ def update_step_index(
         )
     if (project_root / "current_run_manifest.json").exists():
         note_lines.append("Current run manifest: `current_run_manifest.json`.")
+    note_lines.append("User-facing overview: `run_overview.md` and `run_overview.html`.")
+    if (project_root / "report_digest.md").exists():
+        note_lines.append("Condensed report digest: `report_digest.md`.")
+    if (project_root / "operational_recovery_playbook.md").exists():
+        note_lines.append("Operational recovery playbook: `operational_recovery_playbook.md`.")
     validation_path = project_root / STEP_SPECS[7].folder_name / "validation_status.json"
     if validation_path.exists():
         note_lines.append(
             f"Validation summary available at `{STEP_SPECS[7].folder_name}/validation_status.json`."
+        )
+    recovery_playbook_path = project_root / STEP_SPECS[7].folder_name / "validation_recovery_playbook.md"
+    if recovery_playbook_path.exists():
+        note_lines.append(
+            f"Validation recovery playbook available at `{STEP_SPECS[7].folder_name}/validation_recovery_playbook.md`."
         )
 
     index_data = {
@@ -1707,6 +4882,7 @@ def refresh_root_step_views(
     )
     manifest_path = write_current_run_manifest(project_root, manifest)
     index_path = update_step_index(project_root, current_run_manifest=manifest, notes=notes)
+    update_run_overview(project_root, current_run_manifest=manifest)
     return manifest_path, index_path
 
 
@@ -1726,10 +4902,14 @@ __all__ = [
     "refresh_root_step_views",
     "step_output_view_enabled",
     "resolve_project_root",
+    "update_run_overview",
     "update_step_index",
     "write_validation_outputs",
     "write_artifact_index",
     "write_current_run_manifest",
+    "write_run_overview_html",
+    "write_run_overview_markdown",
+    "write_run_status",
     "write_step_index",
     "write_step_manifest",
     "write_step_summary",

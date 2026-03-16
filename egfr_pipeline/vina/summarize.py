@@ -46,6 +46,7 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[
         centroids_z = [float(item["centroid_z"]) for item in group]
         affinities = [float(item["affinity"]) for item in group if item["affinity"] not in ("", None)]
         ligands = sorted({item["ligand_id"] for item in group})
+        ligand_counts: Counter = Counter(item["ligand_id"] for item in group)
         residue_counter: Counter = Counter()
         for item in group:
             residue_counter.update(split_contact_residues(item.get("contact_residues", "")))
@@ -72,6 +73,15 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[
         else:
             aff_iqr = 0.0
 
+        dominant_ligand_fraction = 0.0
+        ligand_pose_entropy = 0.0
+        if ligand_counts:
+            dominant_ligand_fraction = max(ligand_counts.values()) / len(group)
+            for count in ligand_counts.values():
+                fraction = count / len(group)
+                if fraction > 0:
+                    ligand_pose_entropy -= fraction * math.log(fraction)
+
         pocket_rows.append({
             "receptor_id": receptor_id,
             "pocket_id": pocket_id,
@@ -87,6 +97,8 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[
             "centroid_spread_A": round(spread, 4),
             "affinity_std": aff_std,
             "affinity_iqr": aff_iqr,
+            "dominant_ligand_fraction": round(dominant_ligand_fraction, 4),
+            "ligand_pose_entropy": round(ligand_pose_entropy, 4),
         })
 
         # Build full per-residue occupancy rows for this pocket
@@ -175,6 +187,8 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
             "centroid_spread_A",
             "affinity_std",
             "affinity_iqr",
+            "dominant_ligand_fraction",
+            "ligand_pose_entropy",
         ],
     )
     drug_csv = write_csv(

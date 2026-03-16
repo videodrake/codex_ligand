@@ -11,6 +11,7 @@ import run_production
 from egfr_pipeline.output_steps import (
     STEP_SPECS,
     build_current_run_manifest,
+    build_run_overview_data,
     copy_artifact_if_exists,
     ensure_step_dir,
     record_step1_outputs,
@@ -22,6 +23,8 @@ from egfr_pipeline.output_steps import (
     record_step7_outputs,
     refresh_root_step_views,
     step_output_view_enabled,
+    update_run_overview,
+    write_run_status,
     write_artifact_index,
     write_step_manifest,
     write_step_summary,
@@ -77,6 +80,7 @@ def _canonical_artifact_contents() -> Dict[str, str]:
         "vina_drug_pocket_map.csv": "receptor_id,ligand_id,dominant_pocket_id\n3GT8_raw,173940,3GT8_raw_PKT01\n",
         "vina_pocket_comparison.csv": "receptor_a,pocket_a,receptor_b,pocket_b\n3GT8_raw,3GT8_raw_PKT01,EGFR_160-185,EGFR_160-185_PKT01\n",
         "vina_pocket_bootstrap.csv": "receptor_id,pocket_id,pocket_exists_frac\n3GT8_raw,3GT8_raw_PKT01,0.9\n",
+        "vina_postprocess_coverage.csv": "receptor_id,ligand_id,status\n3GT8_raw,173940,parsed\n",
         "valid_sites.csv": "receptor_id,pocket_id,verdict\n3GT8_raw,3GT8_raw_PKT01,STRONG\n",
         "cross_method_agreement.csv": "receptor_id,pocket_id,agreement_level\n3GT8_raw,3GT8_raw_PKT01,HIGH\n",
         "project_report.txt": "Step 6 narrative report.\n",
@@ -144,6 +148,14 @@ def _seed_step3_outputs(
         base / "ppi_pyrosetta_summary.csv",
         "receptor_id,n_final_models\n3GT8_raw,20\n",
     )
+    _write_text(
+        base / "ppi_pyrosetta_residue_long.csv",
+        "model_id,receptor_id,residue_id,chain\nRank01,3GT8_raw,ALA699,A\n",
+    )
+    _write_text(
+        base / "ppi_pyrosetta_model_table.csv",
+        "model_id,receptor_id,dG_separated\nRank01,3GT8_raw,-12.5\n",
+    )
     if include_phase1_report:
         _write_text(
             repo_root / "output" / "phase1_ppi" / "phase1_interface_report.md",
@@ -153,6 +165,60 @@ def _seed_step3_outputs(
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _sample_run_status(project_root: Path) -> dict:
+    return {
+        "run_id": "step-view-project-20260316T010203Z",
+        "project_name": project_root.name,
+        "project_root": project_root.as_posix(),
+        "source_config": "config.json",
+        "execution_mode": "only:5",
+        "overall_status": "completed",
+        "started_at": "2026-03-16T01:02:03Z",
+        "completed_at": "2026-03-16T01:03:00Z",
+        "updated_at": "2026-03-16T01:03:00Z",
+        "current_phase_number": None,
+        "current_phase_name": "",
+        "last_error": "",
+        "phase_states": [
+            {
+                "phase_number": 1,
+                "phase_name": "Phase 1",
+                "status": "skipped",
+                "started_at": "",
+                "completed_at": "2026-03-16T01:03:00Z",
+                "duration_seconds": None,
+                "skip_reason": "Phase was not executed in this run",
+                "last_error": "",
+            },
+            {
+                "phase_number": 5,
+                "phase_name": "Phase 5",
+                "status": "completed",
+                "started_at": "2026-03-16T01:02:03Z",
+                "completed_at": "2026-03-16T01:02:20Z",
+                "duration_seconds": 17,
+                "skip_reason": "",
+                "last_error": "",
+            },
+            {
+                "phase_number": 7,
+                "phase_name": "Phase 7",
+                "status": "completed",
+                "started_at": "2026-03-16T01:02:21Z",
+                "completed_at": "2026-03-16T01:03:00Z",
+                "duration_seconds": 39,
+                "skip_reason": "",
+                "last_error": "",
+            },
+        ],
+        "summary": {
+            "resolved_phases": 3,
+            "total_phases": 3,
+            "progress_percent": 100,
+        },
+    }
 
 
 def _phase5_only_writer(project_root: Path, call_log: List[str]) -> object:
@@ -352,12 +418,16 @@ def test_record_step3_outputs_copies_root_level_ppi_postprocess_artifacts(tmp_pa
     assert step3_dir == project_root / "step3_ppi_postprocess"
     assert (step3_dir / "ppi_pyrosetta_residues.csv").exists()
     assert (step3_dir / "ppi_pyrosetta_summary.csv").exists()
+    assert (step3_dir / "ppi_pyrosetta_residue_long.csv").exists()
+    assert (step3_dir / "ppi_pyrosetta_model_table.csv").exists()
     assert (step3_dir / "phase1_interface_report.md").exists()
 
     manifest = _read_json(step3_dir / "step_manifest.json")
     assert manifest["status"] == "complete"
     assert manifest["missing_files"] == []
     assert "phase1_interface_report.md" in manifest["artifact_paths"]
+    assert "ppi_pyrosetta_residue_long.csv" in manifest["artifact_paths"]
+    assert "ppi_pyrosetta_model_table.csv" in manifest["artifact_paths"]
     assert manifest["source_artifacts"][0]["canonical_path"] == "output/step_view_project/ppi_pyrosetta_residues.csv"
 
     run_manifest = _read_json(manifest_path)
@@ -380,6 +450,8 @@ def test_record_step3_outputs_falls_back_to_ppi_subdir_and_marks_missing_optiona
     )
     assert "Optional Phase 1 interface report is not available." in manifest["warnings"]
     assert (step3_dir / "ppi_pyrosetta_residues.csv").exists()
+    assert (step3_dir / "ppi_pyrosetta_residue_long.csv").exists()
+    assert (step3_dir / "ppi_pyrosetta_model_table.csv").exists()
     assert not (step3_dir / "phase1_interface_report.md").exists()
 
 
@@ -431,6 +503,8 @@ def test_step_collectors_refresh_root_views_without_changing_canonical_outputs(t
     assert "## Where To Read First" in index_text
     assert "## Raw Debug Paths" in index_text
     assert "## Notes and Warnings" in index_text
+    assert (project_root / "run_overview.md").exists()
+    assert (project_root / "run_overview.html").exists()
 
     for name, original_text in original_root.items():
         assert (project_root / name).read_text(encoding="utf-8") == original_text
@@ -486,6 +560,250 @@ def test_build_current_run_manifest_reports_step_statuses(tmp_path: Path) -> Non
     assert manifest["pyrosetta_raw_run_paths"] == ["/ppi/raw/TH1"]
 
 
+def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_status(
+    tmp_path: Path,
+) -> None:
+    config_path, project_root = _make_config(tmp_path)
+    _seed_project_root(project_root)
+    _seed_step1_pose_tree(project_root)
+    th1_dir = tmp_path / "ppi_raw" / "TH1_run"
+    _seed_step2_run_dir(th1_dir, include_ranking=True, include_metadata=True)
+    _seed_step3_outputs(project_root, tmp_path, use_fallback_ppi_dir=False, include_phase1_report=True)
+    record_step1_outputs(config_path, repo_root=tmp_path)
+    record_step2_outputs(
+        config_path,
+        repo_root=tmp_path,
+        ppi_targets=[{"name": "TH1", "docking_dir": th1_dir}],
+    )
+    record_step3_outputs(config_path, repo_root=tmp_path)
+    record_step4_outputs(config_path, repo_root=tmp_path)
+    record_step5_outputs(config_path, repo_root=tmp_path)
+    record_step6_outputs(config_path, repo_root=tmp_path)
+    validation_result = ValidationResult()
+    validation_result.warn("project_report.txt exists but is empty")
+    validation_result.fail("Missing required artifact: vina_drug_pocket_map.csv")
+    record_step7_outputs(
+        config_path,
+        repo_root=tmp_path,
+        validation_result=validation_result,
+    )
+    manifest = build_current_run_manifest(
+        config_path,
+        repo_root=tmp_path,
+        execution_mode="only:5",
+        ppi_config_paths=["config/ppi_prod_TH1.ini"],
+    )
+    write_run_status(project_root, _sample_run_status(project_root))
+
+    markdown_path, html_path = update_run_overview(
+        project_root,
+        current_run_manifest=manifest,
+    )
+    overview_data = build_run_overview_data(project_root, current_run_manifest=manifest)
+
+    assert markdown_path == project_root / "run_overview.md"
+    assert html_path == project_root / "run_overview.html"
+    assert (project_root / "report_digest.md").exists()
+    assert (project_root / "operational_recovery_playbook.md").exists()
+    assert (project_root / "operational_recovery_plan.json").exists()
+    assert (project_root / "step7_validate" / "validation_recovery_playbook.md").exists()
+    markdown = markdown_path.read_text(encoding="utf-8")
+    html = html_path.read_text(encoding="utf-8")
+    report_digest = (project_root / "report_digest.md").read_text(encoding="utf-8")
+    assert "## At a Glance" in markdown
+    assert "## Operational Readiness" in markdown
+    assert "Overall execution status: `completed`" in markdown
+    assert "Pocket summary:" in markdown
+    assert "Verdict summary:" in markdown
+    assert "Report summary:" in markdown
+    assert "Validation summary:" in markdown
+    assert "## Suggested Commands" in markdown
+    assert "## Recovery Radar" in markdown
+    assert "### Filter Views" in markdown
+    assert "All Groups: 2 group(s), 1 immediate, 1 high, 1 manual review." in markdown
+    assert "Operational: No groups currently match this filter." in markdown
+    assert "Radar 1: Validation - Missing artifact" in markdown
+    assert "python run_production.py --only 7" in markdown
+    assert "python run_production.py --from 4" in markdown
+    assert "validation_recovery_playbook.md" in markdown
+    assert "Manual review findings: 1." in markdown
+    assert "Recovery checklist groups: 2." in markdown
+    assert "<title>Run Overview" in html
+    assert "What To Check First" in html
+    assert "Recovery Radar" in html
+    assert "Validation 2" in html
+    assert 'id="guided-action-list"' in html
+    assert 'id="action-filter-status"' in html
+    assert 'id="guided-command-list"' in html
+    assert 'id="command-filter-status"' in html
+    assert 'href="#recovery-radar"' in html
+    assert 'id="recovery-radar"' in html
+    assert 'id="suggested-commands"' in html
+    assert 'data-radar-filter="validation"' in html
+    assert 'data-radar-filter="manual"' in html
+    assert 'aria-label="Recovery radar priority filters"' in html
+    assert 'data-radar-priority-filter="immediate"' in html
+    assert 'data-radar-priority-filter="high"' in html
+    assert 'id="radar-filter-status"' in html
+    assert 'data-source-kind="validation"' in html
+    assert 'data-priority="immediate"' in html
+    assert 'data-priority-rank="0"' in html
+    assert "Pipeline Progress" in html
+    assert "Quick Links" in html
+    assert "Operational Readiness" in html
+    assert "Suggested Commands" in html
+    assert "matchesPriority" in html
+    assert 'const state = { scope: "all", priority: "all" };' in html
+    assert 'syncCollection(actionItems, actionList, actionEmpty, actionStatus, "top action(s)")' in html
+    assert 'syncCollection(commandItems, commandList, commandEmpty, commandStatus, "command suggestion(s)")' in html
+    assert "Showing 2 top action(s) in urgency order." in html
+    assert "Validation: Missing artifact" in html
+    assert "## Operational Follow-up" in report_digest
+    assert "## Validation Follow-up" in report_digest
+    assert "## Recovery Snapshot" in report_digest
+    assert "### Filter Views" in report_digest
+    assert "Manual Review: 1 group(s), 1 high." in report_digest
+    assert "Validation - Missing artifact" in report_digest
+    assert "python run_production.py --from 4" in report_digest
+    assert "operational_recovery_playbook.md" in report_digest
+    assert "step7_validate/validation_recovery_playbook.md" in report_digest
+    assert overview_data["progress_percent"] == 100
+    assert overview_data["validation_summary"]["status"] == "failed"
+    assert overview_data["validation_summary"]["recommended_command"] == "python run_production.py --from 4"
+    assert overview_data["validation_summary"]["manual_review_count"] == 1
+    assert overview_data["validation_summary"]["action_group_count"] == 2
+    assert overview_data["operational_recovery_summary"]["issue_count"] == 0
+    assert overview_data["recovery_radar"]["summary"]["total_groups"] == 2
+    assert overview_data["recovery_radar"]["summary"]["validation_groups"] == 2
+    assert overview_data["recovery_radar"]["summary"]["priority_counts"]["immediate"] == 1
+    filter_views = {item["filter_key"]: item for item in overview_data["recovery_radar"]["filter_views"]}
+    assert filter_views["all"]["group_count"] == 2
+    assert filter_views["validation"]["group_count"] == 2
+    assert filter_views["operational"]["group_count"] == 0
+    assert filter_views["manual"]["group_count"] == 1
+    assert filter_views["manual"]["priority_counts"]["high"] == 1
+    assert overview_data["action_focus"][0]["source_kind"] == "validation"
+    assert overview_data["action_focus"][0]["priority_label"] == "immediate"
+    annotated_commands = {item["command"]: item for item in overview_data["annotated_command_suggestions"]}
+    assert annotated_commands["python run_production.py --from 4"]["source_kind"] == "validation"
+    assert annotated_commands["python run_production.py --from 4"]["priority_label"] == "immediate"
+    assert annotated_commands["python run_production.py --only 7"]["priority_label"] == "high"
+    assert overview_data["report_summary"]["available"] is True
+    assert overview_data["operational_summaries"][0]["available"] is True
+    assert overview_data["operational_summaries"][1]["available"] is True
+    assert overview_data["operational_summaries"][2]["available"] is True
+    assert overview_data["operational_summaries"][3]["available"] is True
+
+
+def test_build_run_overview_data_suggests_resume_command_for_failed_run(tmp_path: Path) -> None:
+    config_path, project_root = _make_config(tmp_path)
+    _seed_project_root(project_root)
+    failed_status = _sample_run_status(project_root)
+    failed_status["overall_status"] = "failed"
+    failed_status["current_phase_number"] = 4
+    failed_status["current_phase_name"] = "Phase 4: Vina Postprocess"
+    failed_status["last_error"] = "parse step crashed"
+    failed_status["phase_states"][1]["status"] = "failed"
+    failed_status["phase_states"][1]["last_error"] = "parse step crashed"
+    write_run_status(project_root, failed_status)
+
+    overview_data = build_run_overview_data(project_root)
+
+    commands = [item["command"] for item in overview_data["command_suggestions"]]
+    assert "python run_production.py --from 4" in commands
+
+
+def test_update_run_overview_writes_operational_recovery_playbook_for_upstream_issues(
+    tmp_path: Path,
+) -> None:
+    config_path, project_root = _make_config(tmp_path)
+    _seed_project_root(project_root)
+    _seed_step1_pose_tree(project_root, missing_pairs=(("EGFR_170-200", "VAX-C12_0"),))
+    th1_dir = tmp_path / "ppi_raw" / "TH1_run"
+    _seed_step2_run_dir(th1_dir, include_ranking=False, include_metadata=False)
+    _seed_step3_outputs(project_root, tmp_path, use_fallback_ppi_dir=True, include_phase1_report=False)
+    record_step1_outputs(config_path, repo_root=tmp_path)
+    record_step2_outputs(
+        config_path,
+        repo_root=tmp_path,
+        ppi_targets=[{"name": "TH1", "docking_dir": th1_dir}],
+    )
+    record_step3_outputs(config_path, repo_root=tmp_path)
+    manifest = build_current_run_manifest(
+        config_path,
+        repo_root=tmp_path,
+        execution_mode="from:1",
+        ppi_config_paths=["config/ppi_prod_TH1.ini"],
+    )
+
+    update_run_overview(project_root, current_run_manifest=manifest)
+    overview_data = build_run_overview_data(project_root, current_run_manifest=manifest)
+
+    recovery_plan = _read_json(project_root / "operational_recovery_plan.json")
+    assert recovery_plan["recommended_step_number"] == 1
+    assert recovery_plan["recommended_command"] == "python run_production.py --from 1"
+    assert recovery_plan["summary"]["action_group_count"] == 5
+    assert recovery_plan["triage"]["rerun_upstream"] == 2
+    assert recovery_plan["triage"]["manual_then_rerun"] == 1
+    assert recovery_plan["triage"]["manual_review"] == 2
+    assert recovery_plan["triage"]["refresh_step_view"] == 0
+
+    playbook_text = (project_root / "operational_recovery_playbook.md").read_text(encoding="utf-8")
+    assert "# Operational Recovery Playbook" in playbook_text
+    assert "## Action Groups" in playbook_text
+    assert "python run_production.py --from 1" in playbook_text
+    assert "Using fallback canonical source" in playbook_text
+    assert "Optional Phase 1 interface report is not available." in playbook_text
+
+    markdown = (project_root / "run_overview.md").read_text(encoding="utf-8")
+    html = (project_root / "run_overview.html").read_text(encoding="utf-8")
+    report_digest = (project_root / "report_digest.md").read_text(encoding="utf-8")
+    assert "## Recovery Radar" in markdown
+    assert "### Filter Views" in markdown
+    assert "Operational: 5 group(s), 2 immediate, 2 high, 1 medium, 3 manual review." in markdown
+    assert "Manual Review: 3 group(s), 2 high, 1 medium." in markdown
+    assert "Radar 1: Operational - Missing raw pose coverage" in markdown
+    assert "Recovery Radar" in html
+    assert "Operational 5" in html
+    assert "python run_production.py --from 1" in html
+    assert 'id="guided-action-list"' in html
+    assert 'id="guided-command-list"' in html
+    assert 'data-radar-filter="operational"' in html
+    assert 'data-radar-priority-filter="medium"' in html
+    assert 'data-source-kind="operational"' in html
+    assert 'data-manual-review="yes"' in html
+    assert "matchesScope" in html
+    assert "matchesPriority" in html
+    assert "all scopes and all priorities" in html
+    assert "Showing 5 top action(s) in urgency order." in html
+    assert "Operational: Missing raw pose coverage" in html
+    assert "## Recovery Snapshot" in report_digest
+    assert "### Filter Views" in report_digest
+    assert "All Groups: 5 group(s), 2 immediate, 2 high, 1 medium, 3 manual review." in report_digest
+    assert "Operational - Missing raw pose coverage" in report_digest
+    assert "python run_production.py --from 1" in report_digest
+
+    commands = [item["command"] for item in overview_data["command_suggestions"]]
+    assert "python run_production.py --from 1" in commands
+    assert overview_data["operational_recovery_summary"]["issue_count"] == 8
+    assert overview_data["operational_recovery_summary"]["action_group_count"] == 5
+    assert overview_data["recovery_radar"]["summary"]["total_groups"] == 5
+    assert overview_data["recovery_radar"]["summary"]["operational_groups"] == 5
+    assert overview_data["recovery_radar"]["summary"]["priority_counts"]["immediate"] == 2
+    assert overview_data["recovery_radar"]["summary"]["priority_counts"]["high"] == 2
+    assert overview_data["recovery_radar"]["summary"]["priority_counts"]["medium"] == 1
+    filter_views = {item["filter_key"]: item for item in overview_data["recovery_radar"]["filter_views"]}
+    assert filter_views["validation"]["group_count"] == 0
+    assert filter_views["operational"]["group_count"] == 5
+    assert filter_views["operational"]["manual_review_groups"] == 3
+    assert filter_views["manual"]["group_count"] == 3
+    assert overview_data["action_focus"][0]["source_kind"] == "operational"
+    assert overview_data["action_focus"][0]["priority_label"] == "immediate"
+    assert overview_data["annotated_command_suggestions"][0]["source_kind"] == "operational"
+    assert overview_data["annotated_command_suggestions"][0]["priority_label"] == "immediate"
+    assert overview_data["next_actions"][0].startswith("Open `operational_recovery_playbook.md`")
+
+
 def test_record_step7_outputs_persists_validation_result_files(tmp_path: Path) -> None:
     config_path, project_root = _make_config(tmp_path)
     _seed_project_root(project_root)
@@ -510,6 +828,8 @@ def test_record_step7_outputs_persists_validation_result_files(tmp_path: Path) -
     assert step7_dir == project_root / "step7_validate"
     assert (step7_dir / "validation_status.json").exists()
     assert (step7_dir / "validation_summary.txt").exists()
+    assert (step7_dir / "validation_recovery_plan.json").exists()
+    assert (step7_dir / "validation_recovery_playbook.md").exists()
 
     status = _read_json(step7_dir / "validation_status.json")
     assert status["status"] == "failed"
@@ -519,6 +839,10 @@ def test_record_step7_outputs_persists_validation_result_files(tmp_path: Path) -
         "Schema mismatch: valid_sites.csv missing required column verdict"
     ]
     assert status["warnings"] == ["project_report.txt exists but is empty"]
+    assert status["failure_messages"] == [
+        "Missing required artifact: vina_drug_pocket_map.csv",
+        "Schema mismatch: valid_sites.csv missing required column verdict",
+    ]
     assert status["validated_steps"] == [1, 2, 3, 4, 5, 6, 7]
     assert status["pass_count"] == 1
     assert status["warning_count"] == 1
@@ -531,12 +855,39 @@ def test_record_step7_outputs_persists_validation_result_files(tmp_path: Path) -
     assert "Warning summary:" in summary_text
     assert "Validation failures:" in summary_text
     assert "Next action:" in summary_text
+    assert "Safest repair command: python run_production.py --from 4" in summary_text
+    assert "validation_recovery_playbook.md" in summary_text
+
+    recovery_plan = _read_json(step7_dir / "validation_recovery_plan.json")
+    assert recovery_plan["recommended_phase_number"] == 4
+    assert recovery_plan["recommended_command"] == "python run_production.py --from 4"
+    assert recovery_plan["validation_only_command"] == "python run_production.py --only 7"
+    assert recovery_plan["summary"]["issue_count"] == 3
+    assert recovery_plan["summary"]["manual_review_count"] == 1
+    assert recovery_plan["summary"]["action_group_count"] == 3
+    assert recovery_plan["triage"]["rerun_then_validate"] == 2
+    assert recovery_plan["triage"]["manual_then_rerun"] == 1
+    assert recovery_plan["triage"]["manual_then_validate"] == 0
+    assert recovery_plan["issues"][0]["phase_number"] == 4
+    assert recovery_plan["issues"][1]["phase_number"] == 5
+    assert recovery_plan["issues"][2]["phase_number"] == 6
+
+    playbook_text = (step7_dir / "validation_recovery_playbook.md").read_text(encoding="utf-8")
+    assert "# Validation Recovery Playbook" in playbook_text
+    assert "## Triage Summary" in playbook_text
+    assert "## Action Groups" in playbook_text
+    assert "Safest repair command: `python run_production.py --from 4`" in playbook_text
+    assert "Action Group 1" in playbook_text
+    assert "### Finding 1" in playbook_text
+    assert "### Finding 3" in playbook_text
 
     manifest = _read_json(step7_dir / "step_manifest.json")
     assert manifest["status"] == "failed"
     assert manifest["artifact_paths"] == [
         "validation_status.json",
         "validation_summary.txt",
+        "validation_recovery_plan.json",
+        "validation_recovery_playbook.md",
     ]
 
     run_manifest = _read_json(manifest_path)
@@ -568,6 +919,56 @@ def test_record_step7_outputs_persists_validation_error_state(tmp_path: Path) ->
     summary_text = (step7_dir / "validation_summary.txt").read_text(encoding="utf-8")
     assert "Overall status: error" in summary_text
     assert "Fix the validation exception and rerun Phase 7." in summary_text
+    assert "Validation-only rerun: python run_production.py --only 7." in summary_text
+
+    recovery_plan = _read_json(step7_dir / "validation_recovery_plan.json")
+    assert recovery_plan["recommended_phase_number"] == 7
+    assert recovery_plan["recommended_command"] == "python run_production.py --only 7"
+
+    playbook_text = (step7_dir / "validation_recovery_playbook.md").read_text(encoding="utf-8")
+    assert "validation crashed" in playbook_text
+    assert "Validation-only rerun: `python run_production.py --only 7`" in playbook_text
+    assert "Validation runtime error" in playbook_text
+
+
+def test_record_step7_outputs_groups_manual_review_findings_into_action_groups(tmp_path: Path) -> None:
+    config_path, project_root = _make_config(tmp_path)
+    _seed_project_root(project_root)
+
+    validation_result = ValidationResult()
+    validation_result.fail(
+        "3GT8_raw vs EGFR_160-185: NUMBERING OFFSET DETECTED! offset=+1 (20 residues match with shift)."
+    )
+    validation_result.fail("Module missing: egfr_pipeline/verdict.py")
+    validation_result.fail("vina_pose_table.csv: unexpected receptor IDs: {'BAD_REC'}")
+
+    step7_dir = record_step7_outputs(
+        config_path,
+        repo_root=tmp_path,
+        validation_result=validation_result,
+    )
+
+    recovery_plan = _read_json(step7_dir / "validation_recovery_plan.json")
+    assert recovery_plan["manual_review_required"] is True
+    assert recovery_plan["recommended_phase_number"] == 4
+    assert recovery_plan["recommended_command"] == "python run_production.py --from 4"
+    assert recovery_plan["summary"]["manual_review_count"] == 3
+    assert recovery_plan["summary"]["action_group_count"] == 3
+    assert recovery_plan["triage"]["manual_then_rerun"] == 1
+    assert recovery_plan["triage"]["manual_then_validate"] == 2
+
+    categories = {group["category"]: group for group in recovery_plan["action_groups"]}
+    assert categories["id_consistency"]["action_type"] == "manual_then_rerun"
+    assert categories["id_consistency"]["phase_number"] == 4
+    assert categories["handoff"]["action_type"] == "manual_then_validate"
+    assert categories["residue_consistency"]["action_type"] == "manual_then_validate"
+
+    playbook_text = (step7_dir / "validation_recovery_playbook.md").read_text(encoding="utf-8")
+    assert "Manual review first, then rerun upstream phase" in playbook_text
+    assert "Manual review first, then rerun validation" in playbook_text
+    assert "Inspect receptor PDB numbering" in playbook_text
+    assert "Restore the missing repository file" in playbook_text
+    assert "Compare receptor and ligand IDs in `vina_pose_table.csv` against the project config." in playbook_text
 
 
 def test_step_output_view_enabled_honors_config_and_cli_override() -> None:
@@ -607,5 +1008,10 @@ def test_disabled_step_layer_preserves_canonical_outputs_without_creating_step_v
     assert (project_root / "cross_method_agreement.csv").exists()
     assert not (project_root / "current_run_manifest.json").exists()
     assert not (project_root / "step_index.md").exists()
+    assert not (project_root / "run_status.json").exists()
+    assert not (project_root / "run_overview.md").exists()
+    assert not (project_root / "run_overview.html").exists()
+    assert not (project_root / "operational_recovery_playbook.md").exists()
+    assert not (project_root / "operational_recovery_plan.json").exists()
     for spec in STEP_SPECS.values():
         assert not (project_root / spec.folder_name).exists()

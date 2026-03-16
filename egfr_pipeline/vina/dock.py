@@ -18,6 +18,7 @@ Usage:
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import glob
+import hashlib
 import json
 import os
 import subprocess
@@ -56,6 +57,10 @@ REGION_PRESETS = {
         "description": "C-lobe pocket (catalytic loop 808-810 + A-loop PRO848 + AP-2 helix 987-991)",
     },
 }
+
+_VINA_CONSTRUCTOR_FALLBACK_WARNED = False
+_VINA_WRITE_POSES_FALLBACK_WARNED = False
+_VINA_ENERGIES_FALLBACK_WARNED = False
 
 
 # ============================================================
@@ -167,18 +172,20 @@ def ensure_project_config_inputs_ready(config: dict) -> None:
     """Prepare missing project-config PDBQT inputs from configured source files."""
     for receptor in config.get("receptors", []):
         pdbqt_path = Path(receptor["pdbqt"])
-        if pdbqt_path.exists():
+        source_path = _resolve_project_source_path(receptor, "receptor")
+
+        if pdbqt_path.exists() and (source_path is None or not prepared_output_is_stale(source_path, pdbqt_path)):
             continue
 
-        source_path = _resolve_project_source_path(receptor, "receptor")
         if source_path is None:
             raise FileNotFoundError(
                 f"Receptor pdbqt file not found and no receptor source file is available: {pdbqt_path}"
             )
 
         pdbqt_path.parent.mkdir(parents=True, exist_ok=True)
+        action = "Rebuilding stale receptor PDBQT" if pdbqt_path.exists() else "Preparing receptor PDBQT"
         print(
-            f"[Config] Preparing receptor PDBQT for {receptor.get('id')}: "
+            f"[Config] {action} for {receptor.get('id')}: "
             f"{source_path} -> {pdbqt_path}"
         )
         if not prepare_receptor(source_path, pdbqt_path):
@@ -188,18 +195,20 @@ def ensure_project_config_inputs_ready(config: dict) -> None:
 
     for ligand in config.get("ligands", []):
         pdbqt_path = Path(ligand["pdbqt"])
-        if pdbqt_path.exists():
+        source_path = _resolve_project_source_path(ligand, "ligand")
+
+        if pdbqt_path.exists() and (source_path is None or not prepared_output_is_stale(source_path, pdbqt_path)):
             continue
 
-        source_path = _resolve_project_source_path(ligand, "ligand")
         if source_path is None:
             raise FileNotFoundError(
                 f"Ligand pdbqt file not found and no ligand source file is available: {pdbqt_path}"
             )
 
         pdbqt_path.parent.mkdir(parents=True, exist_ok=True)
+        action = "Rebuilding stale ligand PDBQT" if pdbqt_path.exists() else "Preparing ligand PDBQT"
         print(
-            f"[Config] Preparing ligand PDBQT for {ligand.get('id')}: "
+            f"[Config] {action} for {ligand.get('id')}: "
             f"{source_path} -> {pdbqt_path}"
         )
         if not prepare_ligand(source_path, pdbqt_path):
@@ -272,8 +281,27 @@ def apply_config_to_args(args, config: dict):
         "exhaustiveness", vina_cfg.get("exhaustiveness", args.exhaustiveness)
     )
     args.n_poses = config.get("n_poses", vina_cfg.get("n_poses", args.n_poses))
+    args.energy_range = float(
+        config.get(
+            "energy_range",
+            vina_cfg.get("energy_range", getattr(args, "energy_range", 3.0)),
+        )
+    )
     args.padding = config.get("padding", vina_cfg.get("padding", args.padding))
     args.min_box = config.get("min_box", vina_cfg.get("min_box", args.min_box))
+    cpu_value = config.get("cpu", vina_cfg.get("cpu", getattr(args, "cpu", 0)))
+    args.cpu = 0 if cpu_value in (None, "") else int(cpu_value)
+    args.seed = normalize_optional_int(
+        config.get("seed", vina_cfg.get("seed", getattr(args, "seed", None)))
+    )
+    parallel_value = config.get(
+        "parallel_receptors",
+        vina_cfg.get(
+            "parallel_receptors",
+            getattr(args, "parallel_receptors", 1),
+        ),
+    )
+    args.parallel_receptors = int(parallel_value or 1)
     args.max_workers = int(config.get("max_workers", getattr(args, "max_workers", 16)))
     if getattr(args, "smiles", None) is None:
         args.smiles = config.get("smiles")
@@ -307,6 +335,68 @@ def resolve_receptor_pdb_override(args, receptor_path: Path) -> Optional[Path]:
     return Path(pdb_path) if pdb_path else None
 
 
+def normalize_optional_int(value: Any) -> Optional[int]:
+    if value in (None, "", "auto"):
+        return None
+    return int(value)
+
+
+def derive_docking_seed(
+    base_seed: Optional[int],
+    receptor_id: str,
+    ligand_id: str,
+) -> Optional[int]:
+    if base_seed is None:
+        return None
+
+    digest = hashlib.sha256(
+        f"{base_seed}:{receptor_id}:{ligand_id}".encode("utf-8")
+    ).hexdigest()
+    return (int(digest[:8], 16) % 2147483646) + 1
+
+
+def resolve_ligand_worker_count(
+    max_workers: int,
+    n_jobs: int,
+    *,
+    cpu_per_job: int = 0,
+    available_cores: Optional[int] = None,
+) -> int:
+    """Cap ligand-level worker count to avoid oversubscribing visible cores."""
+    worker_count = min(int(max_workers), max(int(n_jobs), 1))
+    visible_cores = os.cpu_count() if available_cores is None else available_cores
+
+    if cpu_per_job <= 0:
+        if worker_count > 1:
+            print(
+                "[WARN] cpu=0 allows each Vina ligand job to use all visible cores; "
+                "forcing ligand-level parallelism to 1."
+            )
+        return 1
+
+    if visible_cores and worker_count * cpu_per_job > visible_cores:
+        capped = max(1, visible_cores // max(cpu_per_job, 1))
+        if capped < worker_count:
+            print(
+                f"[WARN] Requested ligand CPU budget exceeds visible cores: "
+                f"{worker_count * cpu_per_job} > {visible_cores}. "
+                f"Capping ligand workers {worker_count} -> {capped}."
+            )
+            worker_count = capped
+
+    return max(1, worker_count)
+
+
+def prepared_output_is_stale(source_path: Path, output_path: Path) -> bool:
+    if not output_path.exists():
+        return True
+
+    try:
+        return source_path.exists() and source_path.stat().st_mtime > output_path.stat().st_mtime
+    except OSError:
+        return True
+
+
 def build_receptor_output_dir(args, receptor_id: str) -> Optional[Path]:
     output_root = getattr(args, "output_root", None)
     if not output_root:
@@ -323,10 +413,14 @@ def append_job_status(out_dir: Path, record: Dict[str, Any]) -> None:
     file_exists = status_path.exists()
     with open(status_path, "a", encoding="utf-8") as handle:
         if not file_exists:
-            handle.write("receptor_id\tligand_id\tstatus\toutput_file\terror\n")
+            handle.write(
+                "receptor_id\tligand_id\tstatus\toutput_file\tseed\tcpu\tenergy_range\treturned_poses\terror\n"
+            )
         handle.write(
             f"{record['receptor_id']}\t{record['ligand_id']}\t{record['status']}\t"
-            f"{record['output_file']}\t{record.get('error', '')}\n"
+            f"{record['output_file']}\t{record.get('seed', '')}\t{record.get('cpu', '')}\t"
+            f"{record.get('energy_range', '')}\t{record.get('returned_poses', '')}\t"
+            f"{record.get('error', '')}\n"
         )
 
 
@@ -340,6 +434,9 @@ def execute_ligand_job(job: Dict[str, Any]) -> Dict[str, Any]:
             job["box_size"],
             job["exhaustiveness"],
             job["n_poses"],
+            cpu=job.get("cpu"),
+            seed=job.get("seed"),
+            energy_range=job.get("energy_range", 3.0),
         )
         return {
             "status": "ok",
@@ -348,6 +445,10 @@ def execute_ligand_job(job: Dict[str, Any]) -> Dict[str, Any]:
             "ligand_name": job["ligand_name"],
             "output_file": str(job["output_file"]),
             "energies": energies,
+            "seed": job.get("seed"),
+            "cpu": job.get("cpu"),
+            "energy_range": job.get("energy_range"),
+            "returned_poses": len(energies) if energies is not None else 0,
         }
     except Exception as exc:
         return {
@@ -356,6 +457,10 @@ def execute_ligand_job(job: Dict[str, Any]) -> Dict[str, Any]:
             "ligand_id": job["ligand_id"],
             "ligand_name": job["ligand_name"],
             "output_file": str(job["output_file"]),
+            "seed": job.get("seed"),
+            "cpu": job.get("cpu"),
+            "energy_range": job.get("energy_range"),
+            "returned_poses": 0,
             "error": str(exc),
         }
 
@@ -1139,18 +1244,71 @@ def write_filtered_poses(poses, output_path: Path):
 # ============================================================
 # 도킹 실행
 # ============================================================
-def run_docking(receptor_pdbqt, ligand_pdbqt, output_pdbqt, center, box_size,
-                exhaustiveness=128, n_poses=20):
+def run_docking(
+    receptor_pdbqt,
+    ligand_pdbqt,
+    output_pdbqt,
+    center,
+    box_size,
+    exhaustiveness=128,
+    n_poses=20,
+    cpu=None,
+    seed=None,
+    energy_range=3.0,
+):
     from vina import Vina
 
-    v = Vina(sf_name="vina")
+    global _VINA_CONSTRUCTOR_FALLBACK_WARNED
+    global _VINA_WRITE_POSES_FALLBACK_WARNED
+    global _VINA_ENERGIES_FALLBACK_WARNED
+
+    vina_kwargs = {"sf_name": "vina"}
+    if cpu is not None:
+        vina_kwargs["cpu"] = int(cpu)
+    if seed is not None:
+        vina_kwargs["seed"] = int(seed)
+
+    try:
+        v = Vina(**vina_kwargs)
+    except TypeError:
+        if (cpu is not None or seed is not None) and not _VINA_CONSTRUCTOR_FALLBACK_WARNED:
+            print(
+                "[WARNING] Installed vina Python API does not expose cpu/seed constructor arguments; "
+                "falling back to default Vina runtime settings."
+            )
+            _VINA_CONSTRUCTOR_FALLBACK_WARNED = True
+        v = Vina(sf_name="vina")
+
     v.set_receptor(str(receptor_pdbqt))
     v.set_ligand_from_file(str(ligand_pdbqt))
     v.compute_vina_maps(center=center, box_size=box_size)
     v.dock(exhaustiveness=exhaustiveness, n_poses=n_poses)
-    v.write_poses(str(output_pdbqt), n_poses=n_poses, overwrite=True)
+    try:
+        v.write_poses(
+            str(output_pdbqt),
+            n_poses=n_poses,
+            energy_range=energy_range,
+            overwrite=True,
+        )
+    except TypeError:
+        if energy_range is not None and not _VINA_WRITE_POSES_FALLBACK_WARNED:
+            print(
+                "[WARNING] Installed vina Python API does not expose energy_range on write_poses; "
+                "falling back to the library default pose filtering."
+            )
+            _VINA_WRITE_POSES_FALLBACK_WARNED = True
+        v.write_poses(str(output_pdbqt), n_poses=n_poses, overwrite=True)
 
-    energies = v.energies(n_poses=n_poses)
+    try:
+        energies = v.energies(n_poses=n_poses, energy_range=energy_range)
+    except TypeError:
+        if energy_range is not None and not _VINA_ENERGIES_FALLBACK_WARNED:
+            print(
+                "[WARNING] Installed vina Python API does not expose energy_range on energies(); "
+                "returned pose metadata may reflect the library default filtering."
+            )
+            _VINA_ENERGIES_FALLBACK_WARNED = True
+        energies = v.energies(n_poses=n_poses)
     return energies
 
 
@@ -1163,13 +1321,15 @@ def print_results(name, mode, energies, center, box_size, display_n=None):
     print(f"  Center: [{center[0]:.1f}, {center[1]:.1f}, {center[2]:.1f}]")
     print(f"  Box: [{box_size[0]:.1f}, {box_size[1]:.1f}, {box_size[2]:.1f}]")
     print(f"{'='*60}")
-    print(f"{'Mode':>5} {'Affinity':>10} {'RMSD_lb':>8} {'RMSD_ub':>8}")
+    print(f"{'Mode':>5} {'Affinity':>10}")
     show_n = min(display_n or len(energies), len(energies))
     for i in range(show_n):
         row = energies[i]
-        print(f"{i+1:>5} {row[0]:>10.2f} {row[1]:>8.3f} {row[2]:>8.3f}")
+        print(f"{i+1:>5} {row[0]:>10.2f}")
     if show_n < len(energies):
         print(f"  ... (총 {len(energies)}개 포즈 중 상위 {show_n}개 표시)")
+    if len(energies) > 0 and len(energies[0]) > 1:
+        print("  Note: Vina Python API energies() 추가 열은 RMSD가 아니라 에너지 성분입니다.")
 
 
 def print_summary(all_results, out_dir):
@@ -1385,8 +1545,12 @@ def setup_output_dir(args) -> Path:
         "box_size": args.box_size,
         "exhaustiveness": args.exhaustiveness,
         "n_poses": args.n_poses,
+        "energy_range": getattr(args, "energy_range", 3.0),
         "padding": args.padding,
         "min_box": args.min_box,
+        "cpu": getattr(args, "cpu", 0),
+        "seed": getattr(args, "seed", None),
+        "parallel_receptors": getattr(args, "parallel_receptors", None),
         "region": args.region,
         "exclude_zone": args.exclude_zone,
         "n_pockets": getattr(args, "n_pockets", None),
@@ -1449,6 +1613,12 @@ Available regions: """ + ", ".join(REGION_PRESETS.keys()),
                         help="Search exhaustiveness (default: 128)")
     parser.add_argument("--n-poses", type=int, default=20,
                         help="Number of poses to generate (default: 20)")
+    parser.add_argument("--energy-range", type=float, default=3.0,
+                        help="Energy window retained in Vina output poses (default: 3.0)")
+    parser.add_argument("--cpu", type=int, default=0,
+                        help="CPU threads per Vina run (0 uses all visible cores)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Base random seed for deterministic per-job seeds")
     parser.add_argument("--padding", type=float, default=5.0,
                         help="Box padding for blind mode in Angstroms (default: 5.0)")
     parser.add_argument("--min-box", type=float, default=70.0,
@@ -1632,8 +1802,12 @@ def interactive_mode():
             cluster_radius=config.get("cluster_radius", 5.0),
             exhaustiveness=config.get("exhaustiveness", 128),
             n_poses=config.get("n_poses", 20),
+            energy_range=config.get("energy_range", 3.0),
             padding=config.get("padding", 5.0),
             min_box=config.get("min_box", 70.0),
+            cpu=config.get("cpu", 0),
+            seed=normalize_optional_int(config.get("seed")),
+            parallel_receptors=config.get("parallel_receptors"),
             output_dir=None,
             label=None,
             config=None,
@@ -1876,14 +2050,17 @@ def interactive_mode():
     # Step 6: 파라미터
     exhaustiveness = 128
     n_poses = 20
+    energy_range = 5.0
 
     print(f"\n--- 파라미터 ---")
     print(f"  Exhaustiveness: {exhaustiveness}")
     print(f"  Poses: {n_poses}")
+    print(f"  Energy range:   {energy_range}")
 
     if ask_confirm("변경하시겠습니까?", default=False):
         exhaustiveness = ask_value("  Exhaustiveness", default=128, cast=int)
         n_poses = ask_value("  Poses", default=20, cast=int)
+        energy_range = ask_value("  Energy range", default=5.0, cast=float)
 
     # Step 7: 최종 확인
     lig_names = [l.name.replace("_ligand.pdbqt", "") for l in ligands]
@@ -1914,6 +2091,7 @@ def interactive_mode():
             print(f"    center=[{ez[0]}, {ez[1]}, {ez[2]}], radius={ez[3]}Å")
     print(f"  Exhaustiveness: {exhaustiveness}")
     print(f"  Poses:          {n_poses}")
+    print(f"  Energy range:   {energy_range}")
     print(f"{'='*60}")
 
     if not ask_confirm("실행하시겠습니까?"):
@@ -1935,8 +2113,12 @@ def interactive_mode():
         cluster_radius=cluster_radius,
         exhaustiveness=exhaustiveness,
         n_poses=n_poses,
+        energy_range=energy_range,
         padding=5.0,
         min_box=70.0,
+        cpu=0,
+        seed=None,
+        parallel_receptors=len(receptors),
         output_dir=None,
         label=None,
         config=None,
@@ -1970,7 +2152,10 @@ def main():
     # 헤더 출력
     print("=" * 60)
     print(f"  AutoDock Vina {args.mode.capitalize()} Docking Pipeline")
-    print(f"  exhaustiveness={args.exhaustiveness} | poses={args.n_poses}")
+    print(
+        f"  exhaustiveness={args.exhaustiveness} | poses={args.n_poses} | "
+        f"energy_range={args.energy_range} | cpu={args.cpu} | seed={args.seed}"
+    )
     print("=" * 60)
 
     # --smiles CLI 입력 처리 (SMILES → SDF → PDBQT)
@@ -2227,7 +2412,10 @@ def run_taskgroup12_main():
 
     print("=" * 60)
     print(f"  AutoDock Vina {args.mode.capitalize()} Docking Pipeline")
-    print(f"  exhaustiveness={args.exhaustiveness} | poses={args.n_poses} | max_workers={args.max_workers}")
+    print(
+        f"  exhaustiveness={args.exhaustiveness} | poses={args.n_poses} | "
+        f"energy_range={args.energy_range} | cpu={args.cpu} | max_workers={args.max_workers}"
+    )
     print("=" * 60)
 
     if hasattr(args, "smiles") and args.smiles:
@@ -2369,9 +2557,16 @@ def run_taskgroup12_main():
                 "box_size": box_size,
                 "exhaustiveness": args.exhaustiveness,
                 "n_poses": dock_n_poses,
+                "energy_range": args.energy_range,
+                "cpu": args.cpu,
+                "seed": derive_docking_seed(args.seed, receptor_id, ligand_id),
             })
 
-        worker_count = min(args.max_workers, max(len(ligand_jobs), 1))
+        worker_count = resolve_ligand_worker_count(
+            args.max_workers,
+            len(ligand_jobs),
+            cpu_per_job=args.cpu,
+        )
         print(f"\n[Dispatch] receptor={receptor_id} ligands={len(ligand_jobs)} workers={worker_count}")
 
         if len(ligand_jobs) == 1 or worker_count <= 1:
@@ -2569,17 +2764,28 @@ def dock_one_receptor(receptor_entry, ligand_entries, config):
 
     exhaustiveness = config.get("vina", {}).get("exhaustiveness", 8)
     n_poses = config.get("vina", {}).get("n_poses", 5)
+    energy_range = float(config.get("vina", {}).get("energy_range", 3.0))
+    cpu = int(config.get("vina", {}).get("cpu", 0))
+    base_seed = normalize_optional_int(config.get("vina", {}).get("seed"))
 
     results = {}
     for lig_entry in ligand_entries:
         lig_path = Path(lig_entry["pdbqt"])
         lig_name = lig_path.name.replace("_ligand.pdbqt", "")
         output_file = out_dir / f"{lig_name}_{mode}.pdbqt"
+        ligand_id = lig_entry.get("id", lig_name)
+        job_seed = derive_docking_seed(base_seed, receptor_id, ligand_id)
 
-        print(f"\n>>> [{receptor_id}] {lig_name} {mode} docking ...")
+        print(
+            f"\n>>> [{receptor_id}] {lig_name} {mode} docking "
+            f"(cpu={cpu}, seed={job_seed}, energy_range={energy_range}) ..."
+        )
         energies = run_docking(
             receptor_pdbqt, lig_path, output_file,
             center, box_size, exhaustiveness, n_poses,
+            cpu=cpu,
+            seed=job_seed,
+            energy_range=energy_range,
         )
         results[lig_name] = energies
         print_results(lig_name, mode, energies, center, box_size, display_n=n_poses)
