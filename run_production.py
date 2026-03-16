@@ -43,8 +43,6 @@ from egfr_pipeline.output_steps import (
     refresh_root_step_views,
     step_output_view_enabled,
 )
-from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
-
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
 
@@ -53,32 +51,38 @@ PPI_TARGETS = [
     {
         "name": "3GT8_raw_seed0",
         "config_ini": "config/phase1/phase1_prod_3GT8_raw_seed0.ini",
-        "input_pdb": "input/PPI/phase1/docking_3GT8_raw_ext_beta_meander.pdb",
+        "docking_dir": "output/phase1_ppi/3GT8_raw/prod_seed0",
         "mapping_csv": "",
         "receptor_id": "3GT8_raw",
         "partner_name": "ext_beta_meander",
         "construct_type": "full_kinase_domain",
         "orientation_validation_status": "not_available",
+        "seed_index": 0,
+        "is_production": True,
     },
     {
         "name": "EGFR_160-185_seed0",
         "config_ini": "config/phase1/phase1_prod_EGFR_160-185_seed0.ini",
-        "input_pdb": "input/PPI/phase1/docking_EGFR_160-185_ext_beta_meander.pdb",
+        "docking_dir": "output/phase1_ppi/EGFR_160-185/prod_seed0",
         "mapping_csv": "",
         "receptor_id": "EGFR_160-185",
         "partner_name": "ext_beta_meander",
         "construct_type": "full_kinase_domain",
         "orientation_validation_status": "not_available",
+        "seed_index": 0,
+        "is_production": True,
     },
     {
         "name": "EGFR_170-200_seed0",
         "config_ini": "config/phase1/phase1_prod_EGFR_170-200_seed0.ini",
-        "input_pdb": "input/PPI/phase1/docking_EGFR_170-200_ext_beta_meander.pdb",
+        "docking_dir": "output/phase1_ppi/EGFR_170-200/prod_seed0",
         "mapping_csv": "",
         "receptor_id": "EGFR_170-200",
         "partner_name": "ext_beta_meander",
         "construct_type": "full_kinase_domain",
         "orientation_validation_status": "not_available",
+        "seed_index": 0,
+        "is_production": True,
     },
 ]
 
@@ -176,6 +180,11 @@ def _csv_has_rows(path: Path) -> bool:
 
 def _ppi_docking_dir(target: dict) -> Optional[Path]:
     """PPI 도킹 결과 디렉토리 경로 반환."""
+    direct_dir = target.get("docking_dir")
+    if direct_dir:
+        path = Path(str(direct_dir))
+        return path if path.is_absolute() else REPO_ROOT / path
+
     config_path = REPO_ROOT / target["config_ini"]
     if not config_path.exists():
         return None
@@ -183,13 +192,12 @@ def _ppi_docking_dir(target: dict) -> Optional[Path]:
     config = configparser.ConfigParser()
     config.read(config_path, encoding="utf-8")
 
-    input_pdb_rel = config.get("Path", "input_pdb_name", fallback=target["input_pdb"])
+    input_pdb_rel = config.get("Path", "input_pdb_name", fallback="")
     input_pdb = REPO_ROOT / input_pdb_rel
     if not input_pdb.exists():
         return None
 
-    root_name = build_output_root_name(config, str(input_pdb), input_pdb.stem)
-    return REPO_ROOT / root_name
+    return input_pdb.parent
 
 
 def _execution_mode_label(args: argparse.Namespace) -> str:
@@ -439,6 +447,9 @@ def phase1_vina():
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
     config = _load_config()
+    from egfr_pipeline.vina.dock import ensure_project_config_inputs_ready
+
+    ensure_project_config_inputs_ready(config)
     receptors = config.get("receptors", [])
     ligands = config.get("ligands", [])
 
@@ -462,7 +473,7 @@ def phase1_vina():
                 print(f"\n  [FAIL] {rec_id} 도킹 실패: {e}")
 
 
-def phase2_ppi():
+def _legacy_phase2_ppi():
     """PyRosetta PPI global blind docking — 순차 실행 (CPU 집약적)."""
     for target in PPI_TARGETS:
         name = target["name"]
@@ -495,7 +506,7 @@ def phase2_ppi():
         PipelineManager(config_ini, str(pdb_path)).execute()
 
 
-def phase3_ppi_postprocess():
+def _legacy_phase3_ppi_postprocess():
     """PPI 결과 chain restoration + residue extraction."""
     config_str = str(CONFIG_PATH)
 
@@ -611,6 +622,84 @@ def phase7_validate():
     result = run_validation(str(CONFIG_PATH), repo_root=str(REPO_ROOT))
     print(result.summary())
     return result
+
+
+def _phase3_override_dirs() -> dict:
+    overrides = {}
+    for target in PPI_TARGETS:
+        docking_dir = _ppi_docking_dir(target)
+        if not docking_dir or not docking_dir.exists():
+            continue
+        overrides.setdefault(target["receptor_id"], []).append(
+            {
+                "path": str(docking_dir),
+                "partner": target.get("partner_name", ""),
+                "construct_type": target.get("construct_type", "full_kinase_domain"),
+                "orientation_validation_status": target.get(
+                    "orientation_validation_status",
+                    "not_available",
+                ),
+            }
+        )
+    return overrides
+
+
+def phase2_ppi():
+    """PyRosetta PPI docking using runtime-prepared Phase 1 inputs."""
+    from egfr_pipeline.phase1.launch_docking import run_single
+    from egfr_pipeline.phase1.prepare_inputs import prepare_phase1_inputs
+
+    prepare_phase1_inputs()
+    failures: List[str] = []
+
+    for target in PPI_TARGETS:
+        name = target["name"]
+        config_ini = target["config_ini"]
+        config_path = REPO_ROOT / config_ini
+        if not config_path.exists():
+            print(f"  [ERROR] {name}: config not found: {config_ini}")
+            continue
+
+        if not _FORCE_MODE:
+            docking_dir = _ppi_docking_dir(target)
+            ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
+            if ranking and ranking.exists():
+                print(f"  [SKIP] {name}: already completed ({ranking})")
+                continue
+
+        print(f"\n  --- {name} (20K models) ---")
+        print(f"  Config: {config_ini}")
+        print(f"  Output: {_ppi_docking_dir(target)}")
+
+        meta = run_single(
+            config_path,
+            target["receptor_id"],
+            seed_index=int(target.get("seed_index", 0)),
+            is_production=bool(target.get("is_production", True)),
+            dry_run=False,
+        )
+        if meta.get("status") == "failed":
+            failures.append(f"{name}: {meta.get('error', 'unknown error')}")
+
+    if failures:
+        raise RuntimeError("; ".join(failures))
+
+
+def phase3_ppi_postprocess():
+    """Extract project-level PPI residue evidence from current Phase 2 run dirs."""
+    from egfr_pipeline.ppi.pyrosetta_extract import extract_pyrosetta_batch
+
+    override_dirs = _phase3_override_dirs()
+    if not override_dirs:
+        print("  [WARN] No Phase 2 PyRosetta run directories are available for extraction.")
+        return
+
+    residue_csv, summary_csv = extract_pyrosetta_batch(
+        str(CONFIG_PATH),
+        pyrosetta_result_dirs=override_dirs,
+    )
+    print(f"  Residues: {residue_csv}")
+    print(f"  Summary:  {summary_csv}")
 
 
 # ---------------------------------------------------------------------------

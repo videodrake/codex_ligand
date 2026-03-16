@@ -357,6 +357,7 @@ def _normalize_result_dirs(raw) -> List[dict]:
 def extract_pyrosetta_batch(
     config_path: str,
     output_dir: Optional[str] = None,
+    pyrosetta_result_dirs: Optional[Dict[str, object]] = None,
 ) -> Tuple[Path, Path]:
     """Extract PyRosetta PPI residues for all receptors in config.
 
@@ -378,7 +379,7 @@ def extract_pyrosetta_batch(
         out_root = out_root / project_name
 
     ppi_config = config.get("ppi", {})
-    pyrosetta_dirs = ppi_config.get("pyrosetta_result_dirs", {})
+    pyrosetta_dirs = pyrosetta_result_dirs or ppi_config.get("pyrosetta_result_dirs", {})
 
     all_residue_rows: List[dict] = []
     all_summaries: List[dict] = []

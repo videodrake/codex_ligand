@@ -101,8 +101,9 @@ def generate_review_report(output_base: Path) -> tuple:
     cross_state = _load_csv(output_base / "ppi_patch_cross_state_comparison.csv")
 
     # Input metadata
-    receptor_meta = _load_csv(PROJECT_ROOT / "input" / "PPI" / "phase1" / "receptor_metadata.csv")
-    partner_meta = _load_csv(PROJECT_ROOT / "input" / "PPI" / "phase1" / "partner_metadata.csv")
+    metadata_dir = _phase1_metadata_dir()
+    receptor_meta = _load_csv(metadata_dir / "receptor_metadata.csv")
+    partner_meta = _load_csv(metadata_dir / "partner_metadata.csv")
 
     # --- Build report ---
     lines = _build_report(state_summaries, robustness, cross_state,
@@ -121,6 +122,13 @@ def generate_review_report(output_base: Path) -> tuple:
         w.writerows(patch_rows)
 
     return report_path, patch_path
+
+
+def _phase1_metadata_dir() -> Path:
+    runtime_dir = PROJECT_ROOT / "output" / "phase1_ppi" / "runtime_inputs"
+    if runtime_dir.exists():
+        return runtime_dir
+    return PROJECT_ROOT / "input" / "PPI" / "phase1"
 
 
 def _build_report(

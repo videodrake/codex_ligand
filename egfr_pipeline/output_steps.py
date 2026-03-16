@@ -65,12 +65,8 @@ STEP_SPECS: Dict[int, StepSpec] = {
             "This step captures the raw PPI docking outputs without copying the "
             "heavy raw run directories."
         ),
-        primary_files=("TH1_final_ranking.csv", "beta_meander_final_ranking.csv"),
-        required_artifacts=(
-            "TH1_final_ranking.csv",
-            "beta_meander_final_ranking.csv",
-            "raw_run_paths.tsv",
-        ),
+        primary_files=("raw_run_paths.tsv",),
+        required_artifacts=("raw_run_paths.tsv",),
         optional_artifacts=("pyrosetta_run_metadata.json",),
         upstream_steps=(),
         next_step_reads=("step3_ppi_postprocess/ppi_pyrosetta_residues.csv",),
@@ -1086,20 +1082,21 @@ def record_step2_outputs(
 
         key_files = [
             {
-                "path": "TH1_final_ranking.csv",
-                "description": "TH1 partner ranking summary.",
-                "status": "missing" if "TH1_final_ranking.csv" in missing_required else "",
-            },
-            {
-                "path": "beta_meander_final_ranking.csv",
-                "description": "Beta-meander partner ranking summary.",
-                "status": "missing" if "beta_meander_final_ranking.csv" in missing_required else "",
-            },
-            {
                 "path": "raw_run_paths.tsv",
-                "description": "Path index back to the canonical raw PyRosetta run directories.",
+                "description": "Path index back to the canonical raw PyRosetta run directories. Inspect this first.",
             },
         ]
+        for target in targets:
+            target_name = str(target.get("name", "")).strip() or "unknown"
+            target_slug = _step2_target_slug(target_name)
+            step_ranking_name = f"{target_slug}_final_ranking.csv"
+            key_files.append(
+                {
+                    "path": step_ranking_name,
+                    "description": f"{target_name} ranking summary.",
+                    "status": "missing" if step_ranking_name in missing_required else "",
+                }
+            )
         if metadata_records:
             key_files.append(
                 {

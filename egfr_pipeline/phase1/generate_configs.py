@@ -60,7 +60,7 @@ def generate_config(
 
     # ---- Path ----
     config["Path"] = {
-        "input_pdb_name": f"input/PPI/phase1/docking_{state_name}_ext_beta_meander.pdb",
+        "input_pdb_name": f"output/phase1_ppi/runtime_inputs/docking_{state_name}_ext_beta_meander.pdb",
     }
 
     # ---- System ----

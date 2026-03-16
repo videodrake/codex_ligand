@@ -34,6 +34,15 @@ from typing import Dict, List, Optional, Set, Tuple
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PHASE1_RUNTIME_INPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi" / "runtime_inputs"
+
+
+def _display_path(path: Path) -> str:
+    """Return a project-relative path when possible, else an absolute path."""
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -309,7 +318,7 @@ def prepare_receptor(
         "source_pdb": str(state_info["pdb"]),
         "source_chain": source_chain,
         "description": state_info["description"],
-        "output_pdb": str(output_pdb.relative_to(PROJECT_ROOT)),
+        "output_pdb": _display_path(output_pdb),
         "chain_id": "A",
         "residue_start": first_res,
         "residue_end": last_res,
@@ -417,7 +426,7 @@ def prepare_extended_beta_meander(output_dir: Path) -> dict:
         "construct_type": "extended_beta_meander",
         "source_pdb": BETA_MEANDER_SOURCE,
         "source_chain": BETA_MEANDER_SOURCE_CHAIN,
-        "output_pdb": str(output_pdb.relative_to(PROJECT_ROOT)),
+        "output_pdb": _display_path(output_pdb),
         "chain_id": "A",
         "residue_start": first_res,
         "residue_end": last_res,
@@ -478,7 +487,7 @@ def prepare_docking_pair(
 
     return {
         "state_name": state_name,
-        "output_pdb": str(output_pdb.relative_to(PROJECT_ROOT)),
+        "output_pdb": _display_path(output_pdb),
         "receptor_chain": "A",
         "receptor_range": f"{r_resnums[0]}-{r_resnums[-1]}",
         "receptor_n_residues": len(r_resnums),
@@ -827,18 +836,9 @@ def write_validation_report(
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Phase 1 TG 1.0: Prepare full kinase domain + extended beta-meander inputs"
-    )
-    parser.add_argument(
-        "--output_dir", type=Path,
-        default=PROJECT_ROOT / "input" / "PPI" / "phase1",
-        help="Output directory for prepared inputs (default: input/PPI/phase1/)",
-    )
-    args = parser.parse_args()
-
-    output_dir = args.output_dir
+def prepare_phase1_inputs(output_dir: Optional[Path] = None) -> dict:
+    """Prepare runtime Phase 1 docking inputs from source receptor/partner files."""
+    output_dir = output_dir or PHASE1_RUNTIME_INPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("Phase 1 — Task Group 1.0: Input Preparation")
@@ -935,7 +935,34 @@ def main():
     n_fail = sum(1 for m in all_messages if m.startswith("FAIL"))
     print(f"\nValidation: {n_pass} PASS, {n_warn} WARNING, {n_fail} FAIL")
 
-    return 0 if n_fail == 0 else 1
+    return {
+        "output_dir": output_dir,
+        "receptor_metadata_csv": r_csv,
+        "partner_metadata_csv": p_csv,
+        "docking_pair_metadata_csv": d_csv,
+        "pilot_data_reference_csv": pilot_csv,
+        "validation_report_path": report_path,
+        "docking_pairs": {
+            meta["state_name"]: output_dir / f"docking_{meta['state_name']}_ext_beta_meander.pdb"
+            for meta in pair_metas
+        },
+        "status_code": 0 if n_fail == 0 else 1,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Phase 1 TG 1.0: Prepare full kinase domain + extended beta-meander inputs"
+    )
+    parser.add_argument(
+        "--output_dir", type=Path,
+        default=PHASE1_RUNTIME_INPUT_DIR,
+        help="Output directory for prepared runtime inputs (default: output/phase1_ppi/runtime_inputs/)",
+    )
+    args = parser.parse_args()
+
+    result = prepare_phase1_inputs(args.output_dir)
+    return result["status_code"]
 
 
 if __name__ == "__main__":

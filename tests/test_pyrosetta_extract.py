@@ -138,6 +138,56 @@ def test_extract_pyrosetta_batch_writes_extended_residue_schema(tmp_path: Path) 
     assert summary_rows[0]["orientation_validation_status"] == "orientation_validated"
 
 
+def test_extract_pyrosetta_batch_accepts_runtime_override_dirs(tmp_path: Path) -> None:
+    result_dir = tmp_path / "ppi_result"
+    _write_csv(
+        result_dir / "final_result" / "final_ranking.csv",
+        ["Binding_Residues_A", "Binding_Residues_B", "dG_separated", "dSASA"],
+        [["A:LEU819,B:ASP855", "B:VAL962", "-10.0", "700.0"]],
+    )
+    _write_csv(
+        result_dir / "cluster_results" / "cluster_summary.csv",
+        ["Binding_Residues_A"],
+        [["A:LEU819,B:ASP855"]],
+    )
+
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "project_name": "test_project",
+                "output_root": str(tmp_path / "out"),
+                "receptors": [{"id": "3GT8_raw"}],
+                "ppi": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    residue_csv, summary_csv = extract_pyrosetta_batch(
+        str(config_path),
+        pyrosetta_result_dirs={
+            "3GT8_raw": [
+                {
+                    "path": str(result_dir),
+                    "partner": "MYO1D_beta_meander",
+                    "construct_type": "full_kinase_domain",
+                    "orientation_validation_status": "orientation_validated",
+                }
+            ]
+        },
+    )
+
+    with open(residue_csv, encoding="utf-8") as handle:
+        residue_rows = list(csv.DictReader(handle))
+    with open(summary_csv, encoding="utf-8") as handle:
+        summary_rows = list(csv.DictReader(handle))
+
+    assert residue_rows[0]["partner_id"] == "MYO1D_beta_meander"
+    assert residue_rows[0]["orientation_validation_status"] == "orientation_validated"
+    assert summary_rows[0]["construct_type"] == "full_kinase_domain"
+
+
 def test_extract_pyrosetta_interface_residues_resolves_relative_file_csv_energy_paths(
     tmp_path: Path,
 ) -> None:
