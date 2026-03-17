@@ -25,10 +25,10 @@ import numpy as np
 import pandas as pd
 from pyrosetta.rosetta.core.scoring import calpha_superimpose_pose
 
-from . import analysis, common, docking
-from .common import TOP_LEVEL_DIR
-from ..runtime_support import resolve_runtime_resources
-from .metadata import (
+from . import scoring, pyrosetta_init, movers
+from .pyrosetta_init import TOP_LEVEL_DIR
+from ..runtime import resolve_runtime_resources
+from .run_metadata import (
     build_decoy_score_rows,
     build_input_validation_report,
     build_input_validation_markdown,
@@ -103,9 +103,9 @@ class PipelineManager:
             )
         )
         self.runtime_dir = os.path.abspath(runtime_dir or os.path.join(self.root_dir, "runtime"))
-        self.runtime_log_dir = os.path.join(self.runtime_dir, "logs")
-        os.makedirs(self.runtime_log_dir, exist_ok=True)
-        os.environ["PYROSETTA_WORKER_LOG_DIR"] = self.runtime_log_dir
+        self.log_dir = os.path.join(self.root_dir, "logs")
+        os.makedirs(self.log_dir, exist_ok=True)
+        os.environ["PYROSETTA_WORKER_LOG_DIR"] = self.log_dir
 
         self._setup_logging()
         self._validate_config()
@@ -148,48 +148,8 @@ class PipelineManager:
     #  Logging
     # ------------------------------------------------------------------ #
     def _setup_logging(self) -> None:
-        self.progress_logger = logging.getLogger('pipeline_progress')
-        self.internal_logger = logging.getLogger('pipeline_internal')
-        self.progress_logger.setLevel(logging.INFO)
-        self.internal_logger.setLevel(logging.DEBUG)
-
-        for logger in (self.progress_logger, self.internal_logger):
-            for handler in list(logger.handlers):
-                logger.removeHandler(handler)
-                try:
-                    handler.close()
-                except Exception:
-                    pass
-
-        progress_fmt = logging.Formatter(
-            '%(asctime)s [%(levelname)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        internal_fmt = logging.Formatter(
-            '%(asctime)s [%(name)s] (%(levelname)s) [PID:%(process)d] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-
-        progress_sh = logging.StreamHandler(sys.stdout)
-        progress_sh.setFormatter(progress_fmt)
-        self.progress_logger.addHandler(progress_sh)
-
-        progress_fh = logging.FileHandler(
-            os.path.join(self.runtime_log_dir, "pipeline_progress.log"),
-            encoding='utf-8',
-        )
-        progress_fh.setFormatter(progress_fmt)
-        self.progress_logger.addHandler(progress_fh)
-
-        internal_fh = logging.FileHandler(
-            os.path.join(self.runtime_log_dir, "pipeline_internal.log"),
-            encoding='utf-8',
-        )
-        internal_fh.setFormatter(internal_fmt)
-        self.internal_logger.addHandler(internal_fh)
-
-        self.progress_logger.propagate = False
-        self.internal_logger.propagate = False
+        from .logging_config import setup_main_logging
+        self.logger = setup_main_logging(self.log_dir)
 
     # ------------------------------------------------------------------ #
     #  Config
@@ -249,8 +209,8 @@ class PipelineManager:
             # --- Constraints (optional) ---
             excl_str = self.config.get('Constraints', 'excluded_residues_A', fallback='')
             key_str = self.config.get('Constraints', 'key_residues_B', fallback='')
-            self.excluded_residues_A = common.parse_residue_ranges(excl_str)
-            self.key_residues_B = common.parse_residue_ranges(key_str)
+            self.excluded_residues_A = pyrosetta_init.parse_residue_ranges(excl_str)
+            self.key_residues_B = pyrosetta_init.parse_residue_ranges(key_str)
             self.exclusion_contact_dist = self.config.getfloat(
                 'Constraints', 'exclusion_contact_dist', fallback=10.0)
             self.enable_early_rejection = self.config.getboolean(
@@ -260,7 +220,7 @@ class PipelineManager:
             self.key_residue_bonus_weight = self.config.getfloat(
                 'Constraints', 'key_residue_bonus_weight', fallback=0.0)
             weight_str = self.config.get('Constraints', 'key_residue_weights', fallback='')
-            self.key_residue_weights = common.parse_residue_weights(weight_str)
+            self.key_residue_weights = pyrosetta_init.parse_residue_weights(weight_str)
             # If weights not specified but key_residues_B exists, fill uniform 1.0
             if not self.key_residue_weights and self.key_residues_B:
                 self.key_residue_weights = {r: 1.0 for r in self.key_residues_B}
@@ -324,15 +284,15 @@ class PipelineManager:
                 _crit = self.config.get('ExperimentalData', 'critical_residues_B', fallback='').strip()
                 _nonb = self.config.get('ExperimentalData', 'non_binding_residues_B', fallback='').strip()
                 _kba = self.config.get('ExperimentalData', 'known_binding_region_A', fallback='').strip()
-                self.exp_critical_B = common.parse_residue_ranges(_crit)
-                self.exp_non_binding_B = common.parse_residue_ranges(_nonb)
-                self.exp_binding_region_A = common.parse_residue_ranges(_kba)
+                self.exp_critical_B = pyrosetta_init.parse_residue_ranges(_crit)
+                self.exp_non_binding_B = pyrosetta_init.parse_residue_ranges(_nonb)
+                self.exp_binding_region_A = pyrosetta_init.parse_residue_ranges(_kba)
                 self.exp_confidence = self.config.get('ExperimentalData', 'confidence', fallback='medium').strip()
                 if self.exp_critical_B or self.exp_non_binding_B:
                     self.exp_data_configured = True
 
         except (KeyError, ValueError) as e:
-            self.internal_logger.critical(f"[Config Error] {e}")
+            self.logger.critical(f"[Config Error] {e}")
             sys.exit(1)
 
     # ------------------------------------------------------------------ #
@@ -349,16 +309,16 @@ class PipelineManager:
 
         Returns True if all critical checks pass, False otherwise.
         """
-        pose = common.string_to_pose(relaxed_pdb)
+        pose = pyrosetta_init.string_to_pose(relaxed_pdb)
         if pose is None:
-            self.progress_logger.critical("    [Preflight FAIL] Could not load relaxed pose")
+            self.logger.critical("    [Preflight FAIL] Could not load relaxed pose")
             return False
 
         n_chains = pose.num_chains()
-        self.progress_logger.info(f"    [Preflight] Number of chains: {n_chains}")
+        self.logger.info(f"    [Preflight] Number of chains: {n_chains}")
 
         if n_chains < 2:
-            self.progress_logger.critical(
+            self.logger.critical(
                 f"    [Preflight FAIL] Expected 2 chains (A+B), found {n_chains}. "
                 f"Input PDB must be a 2-chain dimer.")
             return False
@@ -373,14 +333,14 @@ class PipelineManager:
             label = pdb_info.chain(first_res)
             chain_labels[chain_idx] = label
 
-        self.progress_logger.info(
+        self.logger.info(
             f"    [Preflight] Chain labels: {chain_labels}")
 
         expected_a = chain_labels.get(1, "?")
         expected_b = chain_labels.get(2, "?")
 
         if expected_a != "A" or expected_b != "B":
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    [Preflight WARN] Expected chain labels A/B, got "
                 f"{expected_a}/{expected_b}. Docking uses hardcoded A_B partners. "
                 f"This will cause errors if chain labels don't match.")
@@ -393,7 +353,7 @@ class PipelineManager:
             pdb_end = pdb_info.number(c_end)
             chain_label = pdb_info.chain(c_start)
             n_res = c_end - c_start + 1
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Preflight] Chain {chain_label} (internal {chain_idx}): "
                 f"residues {pdb_start}-{pdb_end} ({n_res} res)")
 
@@ -408,23 +368,23 @@ class PipelineManager:
             excl_missing = self.excluded_residues_A - chain_a_pdb_nums
             coverage_pct = len(excl_found) / len(self.excluded_residues_A) * 100
 
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Preflight] Excluded residues: {len(excl_found)}/"
                 f"{len(self.excluded_residues_A)} found ({coverage_pct:.0f}%)")
 
             if excl_missing and len(excl_missing) <= 20:
-                self.progress_logger.info(
+                self.logger.info(
                     f"    [Preflight] Missing excluded residues: "
                     f"{sorted(excl_missing)}")
 
             if coverage_pct < 50:
-                self.progress_logger.critical(
+                self.logger.critical(
                     f"    [Preflight FAIL] Excluded residue coverage {coverage_pct:.0f}% < 50%. "
                     f"Numbering mismatch between config and input PDB. "
                     f"Check excluded_residues_A values against actual PDB numbering.")
                 return False
             elif coverage_pct < 80:
-                self.progress_logger.warning(
+                self.logger.warning(
                     f"    [Preflight WARN] Excluded residue coverage {coverage_pct:.0f}% < 80%. "
                     f"Some constraint residues may not be effective.")
 
@@ -438,11 +398,11 @@ class PipelineManager:
 
             key_found = self.key_residues_B & chain_b_pdb_nums
             key_pct = len(key_found) / len(self.key_residues_B) * 100
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Preflight] Key residues B: {len(key_found)}/"
                 f"{len(self.key_residues_B)} found ({key_pct:.0f}%)")
 
-        self.progress_logger.info("    [Preflight] All checks passed.")
+        self.logger.info("    [Preflight] All checks passed.")
         return True
 
     # ------------------------------------------------------------------ #
@@ -450,44 +410,44 @@ class PipelineManager:
     # ------------------------------------------------------------------ #
     def _log_filter_thresholds(self) -> None:
         """Log all active filter thresholds for reproducibility and debugging."""
-        self.progress_logger.info("    [Filter Thresholds] Active configuration:")
+        self.logger.info("    [Filter Thresholds] Active configuration:")
 
         if self.filter_v2_enabled:
-            self.progress_logger.info("    [Filter] Version: v2.0 (2-pass)")
-            self.progress_logger.info(
+            self.logger.info("    [Filter] Version: v2.0 (2-pass)")
+            self.logger.info(
                 f"    [Stage1] total_score_percentile={self.stage1_total_score_pct}, "
                 f"max_dG={self.stage1_max_dG}, enabled={self.stage1_enabled}")
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Stage2] min_dSASA={self.stage2_min_dSASA}, "
                 f"max_dG_density={self.stage2_max_dG_density}, "
                 f"min_sc={self.stage2_min_sc}")
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Stage2] min_packstat={self.stage2_min_packstat}, "
                 f"max_unsatHb={self.stage2_max_unsat}, "
                 f"min_nres_int={self.stage2_min_nres}, "
                 f"min_hbonds={self.stage2_min_hbonds}")
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Stage2] expensive_metrics={self.stage2_expensive}, "
                 f"min_survivors={self.stage2_min_survivors}")
             if self.mini_refine_enabled:
-                self.progress_logger.info(
+                self.logger.info(
                     f"    [MiniRefine] enabled, mode={self.mini_refine_mode}, "
                     f"n_rounds={self.mini_refine_n_rounds}")
         else:
-            self.progress_logger.info("    [Filter] Version: v1.0 (legacy)")
-            self.progress_logger.info(
+            self.logger.info("    [Filter] Version: v1.0 (legacy)")
+            self.logger.info(
                 f"    [v1] filter_percentile={self.filter_percentile}, "
                 f"min_dSASA={self.min_dSASA}, "
                 f"min_sc={self.min_sc_value}, "
                 f"min_survivors={self.min_survivors}")
 
         if self.exp_data_configured:
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [ExperimentalData] critical_B={len(self.exp_critical_B)} residues, "
                 f"non_binding_B={len(self.exp_non_binding_B)} residues, "
                 f"confidence={self.exp_confidence}")
         else:
-            self.progress_logger.info(
+            self.logger.info(
                 "    [ExperimentalData] Not configured (sensitivity/specificity analysis skipped)")
 
     # ------------------------------------------------------------------ #
@@ -518,9 +478,9 @@ class PipelineManager:
     # ------------------------------------------------------------------ #
     def _resolve_chain_sizes(self, relaxed_pdb: str) -> None:
         """Compute chain sizes from relaxed pose and resolve 'auto' clustering parameters."""
-        pose = common.string_to_pose(relaxed_pdb)
+        pose = pyrosetta_init.string_to_pose(relaxed_pdb)
         if pose is None or pose.num_chains() < 2:
-            self.progress_logger.warning(
+            self.logger.warning(
                 "    [Chain Size] Could not determine chain sizes. Using defaults.")
             self.chain_a_size = 0
             self.chain_b_size = 0
@@ -530,7 +490,7 @@ class PipelineManager:
         self.chain_a_size = conf.chain_end(1)
         self.chain_b_size = conf.chain_end(2) - conf.chain_begin(2) + 1
 
-        self.progress_logger.info(
+        self.logger.info(
             f"    [Chain Size] Chain A (receptor): {self.chain_a_size} residues, "
             f"Chain B (ligand): {self.chain_b_size} residues")
 
@@ -542,7 +502,7 @@ class PipelineManager:
                 self.cluster_top_n = 25
             else:
                 self.cluster_top_n = 35
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Auto] cluster_top_n = {self.cluster_top_n} "
                 f"(receptor {self.chain_a_size} residues)")
 
@@ -553,14 +513,14 @@ class PipelineManager:
             FLOOR, CAP = 3.0, 15.0
             raw = BASE_THR * math.sqrt(self.chain_b_size / REF_RES)
             self.cluster_threshold = max(FLOOR, min(CAP, round(raw, 1)))
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Auto] cluster_threshold = {self.cluster_threshold:.1f} A "
                 f"(ligand {self.chain_b_size} res, raw={raw:.1f})")
 
         # --- Resolve auto member_diversity_dist ---
         if getattr(self, 'member_diversity_dist_auto', False):
             self.member_diversity_dist = round(self.cluster_threshold * 0.5, 1)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Auto] member_diversity_dist = {self.member_diversity_dist:.1f} A "
                 f"(50% of threshold)")
 
@@ -574,7 +534,7 @@ class PipelineManager:
             self.stats['excl_zone_present'] = len(excl_present)
             self.stats['excl_zone_total'] = len(self.excluded_residues_A)
             self.stats['excl_zone_coverage'] = excl_coverage
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Constraints] Excluded zone: {len(excl_present)}/{len(self.excluded_residues_A)} "
                 f"residues present in Chain A ({excl_coverage:.1f}% of chain)")
 
@@ -622,7 +582,7 @@ class PipelineManager:
                 f.write(f"# [v1] filter_pct={self.filter_percentile}, "
                         f"min_dSASA={self.min_dSASA}, "
                         f"min_sc={self.min_sc_value}\n")
-        self.progress_logger.info(f"    > [Config] Snapshot saved: {snap_path}")
+        self.logger.info(f"    > [Config] Snapshot saved: {snap_path}")
 
     def _save_run_metadata(self, status: str) -> None:
         """Persist normalized run metadata for reproducibility and handoff."""
@@ -638,7 +598,7 @@ class PipelineManager:
         with open(out_path, "w", encoding="utf-8") as handle:
             json.dump(metadata, handle, indent=2, ensure_ascii=False)
         self.stats["pyrosetta_run_metadata_path"] = out_path
-        self.progress_logger.info(f"    > [Output] Run metadata: {out_path}")
+        self.logger.info(f"    > [Output] Run metadata: {out_path}")
 
     def _save_input_validation_report(self) -> None:
         """Persist static Phase 1 input validation details before docking begins."""
@@ -653,14 +613,14 @@ class PipelineManager:
         self.stats["phase1_input_validation_summary_path"] = markdown_path
 
         status = self.input_validation_report.get("status", "unknown")
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Output] Input validation report ({status}): {json_path}"
         )
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Output] Input validation summary ({status}): {markdown_path}"
         )
         for warning in self.input_validation_report.get("warnings", []):
-            self.progress_logger.warning(f"    [Input Validation WARN] {warning}")
+            self.logger.warning(f"    [Input Validation WARN] {warning}")
 
     def _export_decoy_scores(self, fully_scored: List[Dict]) -> None:
         """Write standardized full-scoring export for downstream review."""
@@ -668,7 +628,7 @@ class PipelineManager:
         rows = build_decoy_score_rows(fully_scored, self.run_metadata)
         pd.DataFrame(rows).to_csv(out_path, index=False)
         self.stats["pyrosetta_decoy_scores_path"] = out_path
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Output] Standardized decoy scores: {out_path} ({len(rows)} rows)"
         )
 
@@ -719,7 +679,7 @@ class PipelineManager:
 
         df = pd.DataFrame(rows, columns=columns)
         df.to_csv(csv_path, index=False)
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Output] All scored models: {csv_path} ({len(rows)} rows)")
         return csv_path
 
@@ -753,7 +713,7 @@ class PipelineManager:
 
         df = pd.DataFrame(rows, columns=columns)
         df.to_csv(csv_path, index=False)
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Output] Stage 2 scored models: {csv_path} ({len(rows)} rows)")
         return csv_path
 
@@ -766,7 +726,7 @@ class PipelineManager:
         """
         csv_path = os.path.join(self.root_dir, "scored_all_models.csv")
         if not os.path.exists(csv_path):
-            self.internal_logger.warning(
+            self.logger.warning(
                 "scored_all_models.csv not found; skipping filter_status update")
             return
 
@@ -776,7 +736,7 @@ class PipelineManager:
         df.to_csv(csv_path, index=False)
         n_pass = (df['filter_status'] == 'pass').sum()
         n_reject = (df['filter_status'] != 'pass').sum()
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Output] Updated filter_status in scored_all_models.csv "
             f"(pass={n_pass}, reject={n_reject})")
 
@@ -941,9 +901,9 @@ class PipelineManager:
         t_start = time.time()
         count = len(survivor_pool)
         if count == 0:
-            self.progress_logger.warning("    > [Funnel Data] No survivors for funnel analysis.")
+            self.logger.warning("    > [Funnel Data] No survivors for funnel analysis.")
             return
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Funnel Data] Computing dual L_RMSD for {count} survivors...")
 
         # --- Find best dG structure and write to temp file ---
@@ -954,7 +914,7 @@ class PipelineManager:
             with os.fdopen(fd, 'w') as f:
                 f.write(best_item['pdb_data'])
         except Exception as e:
-            self.internal_logger.warning(f"[Funnel Data] Failed to write best PDB: {e}")
+            self.logger.warning(f"[Funnel Data] Failed to write best PDB: {e}")
             best_tmp = None
 
         relaxed_ref = getattr(self, 'cache_path', None)
@@ -968,7 +928,7 @@ class PipelineManager:
         lrmsd_best_map = {}
         with multiprocessing.Pool(self.n_cpus) as pool:
             lrmsd_iter = pool.imap(
-                analysis.run_lrmsd_dual_task,
+                scoring.run_lrmsd_dual_task,
                 lrmsd_tasks, chunksize=self.chunksize)
 
             for i, res in enumerate(lrmsd_iter):
@@ -1003,10 +963,10 @@ class PipelineManager:
                     'total_score': d.get('total_score', 0.0),
                 })
             pd.DataFrame(rows).to_csv(csv_path, index=False)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Funnel Data] Saved {csv_path} ({len(rows)} rows)")
         except Exception as e:
-            self.internal_logger.warning(f"[Funnel Data] CSV save error: {e}")
+            self.logger.warning(f"[Funnel Data] CSV save error: {e}")
 
         # --- Compute P_near ---
         try:
@@ -1035,15 +995,15 @@ class PipelineManager:
                 p_near = 0.0
 
             self.stats['p_near'] = p_near
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Funnel Data] P_near = {p_near:.4f} "
                 f"(lambda={LAMBDA}A, kT={kT})")
         except Exception as e:
-            self.internal_logger.warning(f"[Funnel Data] P_near error: {e}")
+            self.logger.warning(f"[Funnel Data] P_near error: {e}")
             self.stats['p_near'] = None
 
         elapsed = time.time() - t_start
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Funnel Data] Done ({elapsed:.1f} sec)")
 
     # ------------------------------------------------------------------ #
@@ -1065,9 +1025,9 @@ class PipelineManager:
                 f.write("for obj in cmd.get_object_list()[1:]:\n")
                 f.write("    cmd.align(f'{obj} and chain A', f'{first} and chain A')\n")
                 f.write("python end\n")
-            self.progress_logger.info("    > [Output] PyMOL script generated.")
+            self.logger.info("    > [Output] PyMOL script generated.")
         except Exception as e:
-            self.progress_logger.error(f"!!! PyMOL Script Error: {e}")
+            self.logger.error(f"!!! PyMOL Script Error: {e}")
 
     def plot_energy_funnel(self, final_csv_path: str) -> None:
         try:
@@ -1103,7 +1063,7 @@ class PipelineManager:
             fig.tight_layout()
             fig.savefig(output_png, dpi=150)
             plt.close(fig)
-            self.progress_logger.info("    > [Output] Energy funnel plot saved.")
+            self.logger.info("    > [Output] Energy funnel plot saved.")
 
             # --- Plot 2: Energy Funnel vs Best ---
             has_best_bg = (bg_df is not None and 'L_RMSD_best' in bg_df.columns)
@@ -1152,11 +1112,11 @@ class PipelineManager:
                 fig2.tight_layout()
                 fig2.savefig(output_best, dpi=150)
                 plt.close(fig2)
-                self.progress_logger.info(
+                self.logger.info(
                     "    > [Output] Energy funnel (vs best) plot saved.")
 
         except Exception as e:
-            self.progress_logger.error(f"!!! Plotting Error: {e}")
+            self.logger.error(f"!!! Plotting Error: {e}")
 
     def generate_cluster_overview(self) -> None:
         CLUSTER_COLORS = [
@@ -1193,7 +1153,7 @@ class PipelineManager:
                         f.write(f"group {cid}, {cid}_*\n")
                         f.write(f"color {color}, {cid}_* and chain B\n")
         except Exception as e:
-            self.progress_logger.error(f"!!! Cluster Overview Error: {e}")
+            self.logger.error(f"!!! Cluster Overview Error: {e}")
 
     def generate_per_cluster_views(self, final_csv_path: str) -> None:
         try:
@@ -1248,7 +1208,7 @@ class PipelineManager:
                     if resi_a or resi_b:
                         f.write("deselect\n")
         except Exception as e:
-            self.progress_logger.error(f"!!! Per-Cluster View Error: {e}")
+            self.logger.error(f"!!! Per-Cluster View Error: {e}")
 
     # ================================================================== #
     #  Validation Report
@@ -2275,16 +2235,16 @@ class PipelineManager:
         with open(report_path_root, "w", encoding="utf-8") as f:
             f.write(report_text)
 
-        self.progress_logger.info(f"    > [Output] Validation report: {report_path}")
+        self.logger.info(f"    > [Output] Validation report: {report_path}")
 
         # 콘솔에 간략 판정 출력
-        self.progress_logger.info("")
-        self.progress_logger.info(f"    === 판정: {verdict} "
+        self.logger.info("")
+        self.logger.info(f"    === 판정: {verdict} "
                                   f"({n_pass}통과/{n_warn}주의/{n_fail}실패) ===")
         if n_fail > 0:
             for name, status, detail in checks:
                 if status == 'FAIL':
-                    self.progress_logger.info(f"    [실패] {name}: {detail}")
+                    self.logger.info(f"    [실패] {name}: {detail}")
 
     # ================================================================== #
     #  HTML Dashboard
@@ -2504,7 +2464,7 @@ function sortTable(th) {
         dashboard_path = os.path.join(self.dir_final, "dashboard.html")
         with open(dashboard_path, 'w', encoding='utf-8') as f:
             f.write(html)
-        self.progress_logger.info(f"    > [Output] HTML Dashboard: {dashboard_path}")
+        self.logger.info(f"    > [Output] HTML Dashboard: {dashboard_path}")
 
     # ================================================================== #
     #  PIPELINE STEPS (private methods)
@@ -2512,52 +2472,52 @@ function sortTable(th) {
 
     def _step1_relax(self) -> Tuple[Optional[str], Optional[str]]:
         """Step 1: Check/run relaxed structure. Returns (relaxed_pdb, cache_path)."""
-        self.progress_logger.info(">>> [Step 1] Check Relaxed Structure...")
+        self.logger.info(">>> [Step 1] Check Relaxed Structure...")
         t_start = time.time()
 
         cache_filename = f"{os.path.splitext(self.filename)[0]}_relaxed.pdb"
         cache_path = os.path.join(self.dir_cache, cache_filename)
 
         if os.path.exists(cache_path):
-            self.progress_logger.info(f"    > [Cache Hit] Found: {cache_path}")
+            self.logger.info(f"    > [Cache Hit] Found: {cache_path}")
             with open(cache_path, 'r') as f:
                 relaxed_pdb = f.read()
         else:
-            self.progress_logger.info("    > [Cache Miss] Running FastRelax...")
-            relax_result = docking.run_relax_task(self.input_pdb)
+            self.logger.info("    > [Cache Miss] Running FastRelax...")
+            relax_result = movers.run_relax_task(self.input_pdb)
 
             if relax_result['status'] == 'error':
-                self.progress_logger.critical(f"!!! Relax Error: {relax_result['error']}")
+                self.logger.critical(f"!!! Relax Error: {relax_result['error']}")
                 if relax_result.get('trace'):
-                    self.internal_logger.critical(relax_result['trace'])
+                    self.logger.critical(relax_result['trace'])
                 return None, None
 
             relaxed_pdb = relax_result['pdb_data']
             with open(cache_path, 'w') as f:
                 f.write(relaxed_pdb)
-            self.progress_logger.info(f"    > [Cache Saved] {cache_path}")
+            self.logger.info(f"    > [Cache Saved] {cache_path}")
 
         elapsed = time.time() - t_start
         self.stage_times['Relaxation'] = elapsed
-        self.progress_logger.info(f"    [Time] Relax: {elapsed:.1f} sec")
+        self.logger.info(f"    [Time] Relax: {elapsed:.1f} sec")
         return relaxed_pdb, cache_path
 
     def _step2_global_docking(self, relaxed_pdb: str) -> Optional[List[Dict[str, Any]]]:
         """Step 2: Global docking. Returns list of docking result dicts or None."""
         # Log constraint configuration
         if self.excluded_residues_A:
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Constraints] Excluded Chain A residues: "
                 f"{len(self.excluded_residues_A)} residues, "
                 f"early_rejection={self.enable_early_rejection}, "
                 f"contact_dist={self.exclusion_contact_dist}A")
         if self.key_residues_B:
-            self.progress_logger.info(
+            self.logger.info(
                 f"    [Constraints] Key Chain B residues: "
                 f"{len(self.key_residues_B)} residues, "
                 f"bonus_weight={self.key_residue_bonus_weight}")
 
-        self.progress_logger.info(f">>> [Step 2] Global Docking ({self.total_global} models)...")
+        self.logger.info(f">>> [Step 2] Global Docking ({self.total_global} models)...")
         t_start = time.time()
 
         # Build task args with constraint info for early rejection
@@ -2574,10 +2534,10 @@ function sortTable(th) {
         count_errors = 0
 
         with multiprocessing.Pool(self.n_cpus) as pool:
-            for res in pool.imap_unordered(docking.run_global_docking_task, tasks, chunksize=self.chunksize):
+            for res in pool.imap_unordered(movers.run_global_docking_task, tasks, chunksize=self.chunksize):
                 count_done += 1
                 if count_done % 2000 == 0:
-                    self.progress_logger.info(
+                    self.logger.info(
                         f"    > [Docking] {count_done}/{self.total_global} "
                         f"(accepted={len(docking_results)}, rejected={count_rejected}, errors={count_errors})")
                 if res['status'] == 'success':
@@ -2587,19 +2547,19 @@ function sortTable(th) {
                 else:
                     count_errors += 1
                     if count_done < 5 or count_done % 1000 == 0:
-                        self.progress_logger.warning(f"!!! Docking Task Error: {res.get('error')}")
+                        self.logger.warning(f"!!! Docking Task Error: {res.get('error')}")
 
         elapsed = time.time() - t_start
         self.stage_times['Global Docking'] = elapsed
-        self.progress_logger.info(f"    [Time] Global Docking: {elapsed:.1f} sec")
+        self.logger.info(f"    [Time] Global Docking: {elapsed:.1f} sec")
         if count_rejected > 0:
             rej_pct = count_rejected / self.total_global * 100
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Early Rejection] {count_rejected}/{self.total_global} "
                 f"({rej_pct:.1f}%) rejected (excluded zone contact)")
 
         if not docking_results:
-            self.progress_logger.critical("!!! CRITICAL: 0 models generated.")
+            self.logger.critical("!!! CRITICAL: 0 models generated.")
             return None
 
         self.stats['docking_success'] = len(docking_results)
@@ -2609,7 +2569,7 @@ function sortTable(th) {
 
     def _step2_5_scoring_filtering(self, docking_results: List[Dict], cache_path: str) -> Tuple[Optional[List[Dict]], Dict]:
         """Step 2.5: Fast scoring & multi-criteria filtering. Returns (cluster_candidates, constraints_dict) or None."""
-        self.progress_logger.info(">>> [Step 2.5] Fast Scoring & Filtering...")
+        self.logger.info(">>> [Step 2.5] Fast Scoring & Filtering...")
         t_start = time.time()
 
         constraints_dict = {
@@ -2626,7 +2586,7 @@ function sortTable(th) {
             metric_list = "dG + dSASA + sc_value + total_score"
         else:
             metric_list = "dG + dSASA + total_score (sc deferred to post-refinement)"
-        self.progress_logger.info(f"    > Fast scoring: {metric_list} + Center + constraint metrics")
+        self.logger.info(f"    > Fast scoring: {metric_list} + Center + constraint metrics")
 
         fast_tasks = ((d['pdb_data'], cache_path, self.contact_distance, constraints_dict)
                       for d in docking_results)
@@ -2634,7 +2594,7 @@ function sortTable(th) {
         combined_data = []
 
         with multiprocessing.Pool(self.n_cpus) as pool:
-            score_iter = pool.imap(analysis.run_fast_scoring_task,
+            score_iter = pool.imap(scoring.run_fast_scoring_task,
                                    fast_tasks, chunksize=self.chunksize)
 
             for i, score_res in enumerate(score_iter):
@@ -2644,7 +2604,7 @@ function sortTable(th) {
                     score_res['pdb_data'] = origin['pdb_data']
                     combined_data.append(score_res)
                 else:
-                    self.internal_logger.warning(
+                    self.logger.warning(
                         f"Scoring Error (ID: {origin['id']}): {score_res.get('error')}")
                 docking_results[i] = None  # Free memory incrementally
 
@@ -2652,7 +2612,7 @@ function sortTable(th) {
         gc.collect()
 
         if not combined_data:
-            self.progress_logger.critical("!!! CRITICAL: All scoring tasks failed.")
+            self.logger.critical("!!! CRITICAL: All scoring tasks failed.")
             return None, constraints_dict
 
         total_scored = len(combined_data)
@@ -2665,8 +2625,8 @@ function sortTable(th) {
         min_dG = float(np.min(scores_np))
         max_dG = float(np.max(scores_np))
 
-        self.progress_logger.info(f"    > [Stats] Scored: {total_scored}/{self.total_global}")
-        self.progress_logger.info(f"    > [Stats] dG  Mean={mean_dG:.2f}  Std={std_dG:.2f}  Min={min_dG:.2f}  Max={max_dG:.2f}")
+        self.logger.info(f"    > [Stats] Scored: {total_scored}/{self.total_global}")
+        self.logger.info(f"    > [Stats] dG  Mean={mean_dG:.2f}  Std={std_dG:.2f}  Min={min_dG:.2f}  Max={max_dG:.2f}")
 
         # Save initial all-models CSV (filter_status filled later)
         self._save_scored_all_models_csv(combined_data)
@@ -2684,7 +2644,7 @@ function sortTable(th) {
         # --- Save filtered models ---
         if self.save_filter_max > 0:
             count_save = min(len(cluster_candidates), self.save_filter_max)
-            self.progress_logger.info(f"    > [Output] Saving Top {count_save} Filtered Models...")
+            self.logger.info(f"    > [Output] Saving Top {count_save} Filtered Models...")
             for i, item in enumerate(cluster_candidates[:count_save]):
                 fname = f"F{i+1:04d}_S{item['dG_separated']:.2f}.pdb"
                 with open(os.path.join(self.dir_filter, fname), "w") as f:
@@ -2697,7 +2657,7 @@ function sortTable(th) {
         """Lightweight refinement of Stage 1 survivors to improve interface packing."""
         count = len(stage1_pool)
         n_rounds = self.mini_refine_n_rounds
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Mini Refinement] Refining {count} Stage 1 survivors "
             f"(mode={self.mini_refine_mode}, n_rounds={n_rounds})...")
 
@@ -2719,7 +2679,7 @@ function sortTable(th) {
         n_refined = 0
         with multiprocessing.Pool(self.n_cpus) as pool:
             refine_iter = pool.imap(
-                docking.run_mini_refinement_task,
+                movers.run_mini_refinement_task,
                 refine_tasks, chunksize=self.chunksize)
 
             for i, result in enumerate(refine_iter):
@@ -2729,17 +2689,17 @@ function sortTable(th) {
                     if result.get('refined', False):
                         n_refined += 1
                 else:
-                    self.internal_logger.warning(
+                    self.logger.warning(
                         f"[MiniRefine] ID {d.get('id')} error: "
                         f"{result.get('error')}")
                 refined_pool.append(d)
 
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Mini Refinement] {n_refined}/{count} successfully refined "
             f"({time.time() - t_refine:.1f} sec)")
 
         # --- Step 2: Re-score with fast scoring to update metrics ---
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Mini Refinement] Re-scoring {len(refined_pool)} refined models...")
 
         t_rescore = time.time()
@@ -2760,7 +2720,7 @@ function sortTable(th) {
 
         with multiprocessing.Pool(self.n_cpus) as pool:
             score_iter = pool.imap(
-                analysis.run_fast_scoring_task,
+                scoring.run_fast_scoring_task,
                 score_tasks, chunksize=self.chunksize)
 
             for i, score_res in enumerate(score_iter):
@@ -2785,11 +2745,11 @@ function sortTable(th) {
                     # Remove stale dG_density (will be recalculated in Stage 2)
                     d.pop('dG_density', None)
                 else:
-                    self.internal_logger.warning(
+                    self.logger.warning(
                         f"[MiniRefine Re-score] ID {d.get('id')} error: "
                         f"{score_res.get('error')}")
 
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Mini Refinement] Re-scoring done ({time.time() - t_rescore:.1f} sec)")
 
         # --- Post-refinement metrics comparison ---
@@ -2809,7 +2769,7 @@ function sortTable(th) {
         delta_dSASA = post_dSASA_mean - pre_dSASA_mean
         delta_sc = post_sc_mean - pre_sc_mean
 
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Mini Refinement] Delta: "
             f"dG={delta_dG:+.2f}, dSASA={delta_dSASA:+.1f}, sc={delta_sc:+.3f}")
 
@@ -2857,16 +2817,16 @@ function sortTable(th) {
                 writer.writeheader()
                 for rec in threshold_records:
                     writer.writerow(rec)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Output] Filter thresholds saved to {csv_path} "
                 f"({len(threshold_records)} rows)")
         except Exception as e:
-            self.internal_logger.warning(
+            self.logger.warning(
                 f"Failed to write filter_thresholds.csv: {e}")
 
     def _filter_v2(self, combined_data: List[Dict], total_scored: int, mean_dG: float, median_dG: float, std_dG: float, min_dG: float, max_dG: float, scores_np: Any, t_start: float) -> List[Dict]:
         """v2.0 multi-stage filtering pathway. Returns cluster_candidates list."""
-        self.progress_logger.info("    > [Filter] Using v2.0 multi-stage filtering")
+        self.logger.info("    > [Filter] Using v2.0 multi-stage filtering")
 
         # Threshold tracking records
         _thresh_records = []
@@ -2887,7 +2847,7 @@ function sortTable(th) {
                     _filter_status_map[str(d.get('id', ''))] = 'reject_exclusion'
             combined_data = _excl_pass
             excl_rejected = pre_excl - len(combined_data)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [S1-Excl] Excluded zone contacts <= {self.max_excluded_contacts}  "
                 f"Passed={len(combined_data)}/{pre_excl}  "
                 f"(rejected {excl_rejected})")
@@ -2912,7 +2872,7 @@ function sortTable(th) {
                 stage1_pool.append(d)
             else:
                 _filter_status_map[str(d.get('id', ''))] = 'reject_dG'
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [S1-dG] dG <= {self.stage1_max_dG}  "
             f"Passed={len(stage1_pool)}/{pre_dG}")
         _thresh_records.append({
@@ -2938,7 +2898,7 @@ function sortTable(th) {
                 else:
                     _filter_status_map[str(d.get('id', ''))] = 'reject_total_score'
             stage1_pool = _ts_pass
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [S1-TS] total_score {self.stage1_total_score_pct}%  "
                 f"Cutoff={ts_cutoff:.2f}  Passed={len(stage1_pool)}/{pre_ts}")
             _thresh_records.append({
@@ -2952,7 +2912,7 @@ function sortTable(th) {
             })
 
         stage1_count = len(stage1_pool)
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Stage 1 Result] {stage1_count} survivors "
             f"({stage1_count/total_scored*100:.1f}%)")
 
@@ -2998,7 +2958,7 @@ function sortTable(th) {
                 continue
             stage2_cheap.append(d)
 
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [S2-Cheap] dSASA>={self.stage2_min_dSASA} & "
             f"dG_density<={self.stage2_max_dG_density} & "
             f"sc>={self.stage2_min_sc}  "
@@ -3043,7 +3003,7 @@ function sortTable(th) {
         _s2e_errors = 0
         _stage2_all_scored: List[Dict] = []  # all models with expensive metrics (pass+fail)
         if self.stage2_expensive and stage2_cheap:
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [S2-Pass2] Computing expensive metrics for "
                 f"{len(stage2_cheap)} survivors...")
 
@@ -3051,7 +3011,7 @@ function sortTable(th) {
 
             with multiprocessing.Pool(self.n_cpus) as pool:
                 inter_iter = pool.imap(
-                    analysis.run_intermediate_scoring_task,
+                    scoring.run_intermediate_scoring_task,
                     inter_tasks, chunksize=self.chunksize)
 
                 stage2_full = []
@@ -3059,7 +3019,7 @@ function sortTable(th) {
                     d = stage2_cheap[i]
                     _did = str(d.get('id', ''))
                     if inter_res['status'] != 'success':
-                        self.internal_logger.warning(
+                        self.logger.warning(
                             f"Intermediate scoring error (ID: {d.get('id')}): "
                             f"{inter_res.get('error')}")
                         _s2e_errors += 1
@@ -3101,7 +3061,7 @@ function sortTable(th) {
             # Save Stage 2 CSV (all models with expensive metrics)
             self._save_scored_stage2_models_csv(_stage2_all_scored)
 
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [S2-Expensive] packstat>={self.stage2_min_packstat} & "
                 f"unsatHb<={self.stage2_max_unsat} & "
                 f"nres>={self.stage2_min_nres} & "
@@ -3159,7 +3119,7 @@ function sortTable(th) {
         elif len(stage2_cheap) >= min_surv:
             fallback_level = 1
             cluster_candidates = stage2_cheap
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    > [Fallback-1] Expensive metrics relaxed -> "
                 f"{len(stage2_cheap)} models")
         elif stage1_count >= min_surv:
@@ -3169,14 +3129,14 @@ function sortTable(th) {
                                   if d.get('dSASA', 0) >= softer_dSASA]
             if len(cluster_candidates) < min_surv:
                 cluster_candidates = stage1_pool
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    > [Fallback-2] Stage 2 relaxed (dSASA>={softer_dSASA:.0f}) -> "
                 f"{len(cluster_candidates)} models")
         else:
             fallback_level = 3
             combined_data.sort(key=lambda x: x['dG_separated'])
             cluster_candidates = combined_data[:min_surv]
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    > [Fallback-3] All Stage 2 off -> top {min_surv} by dG")
 
         # Compute dG_density for candidates that don't have it yet
@@ -3191,10 +3151,10 @@ function sortTable(th) {
         cluster_candidates.sort(key=lambda x: x['dG_separated'])
 
         pass_rate = len(cluster_candidates) / total_scored * 100
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Filter Result] {len(cluster_candidates)} candidates "
             f"({pass_rate:.1f}% of {total_scored})")
-        self.progress_logger.info(
+        self.logger.info(
             f"    [Time] Scoring & Filtering: {time.time() - t_start:.1f} sec")
 
         self.stats.update({
@@ -3247,11 +3207,11 @@ function sortTable(th) {
     def _filter_v1(self, combined_data: List[Dict], total_scored: int, mean_dG: float, median_dG: float, std_dG: float, min_dG: float, max_dG: float, scores_np: Any, t_start: float) -> List[Dict]:
         """v1.0 filtering pathway (legacy). Returns cluster_candidates list."""
         if self.filter_v2_enabled and not self.stage1_enabled:
-            self.progress_logger.info(
+            self.logger.info(
                 "    > [Filter] v2.0 sections present but Stage1 disabled, "
                 "using v1.0 path")
         else:
-            self.progress_logger.info("    > [Filter] Using v1.0 filtering")
+            self.logger.info("    > [Filter] Using v1.0 filtering")
 
         # Filter status tracking: id -> rejection reason
         _filter_status_map: Dict[str, str] = {}
@@ -3266,7 +3226,7 @@ function sortTable(th) {
                 dSASA_passed.append(d)
             else:
                 _filter_status_map[str(d.get('id', ''))] = 'reject_dSASA'
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Filter-1] dSASA >= {self.min_dSASA} A^2  "
             f"Passed={len(dSASA_passed)}/{total_scored}")
         _thresh_records.append({
@@ -3289,7 +3249,7 @@ function sortTable(th) {
                 else:
                     _filter_status_map[str(d.get('id', ''))] = 'reject_exclusion'
             excl_rejected = pre_excl - len(excl_passed)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Filter-1.5] Excluded zone contacts <= {self.max_excluded_contacts}  "
                 f"Passed={len(excl_passed)}/{pre_excl}  "
                 f"(rejected {excl_rejected} forbidden-zone poses)")
@@ -3321,7 +3281,7 @@ function sortTable(th) {
                 'n_rejected': 0,
             })
         elif std_dG < 1e-6:
-            self.progress_logger.warning("    > [Warning] dG std ~= 0. Skipping dG filter.")
+            self.logger.warning("    > [Warning] dG std ~= 0. Skipping dG filter.")
             dG_passed = dSASA_passed
             _thresh_records.append({
                 'filter_name': 'v1_dG_percentile',
@@ -3341,7 +3301,7 @@ function sortTable(th) {
                     dG_passed.append(d)
                 else:
                     _filter_status_map[str(d.get('id', ''))] = 'reject_dG'
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Filter-2] dG {self.filter_percentile}%  Cutoff={dG_cutoff:.2f}  "
                 f"Passed={len(dG_passed)}/{len(dSASA_passed)}")
             _thresh_records.append({
@@ -3366,7 +3326,7 @@ function sortTable(th) {
             else:
                 _filter_status_map[str(d.get('id', ''))] = 'reject_sc'
         if len(dG_passed) - len(sc_passed) > 0:
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Filter-3] sc >= {self.min_sc_value}  "
                 f"Passed={len(sc_passed)}/{len(dG_passed)}")
         _thresh_records.append({
@@ -3386,19 +3346,19 @@ function sortTable(th) {
         elif len(dG_passed) >= self.min_survivors:
             fallback_level = 1
             cluster_candidates = dG_passed
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    > [Fallback-1] sc filter relaxed -> {len(dG_passed)} models")
         elif len(dSASA_passed) >= self.min_survivors:
             fallback_level = 2
             dSASA_passed.sort(key=lambda x: x['dG_separated'])
             cluster_candidates = dSASA_passed
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    > [Fallback-2] dG filter relaxed -> {len(dSASA_passed)} models")
         else:
             fallback_level = 3
             combined_data.sort(key=lambda x: x['dG_separated'])
             cluster_candidates = combined_data[:self.min_survivors]
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    > [Fallback-3] All filters relaxed -> top {self.min_survivors} by dG")
 
         cluster_candidates.sort(key=lambda x: x['dG_separated'])
@@ -3409,10 +3369,10 @@ function sortTable(th) {
             _filter_status_map[_did] = 'pass'
 
         pass_rate = len(cluster_candidates) / total_scored * 100
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Filter Result] {len(cluster_candidates)} candidates "
             f"({pass_rate:.1f}% of {total_scored})")
-        self.progress_logger.info(f"    [Time] Scoring & Filtering: {time.time() - t_start:.1f} sec")
+        self.logger.info(f"    [Time] Scoring & Filtering: {time.time() - t_start:.1f} sec")
 
         self.stats.update({
             'total_scored': total_scored,
@@ -3455,7 +3415,7 @@ function sortTable(th) {
     def _step3_full_scoring(self, cluster_candidates: List[Dict], cache_path: str, constraints_dict: Dict) -> Optional[List[Dict]]:
         """Step 3: Full scoring of filter survivors. Returns fully_scored list or None."""
         n = len(cluster_candidates)
-        self.progress_logger.info(f">>> [Step 3] Full Scoring ({n} filter survivors)...")
+        self.logger.info(f">>> [Step 3] Full Scoring ({n} filter survivors)...")
         t_start = time.time()
 
         score_tasks = ((d['pdb_data'], cache_path, self.contact_distance, constraints_dict)
@@ -3465,7 +3425,7 @@ function sortTable(th) {
         n_errors = 0
 
         with multiprocessing.Pool(self.n_cpus) as pool:
-            score_iter = pool.imap(analysis.run_scoring_task,
+            score_iter = pool.imap(scoring.run_scoring_task,
                                    score_tasks, chunksize=self.chunksize)
 
             for i, score_res in enumerate(score_iter):
@@ -3479,24 +3439,24 @@ function sortTable(th) {
                     fully_scored.append(score_res)
                 else:
                     n_errors += 1
-                    self.internal_logger.warning(
+                    self.logger.warning(
                         f"Full scoring error (ID: {origin.get('id', i+1)}): "
                         f"{score_res.get('error')} [step={score_res.get('step')}]")
 
         del cluster_candidates
         gc.collect()
 
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Full Scoring] {len(fully_scored)}/{n} successful "
             f"({n_errors} errors)")
         elapsed = time.time() - t_start
         self.stage_times['Full Scoring'] = elapsed
-        self.progress_logger.info(f"    [Time] Full Scoring: {elapsed:.1f} sec")
+        self.logger.info(f"    [Time] Full Scoring: {elapsed:.1f} sec")
 
         self.stats['total_full_scored'] = len(fully_scored)
 
         if not fully_scored:
-            self.progress_logger.critical("!!! CRITICAL: All full scoring tasks failed.")
+            self.logger.critical("!!! CRITICAL: All full scoring tasks failed.")
             return None
 
         fully_scored.sort(key=lambda x: x['dG_separated'])
@@ -3505,7 +3465,7 @@ function sortTable(th) {
     def _step4_clustering(self, cluster_candidates: List[Dict]) -> Optional[List[Dict]]:
         """Step 4: L_RMSD greedy clustering. Returns final_representatives or None."""
         n_cands = len(cluster_candidates)
-        self.progress_logger.info(f">>> [Step 4] L_RMSD Greedy Clustering ({n_cands} candidates)...")
+        self.logger.info(f">>> [Step 4] L_RMSD Greedy Clustering ({n_cands} candidates)...")
         t_start = time.time()
 
         centers = np.array([[c.get('center_x', 0), c.get('center_y', 0),
@@ -3513,7 +3473,7 @@ function sortTable(th) {
         # Warn about models with unresolved center coordinates (all zeros)
         n_zero_center = int(np.sum(np.all(centers == 0, axis=1)))
         if n_zero_center > 0:
-            self.progress_logger.warning(
+            self.logger.warning(
                 f"    [Cluster WARN] {n_zero_center}/{n_cands} models have center (0,0,0) "
                 f"— scoring may have failed for these; CoM pre-filter unreliable for them")
         com_threshold = max(self.cluster_threshold * 8, COM_THRESHOLD_MIN)
@@ -3534,7 +3494,7 @@ function sortTable(th) {
 
         for idx, candidate in enumerate(cluster_candidates):
             if (idx + 1) % 500 == 0:
-                self.progress_logger.info(
+                self.logger.info(
                     f"    > [Cluster] {idx+1}/{n_cands}  "
                     f"({len(leaders)} clusters, {com_skipped} CoM-skipped)")
 
@@ -3566,7 +3526,7 @@ function sortTable(th) {
                 com_skipped += 1
                 continue
 
-            cand_pose = common.string_to_pose(candidate['pdb_data'])
+            cand_pose = pyrosetta_init.string_to_pose(candidate['pdb_data'])
             if cand_pose is None or cand_pose.num_chains() < 2:
                 continue
 
@@ -3652,7 +3612,7 @@ function sortTable(th) {
                 # Adaptive escalation: expand cluster_top_n once if too many extras
                 if not escalation_applied and potential_extra_clusters >= escalation_threshold:
                     new_top_n = int(self.cluster_top_n * 1.5)
-                    self.progress_logger.info(
+                    self.logger.info(
                         f"    > [Escalation] potential_extra={potential_extra_clusters} >= "
                         f"threshold={escalation_threshold}. "
                         f"Expanding cluster_top_n: {self.cluster_top_n} -> {new_top_n}")
@@ -3668,13 +3628,13 @@ function sortTable(th) {
         if potential_extra_clusters > 0:
             total_possible = len(leaders) + potential_extra_clusters
             extra_msg = f", 실제 가능: {total_possible}개"
-        self.progress_logger.info(
+        self.logger.info(
             f"    > Found {len(leaders)} clusters{extra_msg}, "
             f"Total {len(final_representatives)} representatives. "
             f"(CoM skipped {com_skipped})")
         elapsed = time.time() - t_start
         self.stage_times['Clustering'] = elapsed
-        self.progress_logger.info(f"    [Time] Clustering: {elapsed:.1f} sec")
+        self.logger.info(f"    [Time] Clustering: {elapsed:.1f} sec")
 
         # Save cluster PDBs + cluster summary CSV
         cluster_csv_rows = []
@@ -3716,7 +3676,7 @@ function sortTable(th) {
         if cluster_csv_rows:
             cluster_csv_path = os.path.join(self.dir_cluster, "cluster_summary.csv")
             pd.DataFrame(cluster_csv_rows).to_csv(cluster_csv_path, index=False)
-            self.progress_logger.info(f"    > [Output] Cluster summary: {cluster_csv_path}")
+            self.logger.info(f"    > [Output] Cluster summary: {cluster_csv_path}")
 
         # Save full cluster membership CSV (all models → cluster mapping)
         if all_membership_records:
@@ -3727,19 +3687,19 @@ function sortTable(th) {
                 'center_x', 'center_y', 'center_z',
             ])
             membership_df.to_csv(membership_csv_path, index=False)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Output] Cluster membership: {membership_csv_path} "
                 f"({len(all_membership_records)} models mapped)")
 
         if not final_representatives:
-            self.progress_logger.critical("!!! CRITICAL: 0 cluster representatives.")
+            self.logger.critical("!!! CRITICAL: 0 cluster representatives.")
             return None
 
         # Shadow archive: save dropped candidates metadata
         if dropped_records:
             dropped_csv_path = os.path.join(self.dir_cluster, "dropped_candidates.csv")
             pd.DataFrame(dropped_records).to_csv(dropped_csv_path, index=False)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Shadow Archive] {len(dropped_records)} dropped candidates "
                 f"saved to {dropped_csv_path}")
             self.stats['dropped_candidates_path'] = dropped_csv_path
@@ -3762,7 +3722,7 @@ function sortTable(th) {
 
     def _step5_selection_and_save(self, final_representatives: List[Dict]) -> Tuple[Any, str]:
         """Step 5: Diversity-aware selection, dedup, and save. Returns (ranking_df, final_csv_path)."""
-        self.progress_logger.info(">>> [Step 5] Diversity-Aware Selection & Deduplication...")
+        self.logger.info(">>> [Step 5] Diversity-Aware Selection & Deduplication...")
         t_start_step6 = time.time()
         final_scores = final_representatives
 
@@ -3803,7 +3763,7 @@ function sortTable(th) {
                 break
 
         n_clusters_in_pool = len(set(item['_cluster_id'] for item in selection_pool))
-        self.progress_logger.info(
+        self.logger.info(
             f"    > [Round-Robin] {len(selection_pool)} candidates from "
             f"{n_clusters_in_pool} clusters")
 
@@ -3814,7 +3774,7 @@ function sortTable(th) {
         n_dedup_skipped = 0
 
         for item in selection_pool:
-            pose = common.string_to_pose(item['pdb_data'])
+            pose = pyrosetta_init.string_to_pose(item['pdb_data'])
             if pose is None or pose.num_chains() < 2:
                 continue
 
@@ -3848,15 +3808,15 @@ function sortTable(th) {
         gc.collect()
 
         if n_dedup_skipped > 0:
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Dedup] Removed {n_dedup_skipped} near-duplicates "
                 f"(L_RMSD < {dedup_threshold}A)")
 
         if final_lrmsd_best:
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [L_RMSD_best] Recomputed for {len(final_lrmsd_best)} models "
                 f"(ref: Rank 1 = {deduped[0].get('Parent', 'N/A')})")
-        self.progress_logger.info(
+        self.logger.info(
             f"    > Saving {len(deduped)} diverse final models...")
 
         # Boltzmann-weighted cluster probabilities
@@ -3924,7 +3884,7 @@ function sortTable(th) {
                     with open(os.path.join(self.dir_final, fname_contacts), "w") as f:
                         f.write(contact_pairs_csv)
             except Exception as e:
-                self.internal_logger.warning(
+                self.logger.warning(
                     f"Error writing ContactPairs CSV for Rank {rank+1}: {e}")
 
             dSASA_val = item.get('dSASA', 0)
@@ -3970,7 +3930,7 @@ function sortTable(th) {
         final_csv_path = os.path.join(self.dir_final, "final_ranking.csv")
         ranking_df.to_csv(final_csv_path, index=False)
         ranking_df.to_csv(os.path.join(self.root_dir, "final_ranking.csv"), index=False)
-        self.progress_logger.info(f"    > [Output] Final ranking: {final_csv_path}")
+        self.logger.info(f"    > [Output] Final ranking: {final_csv_path}")
 
         # Archive: extended metadata CSV (no PDB files) for broader coverage
         if self.archive_top_n > self.save_top_n and len(selection_pool) > len(deduped):
@@ -4003,17 +3963,17 @@ function sortTable(th) {
                 })
             archive_csv_path = os.path.join(self.dir_final, "archive_ranking.csv")
             pd.DataFrame(archive_rows).to_csv(archive_csv_path, index=False)
-            self.progress_logger.info(
+            self.logger.info(
                 f"    > [Archive] {len(archive_rows)} models in {archive_csv_path}")
 
         elapsed = time.time() - t_start_step6
         self.stage_times['Selection & Save'] = elapsed
-        self.progress_logger.info(f"    [Time] Selection & Save: {elapsed:.1f} sec")
+        self.logger.info(f"    [Time] Selection & Save: {elapsed:.1f} sec")
         return ranking_df, final_csv_path
 
     def _step6_visualization(self, ranking_df: Any, final_csv_path: str, overall_start_time: float) -> None:
         """Step 6: Visualization & validation report."""
-        self.progress_logger.info(">>> [Step 6] Generating Visualization & Validation Report...")
+        self.logger.info(">>> [Step 6] Generating Visualization & Validation Report...")
         self.plot_energy_funnel(final_csv_path)
         self.generate_cluster_overview()
         self.generate_per_cluster_views(final_csv_path)
@@ -4024,10 +3984,10 @@ function sortTable(th) {
         self.generate_validation_report(ranking_df)
         self.generate_html_dashboard(ranking_df, final_csv_path)
 
-        self.progress_logger.info("=" * 50)
-        self.progress_logger.info(f"    BENCHMARK REPORT")
-        self.progress_logger.info(f"    Total Time      : {self.stats['total_runtime']}")
-        self.progress_logger.info(">>> PIPELINE COMPLETED.")
+        self.logger.info("=" * 50)
+        self.logger.info(f"    BENCHMARK REPORT")
+        self.logger.info(f"    Total Time      : {self.stats['total_runtime']}")
+        self.logger.info(">>> PIPELINE COMPLETED.")
 
     # ================================================================== #
     #  MAIN PIPELINE
@@ -4036,13 +3996,13 @@ function sortTable(th) {
         overall_start_time = time.time()
         try:
             if self.master_seed is not None:
-                common.set_master_seed(self.master_seed)
-            common.init_rosetta()
-            self.progress_logger.info(f"=== Pipeline Started (CPU: {self.n_cpus}) ===")
-            self.progress_logger.info(f"Target Input: {self.input_pdb}")
-            self.progress_logger.info(f"Root Directory: {self.root_dir}")
+                pyrosetta_init.set_master_seed(self.master_seed)
+            pyrosetta_init.init_rosetta()
+            self.logger.info(f"=== Pipeline Started (CPU: {self.n_cpus}) ===")
+            self.logger.info(f"Target Input: {self.input_pdb}")
+            self.logger.info(f"Root Directory: {self.root_dir}")
             if self.master_seed is not None:
-                self.progress_logger.info(f"Random Seed: {self.master_seed}")
+                self.logger.info(f"Random Seed: {self.master_seed}")
 
             # Step 1: Relax
             relaxed_pdb, cache_path = self._step1_relax()
@@ -4054,7 +4014,7 @@ function sortTable(th) {
 
             # Preflight: validate chain labels, numbering, constraints
             if not self._preflight_check(relaxed_pdb):
-                self.progress_logger.critical(
+                self.logger.critical(
                     "!!! Preflight check FAILED. Aborting pipeline. "
                     "Fix input PDB or config before re-running.")
                 return
@@ -4104,8 +4064,8 @@ function sortTable(th) {
             gc.collect()
 
         except Exception as e:
-            self.internal_logger.critical(f"!!! CRITICAL UNHANDLED ERROR: {str(e)}")
-            self.internal_logger.critical(traceback.format_exc())
+            self.logger.critical(f"!!! CRITICAL UNHANDLED ERROR: {str(e)}")
+            self.logger.critical(traceback.format_exc())
             try:
                 self._save_run_metadata("unhandled_error")
             except Exception:

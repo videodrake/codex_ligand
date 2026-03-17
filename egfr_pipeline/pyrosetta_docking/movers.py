@@ -10,7 +10,7 @@ from pyrosetta.rosetta.protocols.relax import FastRelax
 from pyrosetta.rosetta.protocols.rigid import RigidBodyPerturbMover
 from pyrosetta.rosetta.utility import vector1_int
 
-from . import common
+from . import pyrosetta_init
 
 if TYPE_CHECKING:
     from pyrosetta.rosetta.core.pose import Pose
@@ -24,7 +24,8 @@ MIN_CHAINS = 2
 SCORE_FUNCTION_NAME = "ref2015"
 DOCK_PARTNERS = "A_B"
 
-internal_logger = logging.getLogger('python_internal')
+from .logging_config import get_worker_logger
+internal_logger = get_worker_logger()
 
 
 def _setup_docking(pose: "Pose") -> None:
@@ -39,7 +40,7 @@ def run_relax_task(pdb_path: str) -> Dict[str, Any]:
     Runs FastRelax on the input structure.
     Returns a dictionary containing status and PDB data.
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
 
     try:
         internal_logger.info(f"[Relax] Starting FastRelax on {pdb_path}")
@@ -53,7 +54,7 @@ def run_relax_task(pdb_path: str) -> Dict[str, Any]:
         internal_logger.info(f"[Relax] FastRelax completed successfully.")
         return {
             "status": "success",
-            "pdb_data": common.pose_to_string(pose),
+            "pdb_data": pyrosetta_init.pose_to_string(pose),
             "error": None
         }
     except Exception as e:
@@ -72,7 +73,7 @@ def run_global_docking_task(args: tuple) -> Dict[str, Any]:
     args: (index, relaxed_pdb_string)
        or (index, relaxed_pdb_string, excluded_residues_A, exclusion_contact_dist, max_excluded_contacts)
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
 
     if len(args) >= 5:
         idx, input_data, excluded_residues_A, exclusion_contact_dist, max_excluded_contacts = args[:5]
@@ -89,7 +90,7 @@ def run_global_docking_task(args: tuple) -> Dict[str, Any]:
     step = "Init"
 
     try:
-        pose = common.string_to_pose(input_data)
+        pose = pyrosetta_init.string_to_pose(input_data)
         if pose is None: raise ValueError("Invalid PDB String")
 
         # 0. Setup Fold Tree for Docking
@@ -110,7 +111,7 @@ def run_global_docking_task(args: tuple) -> Dict[str, Any]:
         # This runs BEFORE the expensive DockMCMProtocol to save compute
         if excluded_residues_A:
             step = "Exclusion Check"
-            n_contacts = common.count_excluded_contacts(
+            n_contacts = pyrosetta_init.count_excluded_contacts(
                 pose, excluded_residues_A, exclusion_contact_dist)
             if n_contacts > max_excluded_contacts:
                 return {
@@ -151,7 +152,7 @@ def run_global_docking_task(args: tuple) -> Dict[str, Any]:
         return {
             "status": "success",
             "id": idx,
-            "pdb_data": common.pose_to_string(pose),
+            "pdb_data": pyrosetta_init.pose_to_string(pose),
             "center_x": center[0],
             "center_y": center[1],
             "center_z": center[2],
@@ -177,14 +178,14 @@ def run_refinement_task(args: tuple) -> Dict[str, Any]:
     perturb+minimize.
     args: (index, pdb_string, parent_name, trans_mag, rot_mag, sub_rank)
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
 
     idx, pdb_data, parent_name, t_mag, r_mag, sub_rank = args
     step = "Init"
 
     try:
         step = "Loading Pose"
-        pose = common.string_to_pose(pdb_data)
+        pose = pyrosetta_init.string_to_pose(pdb_data)
         if pose is None: raise ValueError("Invalid PDB String")
 
         # Setup FoldTree (lost during deserialization)
@@ -203,7 +204,7 @@ def run_refinement_task(args: tuple) -> Dict[str, Any]:
             "id": idx,
             "parent": parent_name,
             "sub_rank": sub_rank,
-            "pdb_data": common.pose_to_string(pose),
+            "pdb_data": pyrosetta_init.pose_to_string(pose),
             "error": None
         }
     except Exception as e:
@@ -232,7 +233,7 @@ def run_mini_refinement_task(args: tuple) -> Dict[str, Any]:
                   'pack_min'  = repacking + interface minimization
         n_rounds: number of repacking rounds (default 3)
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
 
     if len(args) >= 4:
         idx, pdb_data, mode, n_rounds = args[:4]
@@ -243,7 +244,7 @@ def run_mini_refinement_task(args: tuple) -> Dict[str, Any]:
 
     try:
         step = "Loading Pose"
-        pose = common.string_to_pose(pdb_data)
+        pose = pyrosetta_init.string_to_pose(pdb_data)
         if pose is None:
             raise ValueError("Invalid PDB String")
 
@@ -354,7 +355,7 @@ def run_mini_refinement_task(args: tuple) -> Dict[str, Any]:
         return {
             "status": "success",
             "id": idx,
-            "pdb_data": common.pose_to_string(pose),
+            "pdb_data": pyrosetta_init.pose_to_string(pose),
             "refined": True,
             "error": None,
         }

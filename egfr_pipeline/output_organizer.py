@@ -47,6 +47,7 @@ STEPS: Dict[int, Tuple[str, str, str]] = {
             "    final_result/                Final structures + per-residue energies\n"
             "      dashboard.html            Interactive results dashboard\n"
             "    cluster_results/             Cluster summaries + membership\n"
+            "    logs/                        Pipeline & worker logs\n"
             "    docking_validation_report    (inside final_result/)"
         ),
     ),

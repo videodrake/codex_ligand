@@ -137,6 +137,7 @@ output/{project}/steps/
   scored_stage2_models.csv # Stage 2 대상 모델의 비싼 메트릭 (packstat, unsatHb 등)
   filter_thresholds.csv  # 필터 임계값 기록 (재현성 보장)
   all_scored_summary.csv # 에너지 퍼널용 데이터 (dG, dSASA, sc, total_score + L_RMSD)
+  logs/                  # 파이프라인 로그 (pipeline.log + workers.log)
   filter_passed/         # 필터 통과 구조 (F0001_S-15.23.pdb)
   cluster_results/       # 클러스터 대표 + 전체 멤버십
     cluster_summary.csv          # 대표 모델 메트릭 (centroid, dSASA 분해, 에너지 분포 통계 포함)

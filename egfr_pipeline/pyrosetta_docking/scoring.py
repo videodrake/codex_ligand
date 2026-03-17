@@ -20,7 +20,7 @@ except ImportError:
 from pyrosetta.rosetta.core.select.residue_selector import ChainSelector, NeighborhoodResidueSelector
 from pyrosetta.rosetta.protocols.analysis import InterfaceAnalyzerMover
 
-from . import common
+from . import pyrosetta_init
 
 if TYPE_CHECKING:
     from pyrosetta.rosetta.core.pose import Pose
@@ -34,7 +34,8 @@ RMSD_ERROR_VALUE = 999.9
 SCORE_FUNCTION_NAME = "ref2015"
 MIN_CHAINS = 2
 
-internal_logger = logging.getLogger('python_internal')
+from .logging_config import get_worker_logger
+internal_logger = get_worker_logger()
 
 
 # ---- Private Helpers ---- #
@@ -55,8 +56,8 @@ def _extract_iam_metric(pose: "Pose", iam: Any, score_key: str, method_name: str
             try:
                 raw = getattr(iam, method_name)()
                 val = type(default)(raw) if isinstance(default, int) else float(raw)
-            except Exception:
-                pass
+            except Exception as e:
+                internal_logger.debug(f"IAM fallback failed for {score_key}/{method_name}: {e}")
     return val
 
 
@@ -91,7 +92,7 @@ def _load_pose(target: str) -> Tuple[Optional["Pose"], str]:
     if os.path.exists(str(target)) and len(str(target)) < 255:
         return pose_from_pdb(target), target
     else:
-        return common.string_to_pose(target), "memory_pose"
+        return pyrosetta_init.string_to_pose(target), "memory_pose"
 
 
 def _get_interface_def(pose: "Pose") -> str:
@@ -200,8 +201,8 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
                         hb_bb_sc = emap[hbond_bb_sc] * weights[hbond_bb_sc]
                         hb_sc = emap[hbond_sc] * weights[hbond_sc]
                         dunbrack = emap[fa_dun] * weights[fa_dun]
-                except Exception:
-                    pass
+                except Exception as e:
+                    internal_logger.debug(f"Energy emap extraction failed for residue {i}: {e}")
             chain = pose.pdb_info().chain(i)
             pdb_num = pose.pdb_info().number(i)
             res_name = pose.residue(i).name3()
@@ -248,8 +249,8 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
                             hb_bb_sc = emap[hbond_bb_sc] * weights[hbond_bb_sc]
                             hb_sc = emap[hbond_sc] * weights[hbond_sc]
                             dunbrack = emap[fa_dun] * weights[fa_dun]
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        internal_logger.debug(f"Separated emap extraction failed for residue {j}: {e}")
                 sep_energies[orig_i] = {
                     'total': total_e, 'fa_atr': atr, 'fa_rep': rep,
                     'fa_sol': sol, 'fa_elec': elec,
@@ -342,7 +343,7 @@ def analyze_interface_contacts(pose: "Pose", contact_distance: float = DEFAULT_C
         internal_logger.debug(traceback.format_exc())
         return {"A": "Analysis_Failed", "B": "Analysis_Failed"}
 
-count_excluded_contacts = common.count_excluded_contacts
+count_excluded_contacts = pyrosetta_init.count_excluded_contacts
 
 
 def _derive_key_contact_from_binding(
@@ -574,10 +575,10 @@ def run_lrmsd_dual_task(args: tuple) -> Dict[str, Any]:
     """Compute L_RMSD against both relaxed reference and best-dG reference.
     args: (pdb_data_string, relaxed_ref_path, best_ref_path)
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
     pdb_data, relaxed_ref_path, best_ref_path = args
     try:
-        pose = common.string_to_pose(pdb_data)
+        pose = pyrosetta_init.string_to_pose(pdb_data)
         if pose is None or pose.num_chains() < MIN_CHAINS:
             return {"status": "error", "L_RMSD": RMSD_ERROR_VALUE,
                     "L_RMSD_best": RMSD_ERROR_VALUE}
@@ -587,8 +588,8 @@ def run_lrmsd_dual_task(args: tuple) -> Dict[str, Any]:
             try:
                 ref_pose = pose_from_pdb(relaxed_ref_path)
                 l_rmsd = calculate_l_rmsd(pose.clone(), ref_pose)
-            except Exception:
-                pass
+            except Exception as e:
+                internal_logger.warning(f"L_RMSD vs relaxed ref failed: {e}")
 
         l_rmsd_best = RMSD_ERROR_VALUE
         if best_ref_path and os.path.exists(best_ref_path):
@@ -613,7 +614,7 @@ def run_fast_scoring_task(args: tuple) -> Dict[str, Any]:
        or (target, ref_path, contact_dist, constraints)
     constraints dict: {excluded_residues_A, key_residues_B, exclusion_contact_dist}
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
 
     constraints = {}
     if len(args) >= 4:
@@ -705,7 +706,7 @@ def run_intermediate_scoring_task(args: tuple) -> Dict[str, Any]:
     Called only on Stage 1 survivors to save compute time.
     args: (pdb_data_string,)
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
 
     if isinstance(args, tuple):
         pdb_data_string = args[0]
@@ -716,7 +717,7 @@ def run_intermediate_scoring_task(args: tuple) -> Dict[str, Any]:
 
     try:
         step_status = "Loading Pose"
-        pose = common.string_to_pose(pdb_data_string)
+        pose = pyrosetta_init.string_to_pose(pdb_data_string)
 
         if pose is None or pose.num_chains() < MIN_CHAINS:
             return {"status": "error", "error": "Invalid Pose or Chain count < 2"}
@@ -892,7 +893,7 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
     args: (target, ref_path, contact_dist)
        or (target, ref_path, contact_dist, constraints)
     """
-    common.init_rosetta()
+    pyrosetta_init.init_rosetta()
 
     constraints = {}
     if len(args) >= 4:
@@ -1016,7 +1017,7 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
                     pose, key_B, contact_dist, key_weights)
 
         step_status = "Saving String"
-        aligned_pdb_string = common.pose_to_string(pose)
+        aligned_pdb_string = pyrosetta_init.pose_to_string(pose)
 
         return {
             "status": "success",
