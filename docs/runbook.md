@@ -250,6 +250,62 @@ qsub config/run_production_fresh.pbs      # 클린 프로덕션
 
 ---
 
+## 로그 확인 및 모니터링
+
+### 로그 파일 체계
+
+파이프라인은 3-계층 로거(`pipeline`, `pipeline.worker`, `pipeline.vina`)를 사용합니다.
+설정 모듈: `egfr_pipeline/pyrosetta_docking/logging_config.py`
+
+| 로그 파일 | 위치 | 레벨 | 용도 |
+|-----------|------|------|------|
+| `PROGRESS.log` | `phase2_ppi_docking/{state}/prod_seed{n}/` | INFO | 실시간 진행 상황 (`tail -f`) |
+| `pipeline.log` | `phase2_ppi_docking/{state}/prod_seed{n}/logs/` | DEBUG | 상세 파이프라인 로그 |
+| `workers.log` | `phase2_ppi_docking/{state}/prod_seed{n}/logs/` | DEBUG | 멀티프로세스 워커 로그 |
+| `LOG_INDEX.txt` | `workflow_a/logs/` | — | 로그 인덱스 + 읽기 가이드 |
+| PBS stdout | `production.o{jobid}` (PBS 작업 디렉토리) | — | 전체 잡 출력 + 완료 요약 |
+
+### 실시간 모니터링
+
+```bash
+# 특정 시드 실시간 추적
+tail -f output/workflow_a/phase2_ppi_docking/3GT8_raw/prod_seed0/PROGRESS.log
+
+# 모든 시드 진행 상황 한 눈에
+for f in output/workflow_a/phase2_ppi_docking/*/prod_seed*/PROGRESS.log; do
+  echo "=== $(basename $(dirname $(dirname $f)))/$(basename $(dirname $f)) ==="
+  tail -1 "$f"
+done
+```
+
+### 에러 진단
+
+```bash
+# 로그 인덱스 확인 (심볼릭 링크 기반)
+cat output/workflow_a/logs/LOG_INDEX.txt
+
+# 모든 시드에서 에러 검색
+grep 'ERROR\|CRITICAL' output/workflow_a/logs/ppi_seeds/*_workers.log
+
+# 필터 단계 추적
+grep 'FilterStage' output/workflow_a/logs/ppi_seeds/*_pipeline.log
+
+# Vina 모듈 로그 (프로덕션 모드에서 pipeline.vina 로거로 기록)
+grep 'pipeline.vina' output/workflow_a/logs/*.log 2>/dev/null
+```
+
+### PBS 잡 출력 확인
+
+```bash
+# 완료 요약 (run_production.py가 종료 시 출력)
+tail -50 production.o*
+
+# 잡 상태 확인
+qstat -u $USER
+```
+
+---
+
 ## 결과 확인
 
 ### 해석 시작점

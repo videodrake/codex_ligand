@@ -152,6 +152,12 @@ DEFAULT_THRESHOLDS = {
     "dominant_ligand_warn": 0.85,
     "ligand_entropy_good": 0.90,   # broader ligand distribution
     "ligand_entropy_ok": 0.50,
+    # Sub-score max point allocation (sensitivity analysis 용).
+    # 합계(VINA_RAW_MAX)가 정규화 분모가 됨.
+    "vina_affinity_max": 20.0,
+    "vina_convergence_max": 15.0,
+    "vina_stability_max": 10.0,
+    "vina_diversity_max": 15.0,
 
     # --- Axis 2: PPI spatial proximity ---
     # Max 20 pts (only when PPI data available)
@@ -1237,11 +1243,11 @@ def score_pocket(
         reasons.append(membrane_tag)
         reason_tags.append("membrane_face")
 
-    # Normalize to adaptive max — computed from actual max component points
-    _AFFINITY_MAX = 20.0
-    _CONVERGENCE_MAX = 15.0
-    _STABILITY_MAX = 10.0
-    _DIVERSITY_MAX = 15.0
+    # Normalize to adaptive max — config에서 조정 가능 (sensitivity analysis)
+    _AFFINITY_MAX = T["vina_affinity_max"]
+    _CONVERGENCE_MAX = T["vina_convergence_max"]
+    _STABILITY_MAX = T["vina_stability_max"]
+    _DIVERSITY_MAX = T["vina_diversity_max"]
     VINA_RAW_MAX = _AFFINITY_MAX + _CONVERGENCE_MAX + _STABILITY_MAX + _DIVERSITY_MAX
     vina_max = 50.0 if has_ppi_data else 60.0
     vina_score = min(vina_raw, VINA_RAW_MAX) / VINA_RAW_MAX * vina_max
@@ -1326,6 +1332,13 @@ def score_pocket(
         reason_tags.append("no_ppi_data")
 
     # ---- Axis 3: Cross-Receptor Consistency ----
+    # 2-tier 스코어링:
+    #   (1) Coverage (n_cross): 몇 개 receptor state에서 동일 포켓이 발견되었는가
+    #       - 3/3 states → 20 pts, 2/3 states → 10 pts
+    #   (2) Support quality (support_frac): 매칭 품질 (centroid 근접도 + 잔기
+    #       Jaccard/overlap + 공유 리간드 수로 산출된 pair_strength의 합, 0-1 정규화)
+    #       - great(≥0.75) → 10 pts, good(≥0.50) → 6 pts, >0 → 3 pts
+    #       (PPI 데이터 없으면 각 2배)
     cross_max = 30.0 if has_ppi_data else 40.0
     n_cross = len(cross_receptor_matches)
     cross_coverage_pts = 0.0
@@ -1415,6 +1428,8 @@ def score_pocket(
         "vina_convergence_pts": convergence_pts,
         "vina_stability_pts": stability_pts,
         "vina_diversity_pts": diversity_pts,
+        # consensus_pts는 diversity_pts의 legacy alias (동일 값).
+        # Multi-ligand support 점수를 그대로 반영하며, 별도 consensus 로직 없음.
         "vina_consensus_pts": diversity_pts,
         "ppi_spatial_pts": spatial_pts,
         "ppi_overlap_pts": overlap_pts,

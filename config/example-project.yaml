@@ -74,6 +74,16 @@ ppi:
     - partner: MYO1D_beta
       path: /work4/hwang/onepack/codex_ligand/EGFR_dimer_beta_meander_wt/restored
 project_name: egfr_myo1d_vina
+# verdict 섹션: 아래 값은 모두 기본값. 필요한 키만 오버라이드하면 됨.
+# verdict:
+#   # Vina sub-score 최대 점수 배분 (sensitivity analysis 용)
+#   vina_affinity_max: 20.0
+#   vina_convergence_max: 15.0
+#   vina_stability_max: 10.0
+#   vina_diversity_max: 15.0
+#   # Threshold 예시 (전체 목록은 verdict.py DEFAULT_THRESHOLDS 참조)
+#   # affinity_great: -8.0
+#   # valid_min: 55
 receptors:
 - chain: A
   id: 3GT8_raw

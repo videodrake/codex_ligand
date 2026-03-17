@@ -418,6 +418,45 @@ Global Blind Docking에서 **높은 L_RMSD는 정상**이다. 표면 전체를 �
 - packstat → 0.0, delta_unsatHbonds → 99, nres_int → 0, hbonds_int → 0
 - 모두 필터에서 **탈락** 방향 (보수적) → Fallback이 안전망 역할
 
+## 로깅 아키텍처
+
+### 로거 계층
+
+```
+pipeline                  메인 프로세스 (INFO→stdout, DEBUG→pipeline.log, INFO→PROGRESS.log)
+pipeline.worker           워커 프로세스 (DEBUG→workers.log)
+pipeline.vina             Vina 모듈 (프로덕션 모드에서 logger 사용, standalone 시 StreamHandler 자동 추가)
+```
+
+설정: `egfr_pipeline/pyrosetta_docking/logging_config.py` (pipeline/pipeline.worker), Vina는 모듈 자체 초기화.
+
+### 로그 파일 위치
+
+| 로그 | 위치 | 용도 |
+|------|------|------|
+| `PROGRESS.log` | `phase2_ppi_docking/{state}/prod_seed{n}/` | PPI 시드별 실시간 진행 (`tail -f`) |
+| `pipeline.log` | `phase2_ppi_docking/{state}/prod_seed{n}/logs/` | PPI 시드별 상세 로그 (DEBUG 포함) |
+| `workers.log` | `phase2_ppi_docking/{state}/prod_seed{n}/logs/` | PPI 워커 프로세스 로그 |
+| `LOG_INDEX.txt` | `workflow_a/logs/` | 로그 인덱스 + 읽기 가이드 |
+| symlinks | `workflow_a/logs/ppi_seeds/` | 흩어진 PPI 로그에 대한 심볼릭 링크 |
+| PBS stdout | `production.o{jobid}` | PBS 잡 전체 출력 (완료 요약 포함) |
+
+### 로그 확인 빠른 참조
+
+```bash
+# PPI 실시간 모니터링
+tail -f output/workflow_a/phase2_ppi_docking/3GT8_raw/prod_seed0/PROGRESS.log
+
+# 에러 검색 (모든 시드)
+grep 'ERROR\|CRITICAL' output/workflow_a/logs/ppi_seeds/*_workers.log
+
+# 필터 단계 추적
+grep 'FilterStage' output/workflow_a/logs/ppi_seeds/*_pipeline.log
+
+# 완료 요약 확인 (PBS 출력)
+tail -50 production.o*
+```
+
 ## 기술적 디테일 (참고용)
 
 - PyRosetta 초기화: PID 기반 랜덤 시드, `-mute all`, 멱등성 보장

@@ -354,9 +354,23 @@ Scoring, RMSD, InterfaceAnalyzer, Per-residue 에너지 분석 워커들. PyRose
 
 PyRosetta 초기화 유틸리티: PID 기반 랜덤 시드, `-mute all`, stdout/stderr 리다이렉트, Pose<->String 직렬화
 
-### 4.5 logging_config.py
+### 4.5 logging_config.py — 로깅 아키텍처
 
-`pipeline`/`pipeline.worker` 계층적 로거 구성
+3-계층 로거 구성:
+
+| 로거 | 출력 | 레벨 | 설정 위치 |
+|------|------|------|----------|
+| `pipeline` | stdout + `logs/pipeline.log` + `PROGRESS.log` | INFO(stdout/progress), DEBUG(file) | `logging_config.py` |
+| `pipeline.worker` | `logs/workers.log` | DEBUG | `logging_config.py` |
+| `pipeline.vina` | stdout (standalone) 또는 상위 핸들러 (프로덕션) | INFO/DEBUG | `vina_executor.py` 모듈 초기화 |
+
+**`pipeline`**: `setup_main_logging(log_dir, root_dir)`로 초기화. `PipelineManager.__init__`에서 호출. `PROGRESS.log`는 output root에 생성되어 `tail -f`로 실시간 모니터링 가능.
+
+**`pipeline.worker`**: `setup_worker_logging()`으로 초기화. `PYROSETTA_WORKER_LOG_DIR` 환경변수로 경로 지정. PID 기반 멱등성 보장, 시드 간 디렉토리 전환 시 핸들러 자동 교체.
+
+**`pipeline.vina`**: Vina 모듈의 프로덕션 모드 함수(`run_docking`, `discover_pockets` 등)에서 사용. `pipeline.vina` 로거에 핸들러가 없으면 `StreamHandler`를 자동 추가하여 standalone 실행 시에도 출력 보장.
+
+**로그 인덱스**: `egfr_pipeline/paths.py`의 `create_log_index()`가 `workflow_a/logs/ppi_seeds/`에 흩어진 PPI 로그의 심볼릭 링크를 생성하고, `LOG_INDEX.txt`에 읽기 가이드를 기록
 
 ### 4.6 run_metadata.py
 

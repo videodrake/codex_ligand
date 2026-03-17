@@ -157,6 +157,94 @@ def run_step(name: str, func, *args, **kwargs):
         return False, None, e
 
 
+def _print_completion_summary(
+    phase_states: list,
+    config: dict,
+    hours: int,
+    minutes: int,
+) -> None:
+    """프로덕션 완료 후 결과 요약 블록 출력."""
+    from egfr_pipeline.paths import (
+        wa_phase4_vina_postprocess, wa_phase5_verdict,
+        wa_phase6_report, wa_phase7_validation, wa_logs,
+        create_log_index,
+    )
+
+    # Log index 생성
+    try:
+        create_log_index(config)
+    except Exception:
+        pass
+
+    w = 60
+    print()
+    print("╔" + "═" * w + "╗")
+    print(f"║  {'프로덕션 완료 요약':<{w - 2}}║")
+    print("╠" + "═" * w + "╣")
+
+    # Phase별 상태
+    print(f"║  {'Phase':<40} {'상태':<8} {'시간':>8} ║")
+    print("║  " + "─" * (w - 4) + "  ║")
+    for entry in phase_states:
+        num = entry.get("phase_number", "?")
+        name = entry.get("phase_name", "")
+        # 이름 40자 이내로 자르기
+        if len(name) > 38:
+            name = name[:35] + "..."
+        status = entry.get("status", "pending")
+        dur = entry.get("duration_seconds", 0)
+        dur_min = int(dur // 60) if dur else 0
+        dur_sec = int(dur % 60) if dur else 0
+
+        icon = {"completed": "[OK]", "failed": "[FAIL]", "skipped": "[SKIP]"}.get(status, "[--]")
+        time_str = f"{dur_min}m{dur_sec}s" if dur else ""
+        print(f"║  {icon} {num}. {name:<35} {time_str:>8} ║")
+
+        if status == "failed":
+            err = entry.get("last_error", "")
+            if err:
+                err_line = str(err).split("\n")[0][:50]
+                print(f"║      → {err_line:<{w - 8}}║")
+
+    print("╠" + "═" * w + "╣")
+    print(f"║  {'총 소요 시간: ' + str(hours) + '시간 ' + str(minutes) + '분':<{w - 2}}║")
+    print("╠" + "═" * w + "╣")
+
+    # 핵심 결과 파일
+    failed = [e for e in phase_states if e.get("status") == "failed"]
+
+    print(f"║  {'핵심 결과 파일:':<{w - 2}}║")
+    result_files = [
+        ("보고서", wa_phase6_report(config) / "project_report.txt"),
+        ("판정", wa_phase5_verdict(config) / "valid_sites.csv"),
+        ("포켓", wa_phase4_vina_postprocess(config) / "vina_pocket_table.csv"),
+        ("검증", wa_phase7_validation(config) / "validation_summary.txt"),
+    ]
+    for label, path in result_files:
+        exists = "✓" if path.exists() else "✗"
+        print(f"║    {exists} {label}: {path}  ║")
+
+    print("║" + " " * w + "║")
+    print(f"║  {'로그:':<{w - 2}}║")
+    print(f"║    {wa_logs(config) / 'LOG_INDEX.txt'}  ║")
+
+    # 다음 행동 안내
+    print("╠" + "═" * w + "╣")
+    if failed:
+        fail_nums = [str(e.get("phase_number", "?")) for e in failed]
+        print(f"║  Phase {', '.join(fail_nums)} 실패. 수정 후:")
+        first_fail = fail_nums[0]
+        print(f"║    python run_production.py --from {first_fail}")
+    else:
+        print(f"║  {'모든 Phase 성공. 결과 확인 순서:':<{w - 2}}║")
+        print(f"║    1. project_report.txt (종합 보고서)")
+        print(f"║    2. valid_sites.csv (후보 포켓 순위)")
+        print(f"║    3. PyMOL: 1_OVERVIEW_Clusters.pml (시각화)")
+
+    print("╚" + "═" * w + "╝")
+    print()
+
+
 def _load_config():
     config = load_pipeline_config(str(CONFIG_PATH))
     resources, warnings = resolve_resource_config(config)
@@ -1347,6 +1435,12 @@ def _run_lane(
 
         if lane != "status":
             _refresh_lane_step_views(lane, config)
+        if lane == "ppi":
+            try:
+                from egfr_pipeline.paths import create_log_index
+                create_log_index(config)
+            except Exception:
+                pass
         write_lane_completion(
             project_root,
             lane,
@@ -1650,22 +1744,7 @@ def main():
     except Exception as exc:
         print(f"  [WARN] Output organization failed: {exc}")
 
-    banner("프로덕션 완료")
-    print(f"  총 소요 시간: {hours}시간 {minutes}분")
-    print(f"  출력 디렉토리: {_project_root()}/")
-    print(f"  config: {CONFIG_PATH}")
-    print()
-    project = _project_root()
-    print("  Step별 결과물 보기:")
-    print(f"    {project}/steps/STEP_INDEX.txt")
-    print()
-    print("  주요 파일:")
-    print(f"    {project}/steps/04_vina_analysis/vina_pocket_table.csv")
-    print(f"    {project}/steps/05_site_verdict/valid_sites.csv")
-    print(f"    {project}/steps/06_report/project_report.txt")
-    if step_view_enabled_flag:
-        print(f"    {project}/run_overview.md")
-    print()
+    _print_completion_summary(phase_states, config, hours, minutes)
 
 
 if __name__ == "__main__":
