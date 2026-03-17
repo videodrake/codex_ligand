@@ -404,6 +404,114 @@ _MERGE_LOG_COLUMNS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Pocket cap: limit poses per pocket with round-robin ligand selection
+# ---------------------------------------------------------------------------
+
+_CAP_REPORT_COLUMNS = [
+    "receptor_id",
+    "pocket_id",
+    "total_poses",
+    "kept",
+    "capped",
+    "n_ligands_kept",
+    "best_affinity",
+    "worst_kept_affinity",
+]
+
+
+def apply_pocket_cap(
+    rows: List[dict],
+    max_per_pocket: int = 5,
+) -> Tuple[List[dict], List[dict]]:
+    """Limit poses per pocket using round-robin ligand selection by affinity.
+
+    Within each (receptor_id, pocket_id) group, selects up to *max_per_pocket*
+    poses by cycling through ligands in best-affinity order so that each ligand
+    is represented at least once (when possible).
+
+    Returns:
+        (rows_with_cap_status, cap_report_rows)
+    """
+    # Group by (receptor_id, pocket_id)
+    groups: Dict[Tuple[str, str], List[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        key = (row["receptor_id"], row.get("pocket_id", ""))
+        groups[key].append(i)
+
+    cap_report: List[dict] = []
+
+    for (receptor_id, pocket_id), indices in groups.items():
+        # Sort each group by affinity (ascending = best first)
+        indices.sort(key=lambda i: float(rows[i]["affinity"])
+                     if rows[i].get("affinity") not in ("", None)
+                     else float("inf"))
+
+        # Bucket by ligand_id, preserving affinity order within each bucket
+        ligand_buckets: Dict[str, List[int]] = defaultdict(list)
+        for i in indices:
+            ligand_buckets[rows[i]["ligand_id"]].append(i)
+
+        # Round-robin selection across ligands (sorted by best affinity per ligand)
+        ligand_order = sorted(
+            ligand_buckets.keys(),
+            key=lambda lid: float(rows[ligand_buckets[lid][0]]["affinity"])
+            if rows[ligand_buckets[lid][0]].get("affinity") not in ("", None)
+            else float("inf"),
+        )
+        # Track cursor per ligand
+        cursors = {lid: 0 for lid in ligand_order}
+        kept_indices: Set[int] = set()
+
+        while len(kept_indices) < max_per_pocket:
+            added = False
+            for lid in ligand_order:
+                if len(kept_indices) >= max_per_pocket:
+                    break
+                if cursors[lid] < len(ligand_buckets[lid]):
+                    kept_indices.add(ligand_buckets[lid][cursors[lid]])
+                    cursors[lid] += 1
+                    added = True
+            if not added:
+                break
+
+        # Mark cap_status
+        kept_affinities = []
+        for i in indices:
+            if i in kept_indices:
+                rows[i]["cap_status"] = "kept"
+                aff = rows[i].get("affinity", "")
+                if aff not in ("", None):
+                    kept_affinities.append(float(aff))
+            else:
+                rows[i]["cap_status"] = "capped"
+
+        # Build report row
+        ligands_kept = {rows[i]["ligand_id"] for i in kept_indices}
+        cap_report.append({
+            "receptor_id": receptor_id,
+            "pocket_id": pocket_id,
+            "total_poses": len(indices),
+            "kept": len(kept_indices),
+            "capped": len(indices) - len(kept_indices),
+            "n_ligands_kept": len(ligands_kept),
+            "best_affinity": round(min(kept_affinities), 4) if kept_affinities else "",
+            "worst_kept_affinity": round(max(kept_affinities), 4) if kept_affinities else "",
+        })
+
+    return rows, cap_report
+
+
+def write_cap_report(path: Path, rows: List[dict]) -> Path:
+    """Write pocket cap report CSV."""
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_CAP_REPORT_COLUMNS)
+        writer.writeheader()
+        for entry in rows:
+            writer.writerow(entry)
+    return path
+
+
 def write_merge_log(path: Path, merge_log: List[dict]) -> Path:
     """Write merge decision log CSV.  Writes header even when *merge_log* is empty."""
     with open(path, "w", newline="", encoding="utf-8") as handle:
@@ -435,6 +543,7 @@ def cluster_pose_table(
     merge_jaccard: float = 0.3,
     merge_overlap: float = 0.5,
     merge_centroid_fallback: float = 6.0,
+    max_per_pocket: int = 0,
 ) -> Path:
     config = load_config(config_path)
     project_root = project_root_from_config(config)
@@ -459,6 +568,14 @@ def cluster_pose_table(
     merge_log_path = target.parent / "vina_clustering_merge_log.csv"
     write_merge_log(merge_log_path, merge_log)
 
+    # Apply pocket cap if configured
+    if max_per_pocket > 0:
+        clustered_rows, cap_report = apply_pocket_cap(clustered_rows, max_per_pocket)
+        cap_report_path = target.parent / "vina_pocket_cap_report.csv"
+        write_cap_report(cap_report_path, cap_report)
+        n_kept = sum(1 for r in clustered_rows if r.get("cap_status") == "kept")
+        print(f"  Pocket cap: {n_kept} kept / {len(clustered_rows) - n_kept} capped")
+
     # Write clustering parameters for reproducibility
     params = {
         "clustering": {
@@ -471,6 +588,10 @@ def cluster_pose_table(
             "jaccard_threshold": merge_jaccard,
             "overlap_threshold": merge_overlap,
             "centroid_fallback_cutoff": merge_centroid_fallback,
+        },
+        "pocket_cap": {
+            "max_per_pocket": max_per_pocket,
+            "selection_method": "round_robin_by_ligand",
         },
     }
     params_path = target.parent / "vina_clustering_parameters.json"

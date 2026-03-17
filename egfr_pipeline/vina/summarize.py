@@ -21,6 +21,10 @@ def split_contact_residues(value: str) -> List[str]:
 
 
 def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[dict]]:
+    # Exclude capped poses when pocket cap was applied
+    if rows and "cap_status" in rows[0]:
+        rows = [r for r in rows if r.get("cap_status") != "capped"]
+
     pocket_groups: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
     ligand_groups: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
 

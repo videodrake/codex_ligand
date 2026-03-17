@@ -162,6 +162,7 @@ def run_postprocess(config_path: str = None):
         ("교차 비교 (compare)", "compare"),
         ("PPI 잔기 추출 (ppi)", "ppi"),
         ("부트스트랩 안정성 분석 (bootstrap)", "bootstrap"),
+        ("Phase 3 브릿지 (phase3_bridge)", "phase3_bridge"),
     ]
 
     print("\n후처리 단계:")
@@ -218,7 +219,10 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         merge_j = pp.get("merge_jaccard", 0.3)
         merge_oc = pp.get("merge_overlap", 0.5)
         merge_cf = pp.get("merge_centroid_fallback", 6.0)
+        max_per_pocket = pp.get("max_poses_per_pocket", 0)
         print(f"  Clustering pockets (cutoff={cutoff}Å, merge={merge}, min_size={min_size})...")
+        if max_per_pocket > 0:
+            print(f"  Pocket cap: max {max_per_pocket} poses per pocket (round-robin by ligand)")
         out = cluster_pose_table(
             config_path, cutoff=cutoff,
             max_iterations=max_iter,
@@ -227,6 +231,7 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
             merge_jaccard=merge_j,
             merge_overlap=merge_oc,
             merge_centroid_fallback=merge_cf,
+            max_per_pocket=max_per_pocket,
         )
         print(f"  → {out}")
 
@@ -255,6 +260,24 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         n = bs.get("n_replicates", 100)
         print(f"  Bootstrap stability analysis ({n} replicates)...")
         out = bootstrap_from_config(config_path)
+        print(f"  → {out}")
+
+    elif step == "phase3_bridge":
+        pp = config.get("postprocess", {})
+        if not pp.get("phase3_bridge", False):
+            print("  Phase 3 bridge disabled (postprocess.phase3_bridge=false). Skipping.")
+            return
+        from egfr_pipeline.vina.phase3_bridge import bridge_vina_to_phase3
+        pri = pp.get("phase3_primary_cutoff", -7.0)
+        sec = pp.get("phase3_secondary_cutoff", -5.0)
+        skip = pp.get("phase3_skip_cutoff", -3.0)
+        print(f"  Phase 3 bridge (primary<={pri}, secondary<={sec}, skip>{skip})...")
+        out = bridge_vina_to_phase3(
+            config_path,
+            primary_cutoff=pri,
+            secondary_cutoff=sec,
+            skip_cutoff=skip,
+        )
         print(f"  → {out}")
 
 
@@ -745,7 +768,7 @@ def run_full(config_path: str = None):
     config = load_config(config_path)
     project_root = project_root_from_config(config)
     receptor_ids = [r["id"] for r in config.get("receptors", [])]
-    for step in ["parse", "contacts", "cluster", "summarize", "compare", "ppi"]:
+    for step in ["parse", "contacts", "cluster", "summarize", "compare", "ppi", "phase3_bridge"]:
         try:
             _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         except Exception as e:
