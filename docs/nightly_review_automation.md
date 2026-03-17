@@ -4,6 +4,8 @@ Last updated: 2026-03-16
 
 This document explains the repository-side tooling that supports the nightly deep-review automation.
 
+For the patch-producing follow-up loop that turns review output into a single daily micro-change, see [nightly_incremental_improvement_automation.md](nightly_incremental_improvement_automation.md).
+
 ## Purpose
 
 `scripts/nightly_review.py` builds a review bundle that is meant to be consumed by an automated Codex review run.

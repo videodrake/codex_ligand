@@ -35,6 +35,7 @@ qsub config/run_advanced_pipeline.pbs
 | [docs/pre_qsub_test_line.md](docs/pre_qsub_test_line.md) | 사전 제출 테스트 절차 | 테스트 |
 | [docs/test_suite_triage.md](docs/test_suite_triage.md) | 테스트 분류 가이드 | 테스트 |
 | [docs/nightly_review_automation.md](docs/nightly_review_automation.md) | 자동 리뷰 스크립트 | 자동화 |
+| [docs/nightly_incremental_improvement_automation.md](docs/nightly_incremental_improvement_automation.md) | 새벽 미세 개선 자동화 설계 | 자동화 |
 | [CLAUDE.md](CLAUDE.md) | Claude Code AI 컨텍스트 | AI 세션 |
 
 ## 두 가지 워크플로우
