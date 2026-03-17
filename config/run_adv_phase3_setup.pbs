@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N adv_phase3_setup
+#PBS -l nodes=node05:ppn=2
+#PBS -l walltime=00:30:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/adv_phase3_setup.o
+#PBS -e ${PBS_O_WORKDIR}/adv_phase3_setup.e
+
+# ============================================================
+# Advanced Pipeline Phase 3: Focused Docking Setup (TG 3.0~3.2)
+#
+# Prerequisite: adv-phase2 complete (phase3_candidate_pocket_reference.csv)
+# No Vina required — planning and script generation only.
+#
+# Usage:
+#   qsub config/run_adv_phase3_setup.pbs
+#   qsub -W depend=afterok:<adv_phase2_job> config/run_adv_phase3_setup.pbs
+# ============================================================
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+python run_production.py \
+  --lane adv-phase3-setup \
+  --allocated-cpus "${PBS_NP:-2}"

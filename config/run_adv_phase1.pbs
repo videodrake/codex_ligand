@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N adv_phase1
+#PBS -l nodes=node05:ppn=4
+#PBS -l walltime=02:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/adv_phase1.o
+#PBS -e ${PBS_O_WORKDIR}/adv_phase1.e
+
+# ============================================================
+# Advanced Pipeline Phase 1: PPI Analysis (TG 1.1.5~1.6)
+#
+# Prerequisite: Workflow A Phase 2 (PPI docking) must be complete.
+#
+# Usage:
+#   qsub config/run_adv_phase1.pbs
+# ============================================================
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+python run_production.py \
+  --lane adv-phase1 \
+  --allocated-cpus "${PBS_NP:-4}"

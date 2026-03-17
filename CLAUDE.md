@@ -23,7 +23,9 @@ egfr_pipeline/pyrosetta_docking/
 config/
   example-project.yaml       # 메인 프로젝트 설정 (Vina + PPI 통합)
   phase1/*.ini               # Phase 1 PyRosetta 설정 (3 test + 15 production)
-  run_production.pbs         # 프로덕션 PBS 진입점
+  run_production.pbs         # Workflow A 프로덕션 PBS 진입점
+  run_advanced_pipeline.pbs  # Workflow B 전체 PBS 오케스트레이터
+  run_adv_phase*.pbs         # Workflow B 개별 lane PBS (6개)
   run_lightdock.pbs          # Phase 1 LightDock 검증 PBS
   run_lightdock_test.pbs     # Phase 1 LightDock 테스트 PBS
   run_pre_qsub_checks.pbs   # 사전 검증 PBS 진입점
@@ -51,6 +53,7 @@ input/PPI/prepared/          # 레거시 dimer 준비 PDB
 
 ## 절대 주의사항 (코드 수정 시)
 
+0. **실행 환경 대원칙**: 파이프라인의 모든 무거운 연산(Vina, PyRosetta PPI, LightDock 등)은 **반드시 qsub를 통해 HPC 서버에서 실행**한다. 이 Codespace(개발 환경)에서는 코드 수정, 테스트, 세부 조정만 수행한다. **절대로 개발 환경에서 도킹을 직접 실행하거나 실행을 제안하지 말 것.** 도킹 실행이 필요한 경우 항상 PBS 스크립트(`qsub`)를 통한 서버 제출 방법을 안내해야 한다.
 1. **PyRosetta 버전 호환성**: `scoring.py`의 `try-except`/`hasattr` 체크 절대 제거 금지. 서버 PyRosetta가 구버전일 수 있음.
 2. **Multiprocessing 순서**: `pool.imap` + `zip` 으로 입출력 1:1 매핑 유지. `imap_unordered`로 바꾸면 인덱스 깨짐.
 3. **네트워크 차단**: `pip install`/`conda update` 불가. 현재 설치된 라이브러리로만 동작해야 함.
@@ -66,26 +69,51 @@ input/PPI/prepared/          # 레거시 dimer 준비 PDB
 
 ## 실행 방법
 
-```bash
-# 직접 실행
-conda activate pyrosetta
-python main.py -c config/example-project.yaml pyrosetta
+> **대원칙**: 모든 도킹/연산은 반드시 qsub를 통해 HPC 서버에서 실행한다.
 
-# PBS 배치 - 프로덕션 (precheck → production)
+### Workflow A: Standard Production (Vina blind + PPI blind → 통합)
+
+```bash
+# 올인원 (precheck → production 순차)
 PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
 qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
 
+# 또는 lane별 병렬 제출 (Vina와 PPI 동시 실행)
+qsub config/run_vina_cpu.pbs
+qsub -v STATE=3GT8_raw,SEED=0 config/run_ppi_state_seed.pbs
+# ... (3 states × 5 seeds)
+qsub -W depend=afterok:<vina> config/run_vina_postprocess.pbs
+qsub -W depend=afterok:<ppi_jobs> config/run_ppi_postprocess.pbs
+qsub -W depend=afterok:<vina_post>:<ppi_post> config/run_finalize.pbs
+```
+
+### Workflow B: Advanced PPI-First Pipeline (PPI → 포켓 분석 → Focused 도킹 → 스코어링)
+
+```bash
+# 전체 자동 (PBS 의존성 체인으로 Phase 1~4 순차 제출)
+qsub config/run_advanced_pipeline.pbs
+
+# Phase 2부터 시작
+qsub -v ADV_FROM=2 config/run_advanced_pipeline.pbs
+
+# 개별 Phase 수동 제출
+qsub config/run_adv_phase1.pbs                                      # PPI 분석
+qsub -W depend=afterok:<job> config/run_adv_phase2.pbs              # Pocket cascade
+qsub -W depend=afterok:<job> config/run_adv_phase3_setup.pbs        # 도킹 계획
+qsub -v ROUND=0 -W depend=afterok:<job> config/run_adv_phase3_execute.pbs  # Vina 실행
+qsub -W depend=afterok:<job> config/run_adv_phase3_post.pbs         # 분석
+qsub -W depend=afterok:<job> config/run_adv_phase4.pbs              # 통합 스코어링
+```
+
+### 기타
+
+```bash
 # Phase 1 LightDock 검증
 qsub config/run_lightdock.pbs                          # 전체 state
 qsub config/run_lightdock_test.pbs                     # 테스트
 
-# PPI 후처리
-python main.py -c config/example-project.yaml ppi-postprocess
-
-# 출력 검증
+# 로컬 검증/보고서 (개발 환경에서 가능)
 python main.py -c config/example-project.yaml validate
-
-# 결과물 Step별 정리 (프로덕션 완료 후 자동 실행, 수동 실행도 가능)
 python main.py -c config/example-project.yaml organize
 ```
 

@@ -1,0 +1,116 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N ADV_pipeline
+#PBS -l nodes=node05:ppn=2
+#PBS -l walltime=01:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/adv_pipeline.o
+#PBS -e ${PBS_O_WORKDIR}/adv_pipeline.e
+
+# ============================================================
+# Advanced PPI-First Pipeline — PBS Dependency Chain Orchestrator
+#
+# 이 스크립트는 qsub로 제출되면 내부에서 각 Phase를 의존성 체인으로
+# 자동 제출합니다. 자체는 가벼운 제출 작업만 수행 (ppn=2, ~수 분).
+#
+# 전제 조건: Workflow A Phase 2 (PPI docking) 완료
+#   i.e., output/phase1_ppi/*/prod_seed*/seed_complete.json 존재
+#
+# Usage:
+#   qsub config/run_advanced_pipeline.pbs
+#   qsub -v ADV_FROM=2 config/run_advanced_pipeline.pbs        # Phase 2부터
+#   qsub -v ADV_ROUNDS=5 config/run_advanced_pipeline.pbs      # 5 rounds
+#   qsub -v ADV_FROM=3,ADV_ROUNDS=2 config/run_advanced_pipeline.pbs
+#
+# 개별 Phase만 수동 제출:
+#   qsub config/run_adv_phase1.pbs
+#   qsub -W depend=afterok:<job> config/run_adv_phase2.pbs
+#   qsub -W depend=afterok:<job> config/run_adv_phase3_setup.pbs
+#   qsub -v ROUND=0 -W depend=afterok:<job> config/run_adv_phase3_execute.pbs
+#   qsub -v ROUND=1 -W depend=afterok:<job> config/run_adv_phase3_execute.pbs
+#   qsub -v ROUND=2 -W depend=afterok:<job> config/run_adv_phase3_execute.pbs
+#   qsub -W depend=afterok:<job> config/run_adv_phase3_post.pbs
+#   qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
+# ============================================================
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+ADV_FROM=${ADV_FROM:-1}
+ADV_ROUNDS=${ADV_ROUNDS:-3}
+
+echo "============================================"
+echo "  Advanced PPI-First Pipeline Orchestrator"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  From phase: $ADV_FROM"
+echo "  Rounds:     $ADV_ROUNDS"
+echo "============================================"
+echo ""
+
+PREV_JOB=""
+
+# Helper: extract numeric job ID from qsub output
+get_job_id() {
+    echo "$1" | grep -oP '^\d+(\.\S+)?' | head -1
+}
+
+# --- Phase 1: PPI Analysis ---
+if [ "$ADV_FROM" -le 1 ]; then
+    ADV1=$(qsub config/run_adv_phase1.pbs)
+    PREV_JOB=$(get_job_id "$ADV1")
+    echo "[adv-phase1] $ADV1"
+fi
+
+# --- Phase 2: Pocket Analysis ---
+if [ "$ADV_FROM" -le 2 ]; then
+    if [ -n "$PREV_JOB" ]; then
+        ADV2=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase2.pbs)
+    else
+        ADV2=$(qsub config/run_adv_phase2.pbs)
+    fi
+    PREV_JOB=$(get_job_id "$ADV2")
+    echo "[adv-phase2] $ADV2 (after $PREV_JOB)"
+fi
+
+# --- Phase 3 Setup ---
+if [ "$ADV_FROM" -le 3 ]; then
+    if [ -n "$PREV_JOB" ]; then
+        ADV3S=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase3_setup.pbs)
+    else
+        ADV3S=$(qsub config/run_adv_phase3_setup.pbs)
+    fi
+    PREV_JOB=$(get_job_id "$ADV3S")
+    echo "[adv-phase3-setup] $ADV3S"
+
+    # --- Phase 3 Execute (round by round, sequential) ---
+    for ROUND in $(seq 0 $((ADV_ROUNDS - 1))); do
+        ADV3E=$(qsub -W depend=afterok:"$PREV_JOB" -v ROUND="$ROUND" config/run_adv_phase3_execute.pbs)
+        PREV_JOB=$(get_job_id "$ADV3E")
+        echo "[adv-phase3-execute round $ROUND] $ADV3E"
+    done
+
+    # --- Phase 3 Post ---
+    ADV3P=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase3_post.pbs)
+    PREV_JOB=$(get_job_id "$ADV3P")
+    echo "[adv-phase3-post] $ADV3P"
+fi
+
+# --- Phase 4: Perturbation Scoring ---
+if [ "$ADV_FROM" -le 4 ]; then
+    if [ -n "$PREV_JOB" ]; then
+        ADV4=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase4.pbs)
+    else
+        ADV4=$(qsub config/run_adv_phase4.pbs)
+    fi
+    echo "[adv-phase4] $ADV4"
+fi
+
+echo ""
+echo "============================================"
+echo "  All jobs submitted. Monitor with: qstat"
+echo "  Finished: $(date)"
+echo "============================================"

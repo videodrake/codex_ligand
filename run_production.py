@@ -1038,6 +1038,62 @@ def _finalize_lane() -> object:
     return phase7_validate()
 
 
+# ---------------------------------------------------------------------------
+# Advanced PPI-First pipeline lane functions (Workflow B)
+# ---------------------------------------------------------------------------
+
+def _adv_phase1():
+    """Run Phase 1 analysis: TG 1.1.5 (standardize) + TG 1.2 (extract interface)
+    + PPI evidence extraction. Assumes PPI docking (Workflow A Phase 2) is complete."""
+    from egfr_pipeline.phase1.extract_interface import run_extract_interface
+    from egfr_pipeline.phase1.standardize_scores import run_standardize_scores
+
+    print("  --- TG 1.1.5: Standardize Scores ---")
+    run_standardize_scores()
+    print("  --- TG 1.2: Extract Interface ---")
+    run_extract_interface()
+    # PPI evidence extraction (reuse Workflow A Phase 3 logic)
+    print("  --- PPI Evidence Extraction ---")
+    phase3_ppi_postprocess()
+
+
+def _adv_phase2():
+    """Run Phase 2 cascade (TG 2.0-2.7). Requires Phase 1 analysis complete."""
+    from egfr_pipeline.phase2.rerun_cascade import run_phase2_cascade
+    run_phase2_cascade(parse_only=True)
+
+
+def _adv_phase3_setup(allocated_cpus: Optional[int] = None):
+    """Run Phase 3 setup (TG 3.0-3.2 + script generation)."""
+    from egfr_pipeline.phase3.rerun_cascade import run_phase3_cascade
+    run_phase3_cascade(mode="setup", allocated_cpus=allocated_cpus)
+
+
+def _adv_phase3_execute(
+    round_id: Optional[int] = None,
+    allocated_cpus: Optional[int] = None,
+):
+    """Run Phase 3 Vina execution for one round."""
+    from egfr_pipeline.phase3.rerun_cascade import run_phase3_cascade
+    run_phase3_cascade(
+        mode="execute",
+        round_id=round_id,
+        allocated_cpus=allocated_cpus,
+    )
+
+
+def _adv_phase3_post():
+    """Run Phase 3 post-docking analysis (TG 3.4-3.6)."""
+    from egfr_pipeline.phase3.rerun_cascade import run_phase3_cascade
+    run_phase3_cascade(mode="post")
+
+
+def _adv_phase4():
+    """Run Phase 4 cascade (TG 4.0-4.6)."""
+    from egfr_pipeline.phase4.rerun_cascade import run_phase4_cascade
+    run_phase4_cascade()
+
+
 def _lane_requested_cpus(config: dict, lane: str) -> int:
     resources_cfg = config.get("resources", {})
     vina_resources = resources_cfg.get("vina", {})
@@ -1056,6 +1112,19 @@ def _lane_requested_cpus(config: dict, lane: str) -> int:
         return 4
     if lane == "finalize":
         return 2
+    # Advanced PPI-First pipeline lanes
+    if lane == "adv-phase1":
+        return 4
+    if lane == "adv-phase2":
+        return 16
+    if lane == "adv-phase3-setup":
+        return 2
+    if lane == "adv-phase3-execute":
+        return max(1, int(vina_resources.get("cpu_per_job", 1)))
+    if lane == "adv-phase3-post":
+        return 4
+    if lane == "adv-phase4":
+        return 2
     return 1
 
 
@@ -1066,6 +1135,13 @@ def _phase_numbers_for_lane(lane: str) -> List[int]:
         "ppi-post": [3],
         "vina-post": [4],
         "finalize": [5, 6, 7],
+        # Advanced lanes don't map to standard phases
+        "adv-phase1": [],
+        "adv-phase2": [],
+        "adv-phase3-setup": [],
+        "adv-phase3-execute": [],
+        "adv-phase3-post": [],
+        "adv-phase4": [],
     }
     return mapping.get(lane, [])
 
@@ -1185,6 +1261,21 @@ def _run_lane(
             result = phase4_vina_postprocess()
         elif lane == "finalize":
             result = _finalize_lane()
+        elif lane == "adv-phase1":
+            result = _adv_phase1()
+        elif lane == "adv-phase2":
+            result = _adv_phase2()
+        elif lane == "adv-phase3-setup":
+            result = _adv_phase3_setup(runtime.effective_cpus)
+        elif lane == "adv-phase3-execute":
+            result = _adv_phase3_execute(
+                round_id=seed,  # reuse --seed as round selector
+                allocated_cpus=runtime.effective_cpus,
+            )
+        elif lane == "adv-phase3-post":
+            result = _adv_phase3_post()
+        elif lane == "adv-phase4":
+            result = _adv_phase4()
         elif lane == "status":
             print_status(config=config, step_view_enabled_flag=step_output_view_enabled(config))
             result = None
@@ -1251,6 +1342,13 @@ def main():
             "status",
             "vina-gpu",
             "phase3-gpu",
+            # Advanced PPI-First pipeline lanes (Workflow B)
+            "adv-phase1",
+            "adv-phase2",
+            "adv-phase3-setup",
+            "adv-phase3-execute",
+            "adv-phase3-post",
+            "adv-phase4",
         ],
         default="",
         help="Scheduler lane entry point (recommended PBS interface)",

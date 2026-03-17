@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N adv_phase4
+#PBS -l nodes=node05:ppn=2
+#PBS -l walltime=01:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/adv_phase4.o
+#PBS -e ${PBS_O_WORKDIR}/adv_phase4.e
+
+# ============================================================
+# Advanced Pipeline Phase 4: Perturbation Relevance Scoring (TG 4.0~4.6)
+#
+# Prerequisite: adv-phase3-post complete (phase4_docking_evidence_reference.csv)
+#
+# Usage:
+#   qsub config/run_adv_phase4.pbs
+#   qsub -W depend=afterok:<adv_phase3_post_job> config/run_adv_phase4.pbs
+# ============================================================
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+python run_production.py \
+  --lane adv-phase4 \
+  --allocated-cpus "${PBS_NP:-2}"
