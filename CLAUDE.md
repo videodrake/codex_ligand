@@ -84,9 +84,51 @@ python main.py -c config/example-project.yaml ppi-postprocess
 
 # 출력 검증
 python main.py -c config/example-project.yaml validate
+
+# 결과물 Step별 정리 (프로덕션 완료 후 자동 실행, 수동 실행도 가능)
+python main.py -c config/example-project.yaml organize
 ```
 
-## 출력 디렉토리 구조
+## Step별 출력 구조 (steps/)
+
+프로덕션 실행 완료 후 `output/{project}/steps/` 아래에 자동 생성됨.
+각 디렉토리에는 해당 스텝의 모든 결과 파일에 대한 심볼릭 링크가 포함됨.
+
+```
+output/{project}/steps/
+├── STEP_INDEX.txt           # 전체 인덱스
+├── 01_vina_docking/         # Step 1: Vina 원시 포즈 (.pdbqt)
+│   ├── 3GT8_raw/            →  {project}/3GT8_raw/
+│   ├── EGFR_160-185/        →  {project}/EGFR_160-185/
+│   └── EGFR_170-200/        →  {project}/EGFR_170-200/
+├── 02_ppi_docking/          # Step 2: PPI 도킹 결과 (전체)
+│   ├── 3GT8_raw/            →  phase1_ppi/3GT8_raw/prod_seed0/
+│   ├── EGFR_160-185/        →  phase1_ppi/EGFR_160-185/prod_seed0/
+│   └── EGFR_170-200/        →  phase1_ppi/EGFR_170-200/prod_seed0/
+├── 03_ppi_evidence/         # Step 3: PPI 인터페이스 증거
+│   ├── ppi_pyrosetta_residues.csv
+│   ├── ppi_pyrosetta_summary.csv
+│   └── ...
+├── 04_vina_analysis/        # Step 4: Vina 포켓 분석
+│   ├── vina_pocket_table.csv
+│   ├── vina_pose_table.csv
+│   ├── vina_drug_pocket_map.csv
+│   └── ...
+├── 05_site_verdict/         # Step 5: 사이트 판정
+│   ├── valid_sites.csv
+│   └── cross_method_agreement.csv
+├── 06_report/               # Step 6: 보고서
+│   ├── project_report.txt
+│   └── combined_residue_evidence.csv
+└── 07_validation/           # Step 7: 검증
+    ├── validation_status.json
+    └── validation_summary.txt
+```
+
+> 심볼릭 링크이므로 원본 수정 없이 공간 절약.
+> 서버에서 로컬로 복사 시: `scp -r steps/ local_dest/` 또는 `cp -rL steps/ dest/` (링크 해제)
+
+## 출력 디렉토리 구조 (PPI 도킹 개별 결과)
 
 ```
 <PDB_NAME>/

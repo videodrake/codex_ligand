@@ -42,6 +42,7 @@ MENU = """
 ║  [9] Full Pipeline           (1→2→7→5→6 자동 실행)       ║
 ║ [10] LightDock Validation    (Secondary PPI 검증)         ║
 ║ [11] Phase 2 Cascade         (Pocket 분석 재실행)         ║
+║ [12] Organize Outputs        (결과물 Step별 정리)         ║
 ║                                                          ║
 ║  [q] Quit                                                ║
 ║                                                          ║
@@ -697,6 +698,20 @@ def run_phase2_cascade_menu():
     )
 
 
+def run_organize(config_path: str = None):
+    """Organize outputs into step-based directories for easy browsing."""
+    print("\n" + "=" * 50)
+    print("  Output Organization (Step-based)")
+    print("=" * 50)
+
+    if not config_path:
+        config_path = find_config()
+
+    from egfr_pipeline.organize import organize_outputs
+
+    organize_outputs(config_path, repo_root=REPO_ROOT)
+
+
 def run_full(config_path: str = None):
     """Run full pipeline: Vina → Postprocess → Verdict → Report → Validate."""
     print("\n" + "=" * 50)
@@ -791,6 +806,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("ppi-postprocess", help="Run PPI post-processing automation")
     sub.add_parser("lightdock", help="LightDock secondary validation")
     sub.add_parser("full", help="Run full pipeline (vina→postprocess→verdict→report→validate)")
+    sub.add_parser("organize", help="Organize outputs into step-based directories for easy browsing")
     p2 = sub.add_parser("phase2", help="Run Phase 2 cascade (pocket analysis TG 2.0→2.7)")
     p2.add_argument("--parse-only", action="store_true",
                      help="Skip fpocket/P2Rank setup (already executed)")
@@ -811,7 +827,7 @@ def interactive_menu():
     print(MENU)
 
     while True:
-        sel = input("선택 [1-11, 3a/3b/3c, q]: ").strip().lower()
+        sel = input("선택 [1-12, 3a/3b/3c, q]: ").strip().lower()
 
         if sel == "q":
             print("종료합니다.")
@@ -844,8 +860,10 @@ def interactive_menu():
             run_lightdock()
         elif sel == "11":
             run_phase2_cascade_menu()
+        elif sel == "12":
+            run_organize()
         else:
-            print("잘못된 입력입니다. 1-11 또는 q를 선택하세요.\n")
+            print("잘못된 입력입니다. 1-12 또는 q를 선택하세요.\n")
             continue
 
         # After task, show menu again
@@ -877,6 +895,7 @@ def main():
         "ppi-postprocess": lambda: run_ppi_postprocess(config),
         "lightdock": lambda: run_lightdock(),
         "full": lambda: run_full(config),
+        "organize": lambda: run_organize(config),
         "phase2": lambda: _run_phase2_cmd(args),
     }
 

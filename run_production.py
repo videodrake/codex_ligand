@@ -1406,21 +1406,29 @@ def main():
             last_error=next((error for error in failed_errors if error), ""),
         )
 
+    # Step-based output organization
+    try:
+        from egfr_pipeline.organize import organize_outputs
+
+        organize_outputs(str(CONFIG_PATH), repo_root=REPO_ROOT)
+    except Exception as exc:
+        print(f"  [WARN] Output organization failed: {exc}")
+
     banner("프로덕션 완료")
     print(f"  총 소요 시간: {hours}시간 {minutes}분")
     print(f"  출력 디렉토리: {_project_root()}/")
     print(f"  config: {CONFIG_PATH}")
     print()
-    print("  확인할 파일:")
     project = _project_root()
-    print(f"    {project}/vina_pose_table.csv")
-    print(f"    {project}/vina_pocket_table.csv")
-    print(f"    {project}/valid_sites.csv")
-    print(f"    {project}/project_report.txt")
+    print("  Step별 결과물 보기:")
+    print(f"    {project}/steps/STEP_INDEX.txt")
+    print()
+    print("  주요 파일:")
+    print(f"    {project}/steps/04_vina_analysis/vina_pocket_table.csv")
+    print(f"    {project}/steps/05_site_verdict/valid_sites.csv")
+    print(f"    {project}/steps/06_report/project_report.txt")
     if step_view_enabled_flag:
         print(f"    {project}/run_overview.md")
-        print(f"    {project}/run_overview.html")
-        print(f"    {project}/run_status.json")
     print()
 
 
