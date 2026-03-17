@@ -57,13 +57,13 @@ Vina 중심 리간드 증거 흐름 + PPI 인터페이스 증거를 통합 실�
 
 | Phase | 내용 | 주요 산출물 |
 |-------|------|-------------|
-| 1 | Vina blind docking (3 receptor x 3 ligand) | `output/{project}/{receptor_id}/{ligand}_blind.pdbqt` |
-| 2 | PPI docking (3 states x 5 seeds = 300K models) | `final_ranking.csv` per seed |
-| 3 | PPI postprocess | PPI export 파일 |
-| 4 | Vina postprocess | `vina_pocket_table.csv` |
-| 5 | Verdict (3축 통합 scoring) | `valid_sites.csv` |
-| 6 | Report | `project_report.txt` |
-| 7 | Validate | validation 결과 |
+| 1 | Vina blind docking (3 receptor x 3 ligand) | `output/workflow_a/phase1_vina_docking/{receptor_id}/` |
+| 2 | PPI docking (3 states x 5 seeds = 300K models) | `output/workflow_a/phase2_ppi_docking/{state}/prod_seed{n}/final_ranking.csv` |
+| 3 | PPI postprocess | `output/workflow_a/phase3_ppi_postprocess/` |
+| 4 | Vina postprocess | `output/workflow_a/phase4_vina_postprocess/vina_pocket_table.csv` |
+| 5 | Verdict (3축 통합 scoring) | `output/workflow_a/phase5_verdict/valid_sites.csv` |
+| 6 | Report | `output/workflow_a/phase6_report/project_report.txt` |
+| 7 | Validate | `output/workflow_a/phase7_validation/` |
 
 ### Step 1: Pre-qsub Validation
 
@@ -73,7 +73,7 @@ Vina 중심 리간드 증거 흐름 + PPI 인터페이스 증거를 통합 실�
 qsub config/run_pre_qsub_checks.pbs
 ```
 
-필수 체크포인트: `output/pre_qsub_status/last_pass.json`가 존재하고 pass 상태여야 합니다.
+필수 체크포인트: `output/precheck/last_pass.json`가 존재하고 pass 상태여야 합니다.
 통과하지 못하면 **중단**하고 설정/입력/환경 문제를 해결합니다.
 
 ### Step 2: Production 제출
@@ -192,15 +192,15 @@ qsub -W depend=afterok:$ADV3P config/run_adv_phase4.pbs
 
 | Command | 용도 | 주요 출력 위치 |
 |---------|------|---------------|
-| `vina` | Vina blind docking | 프로젝트 raw docking 출력 루트 |
-| `postprocess` | 포즈 파싱, 포켓 요약, receptor state 비교 | `output/{project}/vina/` |
-| `pyrosetta` | PyRosetta Phase 1 실행 | PyRosetta 결과 디렉토리 + PPI exports |
-| `ppi-postprocess` | PPI 후처리 출력 재생성/추출 | PPI export 영역 |
-| `verdict` | 사이트 판정 | `output/{project}/results/valid_sites.csv` |
-| `report` | 텍스트 및 통합 증거 보고서 | `output/{project}/results/project_report.txt` |
-| `validate` | 현재 출력 상태 검증 | validation 결과 |
-| `full` | 기본 통합 CLI 경로 (Vina 중심 baseline) | routine baseline 출력 트리 |
-| `organize` | Step별 출력 정리 | `output/{project}/steps/` |
+| `vina` | Vina blind docking | `output/workflow_a/phase1_vina_docking/` |
+| `postprocess` | 포즈 파싱, 포켓 요약, receptor state 비교 | `output/workflow_a/phase4_vina_postprocess/` |
+| `pyrosetta` | PyRosetta Phase 1 실행 | `output/workflow_a/phase2_ppi_docking/` |
+| `ppi-postprocess` | PPI 후처리 출력 재생성/추출 | `output/workflow_a/phase3_ppi_postprocess/` |
+| `verdict` | 사이트 판정 | `output/workflow_a/phase5_verdict/valid_sites.csv` |
+| `report` | 텍스트 및 통합 증거 보고서 | `output/workflow_a/phase6_report/project_report.txt` |
+| `validate` | 현재 출력 상태 검증 | `output/workflow_a/phase7_validation/` |
+| `full` | 기본 통합 CLI 경로 (Vina 중심 baseline) | `output/workflow_a/` |
+| `organize` | Step별 출력 정리 | `output/workflow_a/` (phase별 디렉토리) |
 
 참고: `full`은 Vina 중심 routine baseline에 해당하며, 과학적 Phase 1->4 전체 경로를 의미하지 않습니다.
 
@@ -254,57 +254,64 @@ qsub config/run_production_fresh.pbs      # 클린 프로덕션
 
 ### 해석 시작점
 
-프로덕션 완료 후 `output/{project}/step_index.md`부터 시작합니다.
+프로덕션 완료 후 `output/workflow_a/phase6_report/project_report.txt`부터 시작합니다.
 
 권장 읽기 순서:
 
-1. `output/{project}/step_index.md`
-2. `output/{project}/step6_report/project_report.txt`
-3. `output/{project}/step5_verdict/valid_sites.csv`
-4. `output/{project}/step4_vina_postprocess/vina_pocket_table.csv`
-5. `output/{project}/step3_ppi_postprocess/ppi_pyrosetta_residues.csv`
+1. `output/workflow_a/phase6_report/project_report.txt`
+2. `output/workflow_a/phase5_verdict/valid_sites.csv`
+3. `output/workflow_a/phase4_vina_postprocess/vina_pocket_table.csv`
+4. `output/workflow_a/phase3_ppi_postprocess/ppi_pyrosetta_residues.csv`
+5. `output/workflow_a/phase2_ppi_docking/{state}/prod_seed{n}/final_ranking.csv`
 
-Canonical runtime 출력은 `output/{project}/` 아래에 있으며 source of truth입니다. Step 폴더는 canonical 출력에서 파생된 해석 뷰이며 재생성 가능합니다.
+Canonical 출력은 `output/workflow_a/` 아래 phase별 디렉토리에 있으며 source of truth입니다.
 
 ### 출력 위치 매핑
 
 | 명령 계열 | 확인 위치 |
 |-----------|----------|
-| `vina`, `postprocess` | `output/{project}/vina/` |
-| `verdict`, `report`, `validate`, `full` | `output/{project}/results/` |
-| `pyrosetta`, `ppi-postprocess` | `output/phase1_ppi/` 및 등록된 PPI 결과 디렉토리 |
-| pre-qsub PBS | `output/pre_qsub_status/` |
-| advanced phases | `output/phase2_pockets/`, `output/phase3_docking/`, `output/phase4_perturbation/` (해당 lane이 범위 내일 때만) |
+| `vina` | `output/workflow_a/phase1_vina_docking/` |
+| `postprocess` | `output/workflow_a/phase4_vina_postprocess/` |
+| `verdict`, `report`, `validate`, `full` | `output/workflow_a/phase5_verdict/`, `phase6_report/`, `phase7_validation/` |
+| `pyrosetta`, `ppi-postprocess` | `output/workflow_a/phase2_ppi_docking/`, `phase3_ppi_postprocess/` |
+| pre-qsub PBS | `output/precheck/` |
+| advanced phases | `output/workflow_b/phase2_pocket_analysis/`, `phase3_focused_docking/`, `phase4_scoring/` (해당 lane이 범위 내일 때만) |
 
 ### 참조 출력 레이아웃
 
 ```text
-output/egfr_myo1d_vina/
-  vina_pose_table.csv
-  vina_pocket_table.csv
-  vina_drug_pocket_map.csv
-  ppi_pyrosetta_residues.csv
-  ppi_pyrosetta_summary.csv
-  valid_sites.csv
-  cross_method_agreement.csv
-  combined_residue_evidence.csv
-  project_report.txt
-  step_index.md
-  current_run_manifest.json
-  step1_vina_raw/
-  step2_ppi_raw/
-  step3_ppi_postprocess/
-  step4_vina_postprocess/
-  step5_verdict/
-  step6_report/
-  step7_validate/
+output/
+├── workflow_a/
+│   ├── phase1_vina_docking/{receptor_id}/
+│   ├── phase2_ppi_docking/{state}/prod_seed{n}/
+│   ├── phase3_ppi_postprocess/
+│   │   ├── ppi_pyrosetta_residues.csv
+│   │   └── ppi_pyrosetta_summary.csv
+│   ├── phase4_vina_postprocess/
+│   │   ├── vina_pose_table.csv
+│   │   ├── vina_pocket_table.csv
+│   │   └── vina_drug_pocket_map.csv
+│   ├── phase5_verdict/
+│   │   ├── valid_sites.csv
+│   │   └── cross_method_agreement.csv
+│   ├── phase6_report/
+│   │   ├── project_report.txt
+│   │   └── combined_residue_evidence.csv
+│   ├── phase7_validation/
+│   └── logs/
+├── workflow_b/
+│   ├── phase1_ppi_analysis/
+│   ├── phase2_pocket_analysis/
+│   ├── phase3_focused_docking/
+│   └── phase4_scoring/
+└── precheck/
 ```
 
 ### 필수 체크포인트
 
 | 단계 | 필수 체크포인트 | 중단 조건 |
 |------|---------------|----------|
-| Precheck | `output/pre_qsub_status/last_pass.json` 존재 및 pass | 미존재 또는 실패 |
+| Precheck | `output/precheck/last_pass.json` 존재 및 pass | 미존재 또는 실패 |
 | Routine Vina postprocess | 핵심 Vina 테이블이 생성됨 | pose/pocket 요약 테이블 미존재 |
 | Routine integration | `valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` 존재 | 최종 판정 파일 미존재 또는 오래됨 |
 | Phase 1 PyRosetta | Phase 1 residue, patch, review 출력 존재 | 구조화된 Phase 1 export 없음 |
@@ -327,7 +334,7 @@ output/egfr_myo1d_vina/
 - `full`이 과학적 4-Phase 전체 계획을 실행한다고 오해
 - AFM이 비활성인데 AFM 의존 작업 실행
 - 머신 코어 수를 보고 routine safe worker bound(16)를 초과
-- `output/{project}/`의 pointer stub 파일을 실제 payload로 착각
+- `output/workflow_a/`의 pointer stub 파일을 실제 payload로 착각
 - 과학적 Phase 번호와 production stage 번호를 혼동
 - 3개 receptor state를 요약/핸드오프 해석에서 너무 일찍 병합
 

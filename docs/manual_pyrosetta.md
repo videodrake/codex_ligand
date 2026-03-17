@@ -63,19 +63,19 @@ Phase 1 LightDock PBS:
 
 Primary Phase 1 outputs are written under:
 
-- `output/phase1_ppi/`
+- `output/workflow_a/phase2_ppi_docking/`
 
 Key artifacts include:
 
-- `output/phase1_ppi/phase1_interface_report.md`
-- `output/phase1_ppi/phase1_interface_comparison_report.md`
-- `output/phase1_ppi/phase1_pilot_comparison_note.md`
-- `output/phase1_ppi/phase1_downstream_patch_reference.csv`
-- `output/phase1_ppi/<state>/ppi_interface_patch_table.csv`
-- `output/phase1_ppi/<state>/ppi_cluster_summary.csv`
-- `output/phase1_ppi/<state>/ppi_hotspot_residues.csv`
-- `output/phase1_ppi/<state>/orientation_filter_log.csv` (state-dependent)
-- `output/phase1_ppi/<state>/lightdock/lightdock_interface_support_table.csv` (when present)
+- `output/workflow_a/phase2_ppi_docking/phase1_interface_report.md`
+- `output/workflow_a/phase2_ppi_docking/phase1_interface_comparison_report.md`
+- `output/workflow_a/phase2_ppi_docking/phase1_pilot_comparison_note.md`
+- `output/workflow_a/phase2_ppi_docking/phase1_downstream_patch_reference.csv`
+- `output/workflow_a/phase2_ppi_docking/<state>/ppi_interface_patch_table.csv`
+- `output/workflow_a/phase2_ppi_docking/<state>/ppi_cluster_summary.csv`
+- `output/workflow_a/phase2_ppi_docking/<state>/ppi_hotspot_residues.csv`
+- `output/workflow_a/phase2_ppi_docking/<state>/orientation_filter_log.csv` (state-dependent)
+- `output/workflow_a/phase2_ppi_docking/<state>/lightdock/lightdock_interface_support_table.csv` (when present)
 
 ## 5. Minimal Run Patterns
 
@@ -104,7 +104,7 @@ qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
 
 After a Phase 1 run:
 
-1. Confirm `output/phase1_ppi/` exists and is newly updated.
+1. Confirm `output/workflow_a/phase2_ppi_docking/` exists and is newly updated.
 2. Confirm `phase1_interface_report.md` is present.
 3. Confirm per-state patch tables exist for expected receptor states.
 4. If LightDock validation is expected, confirm lightdock support tables exist.

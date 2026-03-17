@@ -314,7 +314,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 **박스 크기 자동 결정**: centroid_spread * 2.5 + 10 A padding, 18-30 A 범위로 클램핑
 
-**출력**: `phase2_pockets/phase3_candidate_pocket_reference.csv` — Phase 3 TG 3.0 입력
+**출력**: `workflow_b/phase2_pocket_analysis/phase3_candidate_pocket_reference.csv` — Phase 3 TG 3.0 입력
 
 ---
 
@@ -391,7 +391,7 @@ PyRosetta 초기화 유틸리티: PID 기반 랜덤 시드, `-mute all`, stdout/
    - construct_type (full_kinase_domain — 이전 pilot의 C-lobe fragment와 차별)
    - filter_version (v1.0/v2.0), mini_refinement 여부
    - excluded_residues_A, enable_early_rejection
-3. 표준화된 출력 경로: `output/phase1_ppi/{state}/{prod|test}_seed{n}/`
+3. 표준화된 출력 경로: `output/workflow_a/phase2_ppi_docking/{state}/{prod|test}_seed{n}/`
 4. Multi-seed 프로덕션 실행: 3 states x 5 seeds = 15회 독립 실행 (300K+ models)
 5. 스크래치 디렉토리 지원: HPC 로컬 디스크 사용 후 결과 동기화
 6. `PipelineManager`를 내부적으로 호출하여 7단계 파이프라인 실행
@@ -870,13 +870,36 @@ Phase 2 전체 결과를 요약한 Markdown 리포트 생성
 
 ### 핵심 핸드오프 파일 (Workflow B)
 
-| 구간 | 파일 | 생성 TG |
-|------|------|---------|
-| Phase 1 → Phase 2 | `phase1_downstream_patch_reference.csv` | TG 1.6 |
-| Phase 2 → Phase 3 | `phase3_candidate_pocket_reference.csv` | TG 2.6 |
-| Phase 3 → Phase 4 | `phase4_docking_evidence_reference.csv` | TG 3.6 |
-| Vina blind → Phase 3 (보조) | `phase3_candidate_pocket_reference.csv` | via `phase3_bridge.py` |
+| 구간 | 파일 | 위치 | 생성 TG |
+|------|------|------|---------|
+| Phase 1 → Phase 2 | `phase1_downstream_patch_reference.csv` | `workflow_b/phase1_ppi_analysis/` | TG 1.6 |
+| Phase 2 → Phase 3 | `phase3_candidate_pocket_reference.csv` | `workflow_b/phase2_pocket_analysis/` | TG 2.6 |
+| Phase 3 → Phase 4 | `phase4_docking_evidence_reference.csv` | `workflow_b/phase3_focused_docking/` | TG 3.6 |
+| Vina blind → Phase 3 (보조) | `phase3_candidate_pocket_reference.csv` | `workflow_b/phase2_pocket_analysis/` | via `phase3_bridge.py` |
+
+### 출력 디렉토리 구조
+
+모든 출력 경로는 `egfr_pipeline/paths.py`에서 중앙 관리.
+
+```
+output/
+├── workflow_a/                          # Workflow A: Standard Production
+│   ├── phase1_vina_docking/            # Vina blind docking 포즈 (.pdbqt)
+│   ├── phase2_ppi_docking/             # PyRosetta PPI (3 states × 5 seeds)
+│   ├── phase3_ppi_postprocess/         # PPI 인터페이스 증거 CSV
+│   ├── phase4_vina_postprocess/        # Vina 포켓 분석 CSV
+│   ├── phase5_verdict/                 # 사이트 판정
+│   ├── phase6_report/                  # 보고서
+│   ├── phase7_validation/              # 검증
+│   └── logs/                           # 런타임 로그
+├── workflow_b/                          # Workflow B: Advanced PPI-First
+│   ├── phase1_ppi_analysis/            # TG 1.1.5~1.6
+│   ├── phase2_pocket_analysis/         # TG 2.0~2.7
+│   ├── phase3_focused_docking/         # TG 3.0~3.6
+│   └── phase4_scoring/                 # TG 4.0~4.6
+└── precheck/                            # 사전 검증 상태
+```
 
 ---
 
-*이 보고서는 2026-03-17 기준 소스코드를 분석하여 생성되었습니다. 워크플로우 구분 반영: 2026-03-17. 견고성 가드 추가: 2026-03-17.*
+*이 보고서는 2026-03-17 기준 소스코드를 분석하여 생성되었습니다. 출력 구조 리팩토링 반영: 2026-03-17.*

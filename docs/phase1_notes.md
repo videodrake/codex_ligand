@@ -330,7 +330,7 @@ python -m egfr_pipeline.phase1.orientation_filter --state 3GT8_raw --merge
 # Pilot validation
 python -m egfr_pipeline.phase1.orientation_filter \
   --pilot_dir /path/to/pilot/final_result/ \
-  --pilot_out output/phase1_ppi/orientation_filter_pilot_validation.csv
+  --pilot_out output/workflow_a/phase2_ppi_docking/orientation_filter_pilot_validation.csv
 ```
 
 ### 4.8 검증 전략
@@ -396,7 +396,7 @@ LightDock 포즈에도 PDB-based orientation filter 적용:
 
 ### 5.4 출력 파일
 
-Per receptor state (`output/phase1_ppi/<state>/lightdock/`):
+Per receptor state (`output/workflow_a/phase2_ppi_docking/<state>/lightdock/`):
 - `lightdock_run_metadata.json`
 - `run_lightdock_<state>.sh`
 - `lightdock_interface_support_table.csv`
@@ -404,11 +404,11 @@ Per receptor state (`output/phase1_ppi/<state>/lightdock/`):
 - `.lightdock_complete` (marker)
 
 Cross-method output:
-- `output/phase1_ppi/<state>/cross_method_convergence.csv`
-- `output/phase1_ppi/<state>/cross_method_convergence_summary.json`
+- `output/workflow_a/phase2_ppi_docking/<state>/cross_method_convergence.csv`
+- `output/workflow_a/phase2_ppi_docking/<state>/cross_method_convergence_summary.json`
 
 Results summary:
-- `output/phase1_ppi/phase1_lightdock_validation_results.md`
+- `output/workflow_a/phase2_ppi_docking/phase1_lightdock_validation_results.md`
 
 ### 5.5 CSV Baselines
 
@@ -448,7 +448,7 @@ PyRosetta는 REU (dG_separated), LightDock는 DFIRE2 scoring (fastdfire) 사용.
 ### 6.2 디렉토리 구조
 
 ```
-output/phase1_ppi/
+output/workflow_a/phase2_ppi_docking/
   <state>/                              # e.g., 3GT8_raw, EGFR_160-185, EGFR_170-200
     test_seed0/  |  prod_seed0/ ... prod_seed4/
       pyrosetta_run_metadata.json
@@ -462,7 +462,7 @@ output/phase1_ppi/
 
 **현재 구현 참고**: 현재 naming rule은 `<input_stem>__<receptor_id>__<partner_construct>__<construct_type>__<run_label>`으로, test/prod 실행이 동일 input PDB를 공유할 때 덮어쓰기를 방지한다.
 
-### 6.3 Primary Evidence 출력 (`output/phase1_ppi/<state>/`)
+### 6.3 Primary Evidence 출력 (`output/workflow_a/phase2_ppi_docking/<state>/`)
 
 - `phase1_input_validation_report.json`
 - `phase1_input_validation_summary.md`
@@ -507,7 +507,7 @@ Downstream patch reference에 포함: `construct_type`, `orientation_validation_
 
 ### 7.1 Legacy Postprocess CSVs
 
-Legacy 경로 (`output/egfr_myo1d_vina/ppi/`):
+Legacy 경로 (`output/workflow_a/phase3_ppi_postprocess/`):
 
 **`ppi_pyrosetta_residues.csv`**: `receptor_id`, `partner_id`, `source`, `chain`, `residue_id`, `residue_num`, `residue_name`, `lobe_label`, `construct_type`, `orientation_validation_status`, `frequency_final_ranking`, `frequency_cluster_summary`, `n_models_final_ranking`, `occupancy`, `mean_interface_delta_e`, `best_interface_delta_e`
 
@@ -519,8 +519,8 @@ Legacy 경로 (`output/egfr_myo1d_vina/ppi/`):
 
 | Source | Value |
 |--------|-------|
-| Legacy postprocess (`output/egfr_myo1d_vina/ppi/`) | Usually `not_available` |
-| Structured Phase 1 (`output/phase1_ppi/`) | `pass`, `fail`, `ambiguous`, `insufficient_data` |
+| Legacy postprocess (`output/workflow_a/phase3_ppi_postprocess/`) | Usually `not_available` |
+| Structured Phase 1 (`output/workflow_a/phase2_ppi_docking/`) | `pass`, `fail`, `ambiguous`, `insufficient_data` |
 
 이 차이는 의도적이며 모순이 아님.
 

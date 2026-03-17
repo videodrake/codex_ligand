@@ -407,9 +407,9 @@ def test_step_view_docs_cover_reading_order_and_canonical_vs_derived_contract() 
     repo_root = Path(__file__).resolve().parents[1]
     expectations = {
         "README.md": [
-            "step_index",
             "workflow a",
             "workflow b",
+            "phase2_ppi_docking",
         ],
         "docs/runbook.md": [
             "--status",

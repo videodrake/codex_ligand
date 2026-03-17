@@ -234,49 +234,53 @@ python main.py -c config/example-project.yaml validate
 python main.py -c config/example-project.yaml organize
 ```
 
-## Step별 출력 구조 (steps/)
+## 출력 디렉토리 구조
 
-프로덕션 실행 완료 후 `output/{project}/steps/` 아래에 자동 생성됨.
-각 디렉토리에는 해당 스텝의 모든 결과 파일에 대한 심볼릭 링크가 포함됨.
-
-```
-output/{project}/steps/
-├── STEP_INDEX.txt           # 전체 인덱스
-├── 01_vina_docking/         # Step 1: Vina 원시 포즈 (.pdbqt)
-│   ├── 3GT8_raw/            →  {project}/3GT8_raw/
-│   ├── EGFR_160-185/        →  {project}/EGFR_160-185/
-│   └── EGFR_170-200/        →  {project}/EGFR_170-200/
-├── 02_ppi_docking/          # Step 2: PPI 도킹 결과 (전체)
-│   ├── 3GT8_raw/            →  phase1_ppi/3GT8_raw/prod_seed0/
-│   ├── EGFR_160-185/        →  phase1_ppi/EGFR_160-185/prod_seed0/
-│   └── EGFR_170-200/        →  phase1_ppi/EGFR_170-200/prod_seed0/
-├── 03_ppi_evidence/         # Step 3: PPI 인터페이스 증거
-│   ├── ppi_pyrosetta_residues.csv
-│   ├── ppi_pyrosetta_summary.csv
-│   └── ...
-├── 04_vina_analysis/        # Step 4: Vina 포켓 분석
-│   ├── vina_pocket_table.csv
-│   ├── vina_pose_table.csv
-│   ├── vina_drug_pocket_map.csv
-│   └── ...
-├── 05_site_verdict/         # Step 5: 사이트 판정
-│   ├── valid_sites.csv
-│   └── cross_method_agreement.csv
-├── 06_report/               # Step 6: 보고서
-│   ├── project_report.txt
-│   └── combined_residue_evidence.csv
-└── 07_validation/           # Step 7: 검증
-    ├── validation_status.json
-    └── validation_summary.txt
-```
-
-> 심볼릭 링크이므로 원본 수정 없이 공간 절약.
-> 서버에서 로컬로 복사 시: `scp -r steps/ local_dest/` 또는 `cp -rL steps/ dest/` (링크 해제)
-
-## 출력 디렉토리 구조 (PPI 도킹 개별 결과)
+모든 출력은 `output/` 아래에 Workflow별로 분리. 경로 해석은 `egfr_pipeline/paths.py`가 담당.
 
 ```
-<PDB_NAME>/
+output/
+├── workflow_a/                          # Workflow A: Standard Production
+│   ├── phase1_vina_docking/            # Vina blind docking 포즈
+│   │   ├── 3GT8_raw/                   #   {ligand}_{mode}.pdbqt
+│   │   ├── EGFR_160-185/
+│   │   └── EGFR_170-200/
+│   ├── phase2_ppi_docking/             # PyRosetta PPI 도킹 (3 states × 5 seeds)
+│   │   ├── 3GT8_raw/prod_seed{0-4}/   #   (아래 PPI 개별 결과 참조)
+│   │   ├── EGFR_160-185/prod_seed{0-4}/
+│   │   └── EGFR_170-200/prod_seed{0-4}/
+│   ├── phase3_ppi_postprocess/         # PPI 인터페이스 증거
+│   │   ├── ppi_pyrosetta_residues.csv
+│   │   └── ppi_pyrosetta_summary.csv
+│   ├── phase4_vina_postprocess/        # Vina 포켓 분석
+│   │   ├── vina_pose_table.csv
+│   │   ├── vina_pocket_table.csv
+│   │   ├── vina_drug_pocket_map.csv
+│   │   ├── vina_pocket_comparison.csv
+│   │   └── vina_pocket_bootstrap.csv
+│   ├── phase5_verdict/                 # 사이트 판정
+│   │   ├── valid_sites.csv
+│   │   └── cross_method_agreement.csv
+│   ├── phase6_report/                  # 보고서
+│   │   ├── project_report.txt
+│   │   └── combined_residue_evidence.csv
+│   ├── phase7_validation/              # 검증
+│   │   ├── validation_status.json
+│   │   └── validation_summary.txt
+│   └── logs/                           # 런타임 로그, lane 매니페스트
+├── workflow_b/                          # Workflow B: Advanced PPI-First
+│   ├── phase1_ppi_analysis/            # TG 1.1.5~1.6 분석 결과
+│   ├── phase2_pocket_analysis/         # TG 2.0~2.7 포켓 분석
+│   ├── phase3_focused_docking/         # TG 3.0~3.6 focused Vina
+│   └── phase4_scoring/                 # TG 4.0~4.6 통합 스코어링
+└── precheck/                            # 사전 검증 상태
+    └── last_pass.json
+```
+
+## PPI 도킹 개별 결과 구조 (phase2_ppi_docking 내부)
+
+```
+{state}/prod_seed{n}/
   PROGRESS.log           # 실시간 진행 상황 (tail -f로 모니터링, INFO 레벨)
   seed_complete.json     # 시드 완료 마커 (재실행 시 스킵 판단, --force로 초기화)
   scored_all_models.csv  # 전체 스코어링 모델 메트릭 + filter_status (재도킹 없이 재분석 가능)

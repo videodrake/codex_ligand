@@ -81,8 +81,8 @@ scripts/                   # 유틸리티 스크립트
 
 프로덕션 완료 후:
 
-1. `output/{project}/step_index.md` — 진입점
-2. `output/{project}/project_report.txt` — 종합 보고서
-3. `output/{project}/valid_sites.csv` — 후보 포켓 판정
-4. `output/{project}/vina_pocket_table.csv` — 포켓별 상세
+1. `output/workflow_a/phase6_report/project_report.txt` — 종합 보고서
+2. `output/workflow_a/phase5_verdict/valid_sites.csv` — 후보 포켓 판정
+3. `output/workflow_a/phase4_vina_postprocess/vina_pocket_table.csv` — 포켓별 상세
+4. `output/workflow_a/phase2_ppi_docking/{state}/` — PPI 도킹 결과
 5. PyMOL: `1_OVERVIEW_Clusters.pml` — 시각화

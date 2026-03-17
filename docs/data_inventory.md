@@ -16,7 +16,7 @@ This document inventories the current repository data surfaces that a new GPT ne
 | Receptor states | `3GT8_raw`, `EGFR_160-185`, `EGFR_170-200` |
 | Ligand set in active config | `173940`, `97806`, `VAX-C12_0` |
 | Phase 1 primary partner baseline | extended beta-meander derived from `input/PPI/TH1 domain.pdb` |
-| Phase 1 secondary validation | LightDock outputs under `output/phase1_ppi/<state>/lightdock/` |
+| Phase 1 secondary validation | LightDock outputs under `output/workflow_a/phase2_ppi_docking/<state>/lightdock/` |
 | Legacy optional partner context | TH1 full-domain and AFM-related references |
 
 ## 1. Raw Inputs
@@ -116,69 +116,85 @@ Current interpretation:
 
 ## 3. Derived Outputs
 
-## 3.1 Current project root
+## 3.1 Output directory structure
 
 The active config defines:
 
-- `project_name: egfr_myo1d_vina`
 - `output_root: ./output`
 
-So the main project output root is:
+Outputs are organized by workflow and phase:
 
-- `output/egfr_myo1d_vina/`
-
-Observed contents:
-
-- root-level summary file names such as `vina_pose_table.csv`, `cross_method_agreement.csv`, and `project_report.txt`
-- subdirectories `vina/`, `ppi/`, and `results/`
-
-Important caveat:
-
-- Several root-level files in `output/egfr_myo1d_vina/` are thin path-pointer stubs rather than full payload files.
-- Example: `output/egfr_myo1d_vina/vina_pose_table.csv` contains the string `vina/vina_pose_table.csv`, which points to the actual file under `output/egfr_myo1d_vina/vina/`.
-- New GPTs should not assume every root-level `.csv` there is the full dataset body.
+```
+output/
+├── workflow_a/                          # Workflow A: Standard Production
+│   ├── phase1_vina_docking/{receptor_id}/   # Vina raw poses
+│   ├── phase2_ppi_docking/{state}/prod_seed{n}/  # PPI docking results
+│   ├── phase3_ppi_postprocess/              # PPI post-processing
+│   ├── phase4_vina_postprocess/             # Vina post-processing
+│   ├── phase5_verdict/                      # Site verdict
+│   ├── phase6_report/                       # Report
+│   ├── phase7_validation/                   # Validation
+│   └── logs/                                # Pipeline logs
+├── workflow_b/                          # Workflow B: Advanced PPI-First
+│   ├── phase1_ppi_analysis/                 # PPI analysis
+│   ├── phase2_pocket_analysis/              # Pocket proposals
+│   ├── phase3_focused_docking/              # Focused docking
+│   └── phase4_scoring/                      # Perturbation scoring
+└── precheck/                            # Pre-submission checks
+```
 
 ### 3.2 Vina-derived outputs
 
 Primary Vina output location:
 
-- `output/egfr_myo1d_vina/vina/`
+- `output/workflow_a/phase4_vina_postprocess/`
 
 Key files:
 
 | Path | Meaning |
 |------|------|
-| `output/egfr_myo1d_vina/vina/vina_pose_table.csv` | pose-level docking table; each row is a receptor-ligand pose with affinity, centroid, raw pose file path, and pocket assignment |
-| `output/egfr_myo1d_vina/vina/vina_pocket_table.csv` | pocket-level aggregation of Vina poses within each receptor |
-| `output/egfr_myo1d_vina/vina/vina_drug_pocket_map.csv` | mapping from ligands to inferred pockets |
-| `output/egfr_myo1d_vina/vina/vina_pocket_comparison.csv` | cross-receptor pocket comparison output |
-| `output/egfr_myo1d_vina/vina/vina_pocket_bootstrap.csv` | optional bootstrap stability summary for pocket-level patterns |
-| `output/egfr_myo1d_vina/vina/vina_contact_distances.csv` | long-form per-pose contact distances (receptor_id, ligand_id, pose_rank, residue_id, min_distance_A) |
-| `output/egfr_myo1d_vina/vina/vina_pocket_residue_occupancy.csv` | per-pocket residue occupancy and hotspot flags |
-| `output/egfr_myo1d_vina/vina/vina_clustering_merge_log.csv` | pocket merge provenance log with merge reasons |
-| `output/egfr_myo1d_vina/vina/vina_clustering_parameters.json` | clustering parameter snapshot for reproducibility |
+| `output/workflow_a/phase4_vina_postprocess/vina_pose_table.csv` | pose-level docking table; each row is a receptor-ligand pose with affinity, centroid, raw pose file path, and pocket assignment |
+| `output/workflow_a/phase4_vina_postprocess/vina_pocket_table.csv` | pocket-level aggregation of Vina poses within each receptor |
+| `output/workflow_a/phase4_vina_postprocess/vina_drug_pocket_map.csv` | mapping from ligands to inferred pockets |
+| `output/workflow_a/phase4_vina_postprocess/vina_pocket_comparison.csv` | cross-receptor pocket comparison output |
+| `output/workflow_a/phase4_vina_postprocess/vina_pocket_bootstrap.csv` | optional bootstrap stability summary for pocket-level patterns |
+| `output/workflow_a/phase4_vina_postprocess/vina_contact_distances.csv` | long-form per-pose contact distances (receptor_id, ligand_id, pose_rank, residue_id, min_distance_A) |
+| `output/workflow_a/phase4_vina_postprocess/vina_pocket_residue_occupancy.csv` | per-pocket residue occupancy and hotspot flags |
+| `output/workflow_a/phase4_vina_postprocess/vina_clustering_merge_log.csv` | pocket merge provenance log with merge reasons |
+| `output/workflow_a/phase4_vina_postprocess/vina_clustering_parameters.json` | clustering parameter snapshot for reproducibility |
 
-### 3.3 Integrated verdict/report outputs
+### 3.3 Verdict outputs
 
-Primary integrated summary location:
+Verdict output location:
 
-- `output/egfr_myo1d_vina/results/`
+- `output/workflow_a/phase5_verdict/`
 
 Key files:
 
 | Path | Meaning |
 |------|------|
-| `output/egfr_myo1d_vina/results/valid_sites.csv` | final rule-based site verdicts by pocket |
-| `output/egfr_myo1d_vina/results/cross_method_agreement.csv` | Vina-PPI overlap and agreement table |
-| `output/egfr_myo1d_vina/results/vina_consensus_sites.csv` | consensus pocket/site grouping across receptors |
-| `output/egfr_myo1d_vina/results/combined_residue_evidence.csv` | combined residue-level evidence view |
-| `output/egfr_myo1d_vina/results/project_report.txt` | human-readable top-level project report |
+| `output/workflow_a/phase5_verdict/valid_sites.csv` | final rule-based site verdicts by pocket |
+| `output/workflow_a/phase5_verdict/cross_method_agreement.csv` | Vina-PPI overlap and agreement table |
+| `output/workflow_a/phase5_verdict/vina_consensus_sites.csv` | consensus pocket/site grouping across receptors |
 
-### 3.4 Legacy or earlier PPI-derived outputs under the project root
+### 3.3b Report outputs
 
-Observed PPI location under the project root:
+Report output location:
 
-- `output/egfr_myo1d_vina/ppi/`
+- `output/workflow_a/phase6_report/`
+
+Key files:
+
+| Path | Meaning |
+|------|------|
+| `output/workflow_a/phase6_report/combined_residue_evidence.csv` | combined residue-level evidence view |
+| `output/workflow_a/phase6_report/project_report.txt` | human-readable top-level project report |
+
+### 3.4 PPI postprocess outputs
+
+PPI postprocess output location:
+
+- `output/workflow_a/phase3_ppi_postprocess/`
 
 This contains older or parallel PPI run products such as:
 
@@ -189,7 +205,7 @@ This contains older or parallel PPI run products such as:
 Interpretation:
 
 - This area preserves previous PPI-derived products and historical run outputs.
-- For the current structured Phase 1 baseline, prefer the dedicated `output/phase1_ppi/` tree described below.
+- For the current structured Phase 1 baseline, prefer the dedicated `output/workflow_a/phase2_ppi_docking/` tree described below.
 
 ### 3.5 PyRosetta PPI docking outputs (per-PDB run)
 
@@ -213,22 +229,22 @@ These output roots reflect the newer phase-separated document and code organizat
 
 Root:
 
-- `output/phase1_ppi/`
+- `output/workflow_a/phase2_ppi_docking/`
 
 Key cross-state files:
 
 | Path | Meaning |
 |------|------|
-| `output/phase1_ppi/phase1_interface_report.md` | human-readable Phase 1 review report |
-| `output/phase1_ppi/phase1_downstream_patch_reference.csv` | Phase 2 handoff patch reference |
-| `output/phase1_ppi/ppi_patch_cross_state_comparison.csv` | residue-level cross-state comparison |
-| `output/phase1_ppi/ppi_patch_state_robustness.csv` | state robustness labeling for Phase 1 residues |
+| `output/workflow_a/phase2_ppi_docking/phase1_interface_report.md` | human-readable Phase 1 review report |
+| `output/workflow_a/phase2_ppi_docking/phase1_downstream_patch_reference.csv` | Phase 2 handoff patch reference |
+| `output/workflow_a/phase2_ppi_docking/ppi_patch_cross_state_comparison.csv` | residue-level cross-state comparison |
+| `output/workflow_a/phase2_ppi_docking/ppi_patch_state_robustness.csv` | state robustness labeling for Phase 1 residues |
 
 Per-state subtrees:
 
-- `output/phase1_ppi/3GT8_raw/`
-- `output/phase1_ppi/EGFR_160-185/`
-- `output/phase1_ppi/EGFR_170-200/`
+- `output/workflow_a/phase2_ppi_docking/3GT8_raw/`
+- `output/workflow_a/phase2_ppi_docking/EGFR_160-185/`
+- `output/workflow_a/phase2_ppi_docking/EGFR_170-200/`
 
 Typical per-state files:
 
@@ -248,7 +264,7 @@ Typical per-state files:
 
 Root:
 
-- `output/phase2_pockets/`
+- `output/workflow_b/phase2_pocket_analysis/`
 
 Representative files:
 
@@ -266,7 +282,7 @@ Representative files:
 
 Root:
 
-- `output/phase3_docking/`
+- `output/workflow_b/phase3_focused_docking/`
 
 Representative files:
 
@@ -284,7 +300,7 @@ Representative files:
 
 Root:
 
-- `output/phase4_perturbation/`
+- `output/workflow_b/phase4_scoring/`
 
 Representative files:
 
@@ -306,14 +322,15 @@ Use this shortcut when onboarding.
 | Which receptor and ligand inputs are active | `config/example-project.yaml` plus this document |
 | What the current prepared Phase 1 input set is | `input/PPI/phase1/` |
 | What older PPI prepared assets still exist | `input/PPI/prepared/` |
-| Where the main Vina outputs live | `output/egfr_myo1d_vina/vina/` |
-| Where the final verdict/report outputs live | `output/egfr_myo1d_vina/results/` |
-| Where current structured Phase 1 outputs live | `output/phase1_ppi/` |
-| Where future phase-separated pocket/docking/scoring outputs live | `output/phase2_pockets/`, `output/phase3_docking/`, `output/phase4_perturbation/` |
+| Where the main Vina outputs live | `output/workflow_a/phase4_vina_postprocess/` |
+| Where the verdict outputs live | `output/workflow_a/phase5_verdict/` |
+| Where the report outputs live | `output/workflow_a/phase6_report/` |
+| Where current structured Phase 1 outputs live | `output/workflow_a/phase2_ppi_docking/` |
+| Where future phase-separated pocket/docking/scoring outputs live | `output/workflow_b/phase2_pocket_analysis/`, `output/workflow_b/phase3_focused_docking/`, `output/workflow_b/phase4_scoring/` |
 
 ## 6. Current Cautions
 
-- Do not confuse root-level pointer files inside `output/egfr_myo1d_vina/` with the actual payload files under `vina/`, `ppi/`, or `results/`.
+- Outputs are now organized under `output/workflow_a/` and `output/workflow_b/` by phase. Do not reference the legacy `output/egfr_myo1d_vina/` layout.
 - Do not treat `input/PPI/prepared/` as the current primary Phase 1 preparation layer when `input/PPI/phase1/` already provides the newer full-kinase-domain baseline metadata.
 - Do not assume AFM inputs exist just because AFM parser code exists.
 - Do not assume `.pdbqt` inputs are checked into this workspace just because the active YAML expects them at runtime.
