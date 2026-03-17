@@ -10,7 +10,7 @@ Usage:
 전체 흐름:
   Phase 1: Vina blind docking (3 receptor × 3 ligand, exhaustiveness=128)  ~15분
            결과물: output/{project}/{receptor_id}/{ligand}_blind.pdbqt
-  Phase 2: PPI docking — Phase 1 monomer-based (3 state × seed0 = 60K models)
+  Phase 2: PPI docking — Phase 1 monomer-based (3 states × 5 seeds = 300K models)
            결과물: {docking_dir}/final_result/final_ranking.csv
   Phase 3: PPI postprocess — monomer 타겟은 chain restoration 불필요 (자동 스킵)
   Phase 4: Vina postprocess (parse → contacts → cluster → summarize → compare → bootstrap)
@@ -25,6 +25,7 @@ Usage:
 import argparse
 import configparser
 import csv
+import json
 import os
 import sys
 import time
@@ -63,45 +64,31 @@ from egfr_pipeline.runtime_support import (
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
 
-# PPI 설정 — Phase 1 monomer-based (seed0 테스트)
-PPI_TARGETS = [
-    {
-        "name": "3GT8_raw_seed0",
-        "config_ini": "config/phase1/phase1_prod_3GT8_raw_seed0.ini",
-        "docking_dir": "output/phase1_ppi/3GT8_raw/prod_seed0",
-        "mapping_csv": "",
-        "receptor_id": "3GT8_raw",
-        "partner_name": "ext_beta_meander",
-        "construct_type": "full_kinase_domain",
-        "orientation_validation_status": "not_available",
-        "seed_index": 0,
-        "is_production": True,
-    },
-    {
-        "name": "EGFR_160-185_seed0",
-        "config_ini": "config/phase1/phase1_prod_EGFR_160-185_seed0.ini",
-        "docking_dir": "output/phase1_ppi/EGFR_160-185/prod_seed0",
-        "mapping_csv": "",
-        "receptor_id": "EGFR_160-185",
-        "partner_name": "ext_beta_meander",
-        "construct_type": "full_kinase_domain",
-        "orientation_validation_status": "not_available",
-        "seed_index": 0,
-        "is_production": True,
-    },
-    {
-        "name": "EGFR_170-200_seed0",
-        "config_ini": "config/phase1/phase1_prod_EGFR_170-200_seed0.ini",
-        "docking_dir": "output/phase1_ppi/EGFR_170-200/prod_seed0",
-        "mapping_csv": "",
-        "receptor_id": "EGFR_170-200",
-        "partner_name": "ext_beta_meander",
-        "construct_type": "full_kinase_domain",
-        "orientation_validation_status": "not_available",
-        "seed_index": 0,
-        "is_production": True,
-    },
-]
+# PPI 설정 — Phase 1 monomer-based (3 states × 5 seeds)
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
+PRODUCTION_N_SEEDS = 5  # generate_configs.py와 동일
+
+
+def _build_ppi_targets() -> List[dict]:
+    targets = []
+    for state in RECEPTOR_STATES:
+        for seed_idx in range(PRODUCTION_N_SEEDS):
+            targets.append({
+                "name": f"{state}_seed{seed_idx}",
+                "config_ini": f"config/phase1/phase1_prod_{state}_seed{seed_idx}.ini",
+                "docking_dir": f"output/phase1_ppi/{state}/prod_seed{seed_idx}",
+                "mapping_csv": "",
+                "receptor_id": state,
+                "partner_name": "ext_beta_meander",
+                "construct_type": "full_kinase_domain",
+                "orientation_validation_status": "not_available",
+                "seed_index": seed_idx,
+                "is_production": True,
+            })
+    return targets
+
+
+PPI_TARGETS = _build_ppi_targets()
 
 
 _FORCE_MODE = False
@@ -240,6 +227,66 @@ def _ppi_docking_dir(target: dict) -> Optional[Path]:
         return None
 
     return input_pdb.parent
+
+
+SEED_MARKER_FILENAME = "seed_complete.json"
+
+
+def _seed_marker_path(target: dict) -> Optional[Path]:
+    """PPI target의 seed_complete.json 경로."""
+    docking_dir = _ppi_docking_dir(target)
+    if docking_dir is None:
+        return None
+    return docking_dir / SEED_MARKER_FILENAME
+
+
+def _seed_is_complete(target: dict) -> bool:
+    """시드 완료 마커 확인. 하위호환: 마커 없으면 final_ranking.csv로 backfill."""
+    marker = _seed_marker_path(target)
+    if marker is None:
+        return False
+    # 1) 마커 파일 직접 확인
+    if marker.exists():
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+            if payload.get("status") == "completed":
+                return True
+        except (OSError, json.JSONDecodeError):
+            pass
+    # 2) 하위호환 migration: final_ranking.csv 존재 시 마커 자동 생성
+    docking_dir = marker.parent
+    ranking = docking_dir / "final_result" / "final_ranking.csv"
+    if ranking.exists():
+        _write_seed_completion(target, status="completed")
+        print(f"  [MIGRATE] {target['name']}: backfilled seed marker")
+        return True
+    return False
+
+
+def _write_seed_completion(
+    target: dict,
+    *,
+    status: str,
+    duration_seconds: int = 0,
+) -> Optional[Path]:
+    """seed_complete.json 마커를 출력 디렉토리에 기록."""
+    docking_dir = _ppi_docking_dir(target)
+    if docking_dir is None:
+        return None
+    docking_dir.mkdir(parents=True, exist_ok=True)
+    marker_path = docking_dir / SEED_MARKER_FILENAME
+    payload = {
+        "status": status,
+        "target_name": target["name"],
+        "receptor_id": target.get("receptor_id", ""),
+        "seed_index": target.get("seed_index", 0),
+        "config_ini": target.get("config_ini", ""),
+        "docking_dir": target.get("docking_dir", ""),
+        "completed_at": utc_now_iso(),
+        "duration_seconds": duration_seconds,
+    }
+    marker_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return marker_path
 
 
 def _execution_mode_label(args: argparse.Namespace) -> str:
@@ -452,15 +499,11 @@ def check_phase1() -> List[str]:
 
 
 def check_phase2() -> List[str]:
-    """Phase 2 (PPI): 각 target의 final_ranking.csv 존재 여부.
-    결과물: {pdb_stem}/final_result/final_ranking.csv
-    """
+    """Phase 2 (PPI): 각 target의 seed 완료 마커 확인."""
     missing = []
     for target in PPI_TARGETS:
-        docking_dir = _ppi_docking_dir(target)
-        ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
-        if not ranking or not ranking.exists():
-            missing.append(f"{target['name']}: final_ranking.csv")
+        if not _seed_is_complete(target):
+            missing.append(f"{target['name']}: {SEED_MARKER_FILENAME}")
     return missing
 
 
@@ -539,7 +582,7 @@ def check_phase6() -> List[str]:
 
 PHASE_CHECKS = {
     1: ("Vina blind docking 결과 (.pdbqt)", check_phase1),
-    2: ("PPI docking 결과 (final_ranking.csv)", check_phase2),
+    2: ("PPI docking 결과 (seed_complete.json)", check_phase2),
     3: ("PPI postprocess (ppi_pyrosetta_residues.csv)", check_phase3),
     4: ("Vina postprocess (pocket_table 등 5개 CSV)", check_phase4),
     5: ("Verdict (valid_sites.csv)", check_phase5),
@@ -571,6 +614,17 @@ def print_status(
             if len(missing) > 3:
                 detail += f" ...+{len(missing)-3}"
         print(f"  Phase {phase_num:<3} {status:<8} {desc:<50} {detail}")
+
+        # Phase 2 시드별 상태 그리드
+        if phase_num == 2:
+            for state in RECEPTOR_STATES:
+                seeds_str = []
+                for t in PPI_TARGETS:
+                    if t["receptor_id"] != state:
+                        continue
+                    mark = "DONE" if _seed_is_complete(t) else "TODO"
+                    seeds_str.append(f"seed{t['seed_index']}[{mark}]")
+                print(f"            {state:<17} {' '.join(seeds_str)}")
 
     print("  Phase 7   [항상]   Validate (매 실행마다 검증)")
     print()
@@ -904,6 +958,13 @@ def phase2_ppi(
         selector = f"state={state or '*'}, seed={seed if seed is not None else '*'}"
         raise RuntimeError(f"No PPI targets match selector: {selector}")
 
+    if _FORCE_MODE:
+        for target in targets:
+            marker = _seed_marker_path(target)
+            if marker and marker.exists():
+                marker.unlink()
+                print(f"  [RESET] {target['name']}: seed marker removed")
+
     for target in targets:
         name = target["name"]
         config_ini = target["config_ini"]
@@ -912,12 +973,9 @@ def phase2_ppi(
             print(f"  [ERROR] {name}: config not found: {config_ini}")
             continue
 
-        if not _FORCE_MODE:
-            docking_dir = _ppi_docking_dir(target)
-            ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
-            if ranking and ranking.exists():
-                print(f"  [SKIP] {name}: already completed ({ranking})")
-                continue
+        if not _FORCE_MODE and _seed_is_complete(target):
+            print(f"  [SKIP] {name}: seed marker ({_seed_marker_path(target)})")
+            continue
 
         print(f"\n  --- {name} (20K models) ---")
         print(f"  Config: {config_ini}")
@@ -932,13 +990,19 @@ def phase2_ppi(
             run_kwargs["allocated_cpus"] = allocated_cpus
         if scratch_dir is not None:
             run_kwargs["scratch_dir"] = scratch_dir
+        t0 = time.time()
         meta = run_single(
             config_path,
             target["receptor_id"],
             **run_kwargs,
         )
+        elapsed = int(time.time() - t0)
         if meta.get("status") == "failed":
             failures.append(f"{name}: {meta.get('error', 'unknown error')}")
+        else:
+            marker = _write_seed_completion(target, status="completed", duration_seconds=elapsed)
+            if marker:
+                print(f"  [MARKER] {name}: {marker}")
 
     if failures:
         raise RuntimeError("; ".join(failures))
@@ -1156,7 +1220,7 @@ def _run_lane(
 
 PHASES = [
     (1, "Phase 1: Vina Blind Docking (production)", phase1_vina),
-    (2, "Phase 2: PPI Global Blind Docking (50K models)", phase2_ppi),
+    (2, f"Phase 2: PPI Global Blind Docking ({len(RECEPTOR_STATES) * PRODUCTION_N_SEEDS * 20}K models, {len(RECEPTOR_STATES)} states x {PRODUCTION_N_SEEDS} seeds)", phase2_ppi),
     (3, "Phase 3: PPI Postprocess (evidence extraction + aggregation)", phase3_ppi_postprocess),
     (4, "Phase 4: Vina Postprocess (전체)", phase4_vina_postprocess),
     (5, "Phase 5: Site Verdict (3축 통합)", phase5_verdict),
@@ -1234,7 +1298,7 @@ def main():
         cli_disabled=args.disable_step_view,
     )
     vina_cfg = config.get("vina", {})
-    ppi_models = "50K"  # from ini files
+    ppi_models = f"{len(RECEPTOR_STATES) * PRODUCTION_N_SEEDS * 20}K"
 
     print()
     print("╔══════════════════════════════════════════════════════╗")
