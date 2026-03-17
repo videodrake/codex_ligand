@@ -4,8 +4,8 @@ import csv
 import json
 from pathlib import Path
 
-from egfr_pipeline.vina import bootstrap as bootstrap_module
-from egfr_pipeline.vina.compare import compare_from_config
+from egfr_pipeline.vina import pocket_stability as pocket_stability_module
+from egfr_pipeline.vina.cross_receptor import compare_from_config
 from egfr_pipeline.vina.parse_poses import build_pose_table_from_config
 
 
@@ -314,7 +314,7 @@ def test_bootstrap_from_config_respects_cluster_params_and_labels_scope(
             row["pocket_id"] = "P001"
         return rows
 
-    monkeypatch.setattr(bootstrap_module, "assign_pockets", fake_assign_pockets)
+    monkeypatch.setattr(pocket_stability_module, "assign_pockets", fake_assign_pockets)
 
     config = {
         "project_name": "bootstrap_project",
@@ -330,7 +330,7 @@ def test_bootstrap_from_config_respects_cluster_params_and_labels_scope(
     config_path = tmp_path / "bootstrap_config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    out_csv = bootstrap_module.bootstrap_from_config(str(config_path))
+    out_csv = pocket_stability_module.bootstrap_from_config(str(config_path))
     rows = _read_csv(out_csv)
 
     assert calls

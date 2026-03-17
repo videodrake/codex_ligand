@@ -17,9 +17,9 @@ PyRosetta 기반 **단백질-단백질 상호작용(PPI) Global Blind Docking �
 ```
 egfr_pipeline/pyrosetta_docking/
   pipeline_manager.py        # 메인 오케스트레이터 (~1660줄) - 7단계 파이프라인 실행
-  docking.py                 # 워커: Relax, Global Docking, Refinement (253줄)
-  analysis.py                # 워커: Scoring, RMSD, Interface 분석 (~590줄)
-  common.py                  # 유틸리티: PyRosetta 초기화, Pose<->String 변환 (150줄)
+  movers.py                  # 워커: Relax, Global Docking, Refinement (253줄)
+  scoring.py                 # 워커: Scoring, RMSD, Interface 분석 (~590줄)
+  pyrosetta_init.py          # 유틸리티: PyRosetta 초기화, Pose<->String 변환 (150줄)
 config/
   example-project.yaml       # 메인 프로젝트 설정 (Vina + PPI 통합)
   phase1/*.ini               # Phase 1 PyRosetta 설정 (3 test + 15 production)
@@ -51,12 +51,12 @@ input/PPI/prepared/          # 레거시 dimer 준비 PDB
 
 ## 절대 주의사항 (코드 수정 시)
 
-1. **PyRosetta 버전 호환성**: `analysis.py`의 `try-except`/`hasattr` 체크 절대 제거 금지. 서버 PyRosetta가 구버전일 수 있음.
+1. **PyRosetta 버전 호환성**: `scoring.py`의 `try-except`/`hasattr` 체크 절대 제거 금지. 서버 PyRosetta가 구버전일 수 있음.
 2. **Multiprocessing 순서**: `pool.imap` + `zip` 으로 입출력 1:1 매핑 유지. `imap_unordered`로 바꾸면 인덱스 깨짐.
 3. **네트워크 차단**: `pip install`/`conda update` 불가. 현재 설치된 라이브러리로만 동작해야 함.
 4. **DockingSlideIntoContact 필수**: 이것 없이 DockMCMProtocol 호출하면 모든 dG가 0.0 (역사적 V1.0 핵심 버그).
 5. **FoldTree Setup**: `setup_foldtree(pose, "A_B", movable_jumps)` 역직렬화 후 반드시 재설정 필요.
-6. **stdout/stderr 리다이렉트**: `common.py`에서 PyRosetta 배너 억제를 위해 사용. 구조 변경 시 주의.
+6. **stdout/stderr 리다이렉트**: `pyrosetta_init.py`에서 PyRosetta 배너 억제를 위해 사용. 구조 변경 시 주의.
 
 ## Constraints 시스템
 

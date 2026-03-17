@@ -35,7 +35,7 @@ from typing import Callable, List, Optional
 
 from egfr_pipeline.config import load_config as load_pipeline_config
 from egfr_pipeline.config import resolve_resource_config
-from egfr_pipeline.output_steps import (
+from egfr_pipeline.step_view import (
     build_current_run_manifest,
     record_step1_outputs,
     record_step2_outputs,
@@ -50,7 +50,7 @@ from egfr_pipeline.output_steps import (
     utc_now_iso,
     write_run_status,
 )
-from egfr_pipeline.runtime_support import (
+from egfr_pipeline.runtime import (
     cap_worker_count,
     lane_is_complete,
     lane_runtime_dir,
@@ -675,7 +675,7 @@ def phase1_vina(
 
     config = _load_config()
     _emit_resource_warnings(config)
-    from egfr_pipeline.vina.dock import ensure_project_config_inputs_ready
+    from egfr_pipeline.vina.vina_executor import ensure_project_config_inputs_ready
 
     ensure_project_config_inputs_ready(config)
     receptors = config.get("receptors", [])
@@ -732,7 +732,7 @@ def phase1_vina(
         f"(allocated={runtime.allocated_cpus}, effective={runtime.effective_cpus})"
     )
 
-    from egfr_pipeline.vina.dock import dock_one_receptor as _dock_one_receptor
+    from egfr_pipeline.vina.vina_executor import dock_one_receptor as _dock_one_receptor
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {
@@ -846,7 +846,7 @@ def phase4_vina_postprocess():
 
     print("\n  --- contacts ---")
     if _stage_enabled("extract_contacts"):
-        from egfr_pipeline.vina.contacts import enrich_pose_table_with_contacts
+        from egfr_pipeline.vina.pose_contacts import enrich_pose_table_with_contacts
         cutoff = pp.get("contact_cutoff", 4.0)
         out = enrich_pose_table_with_contacts(config_str, cutoff=cutoff)
         print(f"  → {out}")
@@ -856,7 +856,7 @@ def phase4_vina_postprocess():
 
     print("\n  --- cluster ---")
     if _stage_enabled("cluster_pockets"):
-        from egfr_pipeline.vina.cluster import cluster_pose_table
+        from egfr_pipeline.vina.pocket_cluster import cluster_pose_table
         out = cluster_pose_table(
             config_str,
             cutoff=pp.get("pocket_cutoff", 8.0),
@@ -875,7 +875,7 @@ def phase4_vina_postprocess():
 
     print("\n  --- summarize ---")
     if _stage_enabled("summarize_pockets"):
-        from egfr_pipeline.vina.summarize import summarize_from_config
+        from egfr_pipeline.vina.pocket_summary import summarize_from_config
         pocket_csv, drug_csv, occupancy_csv = summarize_from_config(config_str)
         print(f"  → {pocket_csv}")
         print(f"  → {drug_csv}")
@@ -885,14 +885,14 @@ def phase4_vina_postprocess():
 
     print("\n  --- compare ---")
     if _stage_enabled("compare_pockets"):
-        from egfr_pipeline.vina.compare import compare_from_config
+        from egfr_pipeline.vina.cross_receptor import compare_from_config
         out = compare_from_config(config_str)
         print(f"  → {out}")
     else:
         print("  [SKIP] compare_pockets=false")
 
     print("\n  --- bootstrap ---")
-    from egfr_pipeline.vina.bootstrap import bootstrap_from_config
+    from egfr_pipeline.vina.pocket_stability import bootstrap_from_config
     print("  [INFO] Bootstrap here measures pose-resampling clustering stability, not fresh docking reproducibility.")
     out = bootstrap_from_config(config_str)
     print(f"  → {out}")
@@ -1483,7 +1483,7 @@ def main():
 
     # Step-based output organization
     try:
-        from egfr_pipeline.organize import organize_outputs
+        from egfr_pipeline.output_organizer import organize_outputs
 
         organize_outputs(str(CONFIG_PATH), repo_root=REPO_ROOT)
     except Exception as exc:

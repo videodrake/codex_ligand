@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import run_production
-from egfr_pipeline.output_steps import (
+from egfr_pipeline.step_view import (
     STEP_SPECS,
     build_current_run_manifest,
     build_run_overview_data,

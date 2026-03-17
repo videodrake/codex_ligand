@@ -125,7 +125,7 @@ Expected Python package:
 Vina uses `.pdbqt` files. The repository can reuse prebuilt `.pdbqt` files, but
 if they are missing it will try to prepare them automatically.
 
-Current fallback order in `egfr_pipeline/vina/dock.py` is:
+Current fallback order in `egfr_pipeline/vina/vina_executor.py` is:
 
 For receptor preparation:
 

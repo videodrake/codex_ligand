@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 from egfr_pipeline.config import resolve_resource_config
-from egfr_pipeline.runtime_support import cap_worker_count, resolve_runtime_resources
+from egfr_pipeline.runtime import cap_worker_count, resolve_runtime_resources
 
 try:
     import yaml
@@ -2673,7 +2673,7 @@ def run_taskgroup12_main():
         print(f"[Parse] Wrote pose table: {pose_table}")
 
         if args.extract_contacts:
-            from egfr_pipeline.vina.contacts import enrich_pose_table_with_contacts
+            from egfr_pipeline.vina.pose_contacts import enrich_pose_table_with_contacts
 
             pose_table = enrich_pose_table_with_contacts(
                 args.config,
@@ -2683,7 +2683,7 @@ def run_taskgroup12_main():
             print(f"[Contacts] Updated pose table: {pose_table}")
 
         if args.cluster_pockets:
-            from egfr_pipeline.vina.cluster import cluster_pose_table
+            from egfr_pipeline.vina.pocket_cluster import cluster_pose_table
 
             pose_table = cluster_pose_table(
                 args.config,
@@ -2693,7 +2693,7 @@ def run_taskgroup12_main():
             print(f"[Cluster] Updated pose table with pocket ids: {pose_table}")
 
         if args.summarize_pockets:
-            from egfr_pipeline.vina.summarize import summarize_from_config
+            from egfr_pipeline.vina.pocket_summary import summarize_from_config
 
             pocket_csv, drug_csv, occupancy_csv = summarize_from_config(args.config, str(pose_table))
             print(f"[Summary] Wrote pocket table: {pocket_csv}")
@@ -2701,7 +2701,7 @@ def run_taskgroup12_main():
             print(f"[Summary] Wrote residue occupancy: {occupancy_csv}")
 
         if args.compare_pockets:
-            from egfr_pipeline.vina.compare import compare_from_config
+            from egfr_pipeline.vina.cross_receptor import compare_from_config
 
             comparison_csv = compare_from_config(
                 args.config,

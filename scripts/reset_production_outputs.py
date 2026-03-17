@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
+from egfr_pipeline.pyrosetta_docking.run_metadata import build_output_root_name
 
 PROJECT_CONFIG = REPO_ROOT / "config" / "example-project.yaml"
 # Legacy PPI configs removed — Phase 1 인프라로 전환 완료 (config/phase1/*.ini)

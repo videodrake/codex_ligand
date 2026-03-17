@@ -23,7 +23,7 @@ from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, 
 from urllib.parse import urlencode
 
 from egfr_pipeline.config import load_config
-from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
+from egfr_pipeline.pyrosetta_docking.run_metadata import build_output_root_name
 
 
 @dataclass(frozen=True)

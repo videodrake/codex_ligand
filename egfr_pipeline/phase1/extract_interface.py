@@ -49,7 +49,7 @@ NLOBE_CLOBE_BOUNDARY = 838
 INTERFACE_RULE = {
     "method": "NeighborhoodResidueSelector (all-atom)",
     "cutoff_angstrom": 6.0,
-    "source": "PyRosetta InterfaceAnalyzer pipeline (analysis.py)",
+    "source": "PyRosetta InterfaceAnalyzer pipeline (scoring.py)",
     "description": (
         "All-atom distance-based interface detection. A residue is "
         "classified as an interface residue if any of its atoms is within "

@@ -4,7 +4,7 @@ import sys
 import types
 from pathlib import Path
 
-from egfr_pipeline.vina import dock
+from egfr_pipeline.vina import vina_executor
 
 
 def test_run_docking_applies_energy_range_to_returned_energies(
@@ -49,7 +49,7 @@ def test_run_docking_applies_energy_range_to_returned_energies(
     receptor.write_text("RECEPTOR\n", encoding="utf-8")
     ligand.write_text("LIGAND\n", encoding="utf-8")
 
-    energies = dock.run_docking(
+    energies = vina_executor.run_docking(
         receptor,
         ligand,
         output,
@@ -69,6 +69,6 @@ def test_run_docking_applies_energy_range_to_returned_energies(
 
 
 def test_resolve_ligand_worker_count_caps_cpu_budget() -> None:
-    assert dock.resolve_ligand_worker_count(16, 3, cpu_per_job=8, available_cores=32) == 3
-    assert dock.resolve_ligand_worker_count(16, 3, cpu_per_job=8, available_cores=16) == 2
-    assert dock.resolve_ligand_worker_count(16, 3, cpu_per_job=0, available_cores=32) == 1
+    assert vina_executor.resolve_ligand_worker_count(16, 3, cpu_per_job=8, available_cores=32) == 3
+    assert vina_executor.resolve_ligand_worker_count(16, 3, cpu_per_job=8, available_cores=16) == 2
+    assert vina_executor.resolve_ligand_worker_count(16, 3, cpu_per_job=0, available_cores=32) == 1

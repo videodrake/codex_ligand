@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config, project_root_from_config
-from egfr_pipeline.vina.dock import derive_docking_seed
+from egfr_pipeline.vina.vina_executor import derive_docking_seed
 
 
 POSE_TABLE_FIELDS = [

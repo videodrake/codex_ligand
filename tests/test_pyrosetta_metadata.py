@@ -2,7 +2,7 @@
 
 import configparser
 
-from egfr_pipeline.pyrosetta_docking.metadata import (
+from egfr_pipeline.pyrosetta_docking.run_metadata import (
     build_input_validation_report,
     build_input_validation_markdown,
     build_output_root_name,

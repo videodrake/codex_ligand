@@ -13,9 +13,9 @@ The existing PyRosetta PPI docking pipeline consists of:
 | Component | File | Role |
 |-----------|------|------|
 | Orchestrator | `egfr_pipeline/pyrosetta_docking/pipeline_manager.py` | 7-step pipeline execution |
-| Docking worker | `egfr_pipeline/pyrosetta_docking/docking.py` | Relax, Global Docking, Refinement |
-| Scoring worker | `egfr_pipeline/pyrosetta_docking/analysis.py` | InterfaceAnalyzer metrics |
-| Utilities | `egfr_pipeline/pyrosetta_docking/common.py` | PyRosetta init, Pose I/O |
+| Docking worker | `egfr_pipeline/pyrosetta_docking/movers.py` | Relax, Global Docking, Refinement |
+| Scoring worker | `egfr_pipeline/pyrosetta_docking/scoring.py` | InterfaceAnalyzer metrics |
+| Utilities | `egfr_pipeline/pyrosetta_docking/pyrosetta_init.py` | PyRosetta init, Pose I/O |
 
 ### 7-Step Pipeline
 
@@ -37,7 +37,7 @@ The existing pipeline **can handle full-kinase-domain inputs without code modifi
 - Excluded residues are parsed from config (not hard-coded)
 - Auto-threshold clustering scales with chain size
 
-**No modifications to pipeline_manager.py, docking.py, analysis.py, or common.py are needed for Phase 1.**
+**No modifications to pipeline_manager.py, movers.py, scoring.py, or pyrosetta_init.py are needed for Phase 1.**
 
 ---
 
@@ -211,7 +211,7 @@ The task document specifies `I_sc (interface score) ??preferred primary ranking 
 - `I_sc` column is populated with `dG_separated` values
 - Both metrics are highly correlated for rigid-body docking
 - `dG_separated` is already thoroughly tested and validated in the pipeline
-- If true `I_sc` is needed later, it can be added to `analysis.py` as an additional extraction
+- If true `I_sc` is needed later, it can be added to `scoring.py` as an additional extraction
 
 ---
 

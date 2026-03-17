@@ -26,7 +26,7 @@
 
 
 
-### 📁 `docking.py` (Worker: Sampling)
+### 📁 `movers.py` (Worker: Sampling)
 
 * **역할:** 실제 Rosetta 프로토콜을 수행하여 구조를 변형(Sampling)함.
 * **주요 함수:**
@@ -37,7 +37,7 @@
 
 * **주의사항:** 모든 함수는 예외 발생 시 `traceback`을 포함한 에러 딕셔너리를 반환함.
 
-### 📁 `analysis.py` (Worker: Scoring)
+### 📁 `scoring.py` (Worker: Scoring)
 
 * **역할:** 생성된 구조의 에너지 계산, RMSD 측정, 상호작용 잔기 분석.
 * **호환성 방어 코드 (Safe Mode):**
@@ -48,7 +48,7 @@
 
 
 
-### 📁 `common.py` (Utility)
+### 📁 `pyrosetta_init.py` (Utility)
 
 * **역할:** PyRosetta 초기화 및 데이터 변환.
 * **특징:**
@@ -72,7 +72,7 @@
 
 1. **PyRosetta 버전 호환성:**
 * 서버의 PyRosetta 버전이 `residue_energies` 속성이나 `set_calc_sc` 메서드를 지원하지 않을 수 있음.
-* 따라서 `analysis.py`에는 `try-except`와 `hasattr` 체크가 필수적임. 함부로 최신 API로 변경 금지.
+* 따라서 `scoring.py`에는 `try-except`와 `hasattr` 체크가 필수적임. 함부로 최신 API로 변경 금지.
 
 
 2. **Multiprocessing Index Mapping:**
@@ -104,5 +104,5 @@ python main.py -c config/example-project.yaml pyrosetta
 ### 🤖 다음 AI를 위한 프롬프트
 
 > "위의 **'Project Specification'** 내용을 바탕으로 현재 PyRosetta 도킹 파이프라인의 구조와 제약 사항(특히 버전 호환성 및 네트워크 차단 문제)을 완벽히 이해해.
-> 현재 코드는 V1.0 Stable 상태이며, `pipeline_manager.py`, `docking.py`, `analysis.py`, `common.py` 4개의 파일로 구성되어 있어.
+> 현재 코드는 V1.0 Stable 상태이며, `pipeline_manager.py`, `movers.py`, `scoring.py`, `pyrosetta_init.py` 4개의 파일로 구성되어 있어.
 > **작업 목표:** [이 프로젝트가 안정적으로 구동 될 수 있도록, 모든 분석 지표들을 출력할 수 잇도록 하는것]"

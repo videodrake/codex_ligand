@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 import run_production
-from egfr_pipeline.output_steps import (
+from egfr_pipeline.step_view import (
     record_step4_outputs,
     record_step5_outputs,
     record_step6_outputs,

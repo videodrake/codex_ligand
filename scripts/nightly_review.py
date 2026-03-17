@@ -82,7 +82,7 @@ def review_units() -> List[ReviewUnit]:
             "Runtime Core and Shared Utilities",
             "runtime",
             "critical",
-            ("egfr_pipeline/config.py", "egfr_pipeline/runtime_support.py", "egfr_pipeline/residue_utils.py"),
+            ("egfr_pipeline/config.py", "egfr_pipeline/runtime.py", "egfr_pipeline/residue_utils.py"),
             (
                 "Check config loading, path normalization, and repo-root assumptions.",
                 "Review residue-numbering helpers and shared metadata handling.",
@@ -110,7 +110,7 @@ def review_units() -> List[ReviewUnit]:
             "Derived Step Output Layer",
             "outputs",
             "critical",
-            ("egfr_pipeline/output_steps.py",),
+            ("egfr_pipeline/step_view.py",),
             (
                 "Verify canonical outputs remain the source of truth and step views stay additive.",
                 "Check manifest freshness, stale-step handling, and regeneration safety.",
@@ -124,7 +124,7 @@ def review_units() -> List[ReviewUnit]:
             "Routine Vina Execution",
             "vina",
             "critical",
-            ("egfr_pipeline/vina/dock.py", "egfr_pipeline/vina/bootstrap.py", "egfr_pipeline/vina/sweep.py"),
+            ("egfr_pipeline/vina/vina_executor.py", "egfr_pipeline/vina/pocket_stability.py", "egfr_pipeline/vina/param_sweep.py"),
             (
                 "Check docking invocation, worker usage, and runtime-prepared input assumptions.",
                 "Review reproducibility controls such as seeds and search parameters.",
@@ -138,7 +138,7 @@ def review_units() -> List[ReviewUnit]:
             "Routine Vina Parsing, Contacts, and Clustering",
             "vina",
             "critical",
-            ("egfr_pipeline/vina/parse_poses.py", "egfr_pipeline/vina/contacts.py", "egfr_pipeline/vina/cluster.py", "egfr_pipeline/vina/summarize.py", "egfr_pipeline/vina/compare.py"),
+            ("egfr_pipeline/vina/parse_poses.py", "egfr_pipeline/vina/pose_contacts.py", "egfr_pipeline/vina/pocket_cluster.py", "egfr_pipeline/vina/pocket_summary.py", "egfr_pipeline/vina/cross_receptor.py"),
             (
                 "Check malformed pose handling, contact-distance logic, and null safety.",
                 "Review pocket merge heuristics and cross-state comparison contracts.",

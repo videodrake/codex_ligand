@@ -5,8 +5,8 @@ Re-samples Vina poses per receptor, re-clusters, and measures how
 consistently each pocket is recovered across replicates.
 
 Usage:
-    python -m egfr_pipeline.vina.bootstrap config/example-project.yaml
-    python -m egfr_pipeline.vina.bootstrap config/example-project.yaml --n 200 --seed 123
+    python -m egfr_pipeline.vina.pocket_stability config/example-project.yaml
+    python -m egfr_pipeline.vina.pocket_stability config/example-project.yaml --n 200 --seed 123
 """
 import copy
 import csv
@@ -18,13 +18,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from egfr_pipeline.config import load_config, project_root_from_config
-from egfr_pipeline.vina.cluster import (
+from egfr_pipeline.vina.pocket_cluster import (
     assign_pockets,
     euclidean_distance,
     load_pose_table,
     merge_pockets_by_residue,
 )
-from egfr_pipeline.vina.summarize import summarize_pose_rows
+from egfr_pipeline.vina.pocket_summary import summarize_pose_rows
 
 
 # ---------------------------------------------------------------------------

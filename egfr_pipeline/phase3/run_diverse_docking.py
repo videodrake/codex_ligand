@@ -42,7 +42,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from egfr_pipeline.runtime_support import cap_worker_count, resolve_runtime_resources
+from egfr_pipeline.runtime import cap_worker_count, resolve_runtime_resources
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -171,7 +171,7 @@ def execute_single_job(job: dict) -> dict:
     This function requires Vina to be available (server-side only).
     """
     try:
-        from egfr_pipeline.vina.dock import run_docking, prepare_ligand
+        from egfr_pipeline.vina.vina_executor import run_docking, prepare_ligand
     except ImportError:
         return {
             "job_id": job["job_id"],

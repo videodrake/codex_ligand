@@ -27,7 +27,7 @@ These layers share concepts and some outputs, but they are not yet one unified d
 | Phase 6 | report generation | `step6_report/` | `project_report.txt` |
 | Phase 7 | validation | `step7_validate/` | `validation_status.json` |
 
-Canonical runtime outputs remain under `output/{project}/` and stay the runtime source of truth. `egfr_pipeline/output_steps.py` builds the step folders, `step_index.md`, and `current_run_manifest.json` as a derived interpretation view. Large raw PyRosetta directories are referenced by manifest rather than duplicated.
+Canonical runtime outputs remain under `output/{project}/` and stay the runtime source of truth. `egfr_pipeline/step_view.py` builds the step folders, `step_index.md`, and `current_run_manifest.json` as a derived interpretation view. Large raw PyRosetta directories are referenced by manifest rather than duplicated.
 
 ## Layer 1: Routine Baseline Flow
 
@@ -41,16 +41,16 @@ config/example-project.yaml
         +--> ppi.pyrosetta_result_dirs / legacy PPI registrations
         |
         +--> Vina execution branch
-        |      egfr_pipeline/vina/dock.py
+        |      egfr_pipeline/vina/vina_executor.py
         |      -> output/{project}/raw pose files
         |
         +--> Vina postprocess branch
         |      parse_poses.py
-        |      -> contacts.py
-        |      -> cluster.py
-        |      -> summarize.py
-        |      -> compare.py
-        |      -> bootstrap.py (optional)
+        |      -> pose_contacts.py
+        |      -> pocket_cluster.py
+        |      -> pocket_summary.py
+        |      -> cross_receptor.py
+        |      -> pocket_stability.py (optional)
         |      -> output/{project}/
         |         vina_pose_table.csv
         |         vina_pocket_table.csv
@@ -72,7 +72,7 @@ config/example-project.yaml
                -> output/{project}/project_report.txt
                -> output/{project}/combined_residue_evidence.csv
                validate.py
-               -> output_steps.py
+               -> step_view.py
                -> output/{project}/step1_vina_raw ... step7_validate
                -> output/{project}/step_index.md
                -> output/{project}/current_run_manifest.json
@@ -129,7 +129,7 @@ input/PPI/phase1/
                -> mechanistic_classification.py
                -> perturbation_scoring.py
                -> state_interpretation.py
-               -> review_output.py
+               -> review_report.py
                -> final_report.py
                -> presentation_summary.py
                -> output/phase4_perturbation/

@@ -125,15 +125,15 @@ def run_vina(config_path: str = None, **kwargs):
     print("  [1] AutoDock Vina Docking")
     print("=" * 50)
 
-    from egfr_pipeline.vina.dock import main as vina_main
+    from egfr_pipeline.vina.vina_executor import main as vina_main
 
-    # Build sys.argv for the existing dock.py CLI
+    # Build sys.argv for the existing vina_executor.py CLI
     argv_backup = sys.argv[:]
     try:
         if config_path:
             sys.argv = ["dock", "--config", config_path]
         else:
-            # Let dock.py run its own interactive mode
+            # Let vina_executor.py run its own interactive mode
             sys.argv = ["dock"]
         vina_main()
     finally:
@@ -203,14 +203,14 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         print(f"  → {out}")
 
     elif step == "contacts":
-        from egfr_pipeline.vina.contacts import enrich_pose_table_with_contacts
+        from egfr_pipeline.vina.pose_contacts import enrich_pose_table_with_contacts
         cutoff = config.get("postprocess", {}).get("contact_cutoff", 4.0)
         print(f"  Extracting contacts (cutoff={cutoff}Å)...")
         out = enrich_pose_table_with_contacts(config_path, cutoff=cutoff)
         print(f"  → {out}")
 
     elif step == "cluster":
-        from egfr_pipeline.vina.cluster import cluster_pose_table
+        from egfr_pipeline.vina.pocket_cluster import cluster_pose_table
         pp = config.get("postprocess", {})
         cutoff = pp.get("pocket_cutoff", 8.0)
         max_iter = pp.get("cluster_max_iterations", 10)
@@ -236,7 +236,7 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         print(f"  → {out}")
 
     elif step == "summarize":
-        from egfr_pipeline.vina.summarize import summarize_from_config
+        from egfr_pipeline.vina.pocket_summary import summarize_from_config
         print("  Summarizing pockets...")
         pocket_csv, drug_csv, occupancy_csv = summarize_from_config(config_path)
         print(f"  → {pocket_csv}")
@@ -244,7 +244,7 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         print(f"  → {occupancy_csv}")
 
     elif step == "compare":
-        from egfr_pipeline.vina.compare import compare_from_config
+        from egfr_pipeline.vina.cross_receptor import compare_from_config
         print("  Comparing pockets across receptors...")
         out = compare_from_config(config_path)
         print(f"  → {out}")
@@ -255,7 +255,7 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         extract_pyrosetta_batch(config_path)
 
     elif step == "bootstrap":
-        from egfr_pipeline.vina.bootstrap import bootstrap_from_config
+        from egfr_pipeline.vina.pocket_stability import bootstrap_from_config
         bs = config.get("bootstrap", {})
         n = bs.get("n_replicates", 100)
         print(f"  Bootstrap stability analysis ({n} replicates)...")
@@ -388,7 +388,7 @@ def _ppi_run_docking(config_ini: str = None):
 
 def _ppi_submit_pbs(config_ini: str = None):
     """Submit PPI docking job via qsub."""
-    from egfr_pipeline.ppi.submit import (
+    from egfr_pipeline.ppi.pbs_submit import (
         resolve_pbs_script, check_qsub_available, submit_pbs_job,
     )
 
@@ -730,7 +730,7 @@ def run_organize(config_path: str = None):
     if not config_path:
         config_path = find_config()
 
-    from egfr_pipeline.organize import organize_outputs
+    from egfr_pipeline.output_organizer import organize_outputs
 
     organize_outputs(config_path, repo_root=REPO_ROOT)
 

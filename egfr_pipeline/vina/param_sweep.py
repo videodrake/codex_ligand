@@ -5,8 +5,8 @@ Re-clusters an existing vina_pose_table.csv across a range of pocket_cutoff
 values and reports how pocket counts and compositions change.
 
 Usage:
-    python -m egfr_pipeline.vina.sweep config/example-project.yaml
-    python -m egfr_pipeline.vina.sweep config/example-project.yaml --min 2.0 --max 8.0 --step 0.5
+    python -m egfr_pipeline.vina.param_sweep config/example-project.yaml
+    python -m egfr_pipeline.vina.param_sweep config/example-project.yaml --min 2.0 --max 8.0 --step 0.5
 """
 import csv
 import sys
@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config, project_root_from_config
-from egfr_pipeline.vina.cluster import (
+from egfr_pipeline.vina.pocket_cluster import (
     assign_pockets,
     load_pose_table,
     merge_pockets_by_residue,

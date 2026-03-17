@@ -5,7 +5,7 @@ import sys
 import types
 from pathlib import Path
 
-from egfr_pipeline.vina import dock
+from egfr_pipeline.vina import vina_executor
 
 
 def test_project_config_prepares_missing_pdbqt_inputs(tmp_path: Path, monkeypatch) -> None:
@@ -61,8 +61,8 @@ def test_project_config_prepares_missing_pdbqt_inputs(tmp_path: Path, monkeypatc
     monkeypatch.setattr(dock, "prepare_receptor", fake_prepare_receptor)
     monkeypatch.setattr(dock, "prepare_ligand", fake_prepare_ligand)
 
-    dock.validate_project_config(config)
-    dock.ensure_project_config_inputs_ready(config)
+    vina_executor.validate_project_config(config)
+    vina_executor.ensure_project_config_inputs_ready(config)
 
     assert len(prepared["receptors"]) == 3
     assert len(prepared["ligands"]) == 1
@@ -83,7 +83,7 @@ def test_project_config_still_fails_without_any_source(tmp_path: Path) -> None:
     }
 
     try:
-        dock.validate_project_config(config)
+        vina_executor.validate_project_config(config)
     except FileNotFoundError as exc:
         assert "no receptor source file is available" in str(exc)
     else:
@@ -143,7 +143,7 @@ def test_project_config_rebuilds_stale_pdbqt_inputs(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(dock, "prepare_receptor", fake_prepare_receptor)
     monkeypatch.setattr(dock, "prepare_ligand", fake_prepare_ligand)
 
-    dock.ensure_project_config_inputs_ready(config)
+    vina_executor.ensure_project_config_inputs_ready(config)
 
     assert rebuilt == {"receptors": 1, "ligands": 1}
     assert receptor_pdbqt.read_text(encoding="utf-8") == "NEW_RECEPTOR\n"
@@ -151,9 +151,9 @@ def test_project_config_rebuilds_stale_pdbqt_inputs(tmp_path: Path, monkeypatch)
 
 
 def test_derive_docking_seed_is_stable_and_job_specific() -> None:
-    seed_a = dock.derive_docking_seed(20260316, "3GT8_raw", "173940")
-    seed_b = dock.derive_docking_seed(20260316, "3GT8_raw", "173940")
-    seed_c = dock.derive_docking_seed(20260316, "3GT8_raw", "97806")
+    seed_a = vina_executor.derive_docking_seed(20260316, "3GT8_raw", "173940")
+    seed_b = vina_executor.derive_docking_seed(20260316, "3GT8_raw", "173940")
+    seed_c = vina_executor.derive_docking_seed(20260316, "3GT8_raw", "97806")
 
     assert seed_a == seed_b
     assert seed_a != seed_c
@@ -161,7 +161,7 @@ def test_derive_docking_seed_is_stable_and_job_specific() -> None:
 
 
 def test_print_results_does_not_label_energy_terms_as_rmsd(capsys) -> None:
-    dock.print_results(
+    vina_executor.print_results(
         "173940",
         "blind",
         [[-8.5, -10.1, -0.7], [-8.2, -9.9, -0.4]],

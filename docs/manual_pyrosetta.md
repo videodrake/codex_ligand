@@ -115,7 +115,7 @@ After a Phase 1 run:
 The following names are from older layouts and are not active entry points in this repository:
 
 - `pipeline_manager.py`
-- `docking.py` / `analysis.py` / `common.py` (as a standalone top-level pipeline set)
+- `movers.py` / `scoring.py` / `pyrosetta_init.py` (as a standalone top-level pipeline set)
 - `run_v1.pbs`
 - `run_v2_test.pbs`
 - standalone `config_10k.ini` / `config_100k.ini` workflows

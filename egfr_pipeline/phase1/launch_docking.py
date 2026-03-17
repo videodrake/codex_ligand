@@ -39,7 +39,7 @@ from egfr_pipeline.phase1.prepare_inputs import (
     PHASE1_RUNTIME_INPUT_DIR,
     prepare_phase1_inputs,
 )
-from egfr_pipeline.runtime_support import resolve_scratch_base, sync_tree
+from egfr_pipeline.runtime import resolve_scratch_base, sync_tree
 
 # Phase 1 output base directory
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"

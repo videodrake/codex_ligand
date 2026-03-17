@@ -359,7 +359,7 @@ def _step7_validation(
             if _safe_symlink(project_root / name, step_dir / name):
                 linked.append((name, desc))
 
-    # Root metadata files produced by output_steps.py
+    # Root metadata files produced by step_view.py
     for name, desc in [
         ("run_status.json", "Run status metadata"),
         ("run_overview.md", "Run overview (Markdown)"),

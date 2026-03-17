@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from egfr_pipeline.output_steps import (
+from egfr_pipeline.step_view import (
     record_step1_outputs,
     record_step2_outputs,
     record_step3_outputs,

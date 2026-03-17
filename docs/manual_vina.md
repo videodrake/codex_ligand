@@ -49,12 +49,12 @@ codex_ligand/
     validate.py                    # 출력 검증
     verdict.py                     # 사이트 판정 (STRONG/MODERATE/WEAK)
     vina/
-      dock.py                      # Vina 도킹 코어 (구 run_docking.py)
+      vina_executor.py              # Vina 도킹 코어 (구 run_docking.py)
       parse_poses.py               # 결과 파싱 (구 parse_vina_results.py)
-      contacts.py                  # 접촉 잔기 추출 (구 extract_contacts.py)
-      cluster.py                   # 포켓 클러스터링 (구 cluster_pockets.py)
-      summarize.py                 # 포켓 요약 (구 summarize_pockets.py)
-      compare.py                   # 교차 비교 (구 compare_pockets.py)
+      pose_contacts.py             # 접촉 잔기 추출 (구 extract_contacts.py)
+      pocket_cluster.py            # 포켓 클러스터링 (구 cluster_pockets.py)
+      pocket_summary.py            # 포켓 요약 (구 summarize_pockets.py)
+      cross_receptor.py            # 교차 비교 (구 compare_pockets.py)
     ppi/
       prepare_dimer_pdb.py         # Dimer PDB 준비 + chain 원복
       pyrosetta_extract.py         # PPI 잔기 추출 (구 extract_ppi_residues.py)
@@ -62,9 +62,9 @@ codex_ligand/
       afm_extract.py               # AlphaFold-Multimer 파서 (stub)
     pyrosetta_docking/
       pipeline_manager.py          # PyRosetta PPI 도킹 오케스트레이터
-      docking.py                   # PyRosetta 워커 (Relax, Docking, Refinement)
-      analysis.py                  # 스코어링, RMSD, Interface 분석
-      common.py                    # PyRosetta 유틸리티
+      movers.py                    # PyRosetta 워커 (Relax, Docking, Refinement)
+      scoring.py                   # 스코어링, RMSD, Interface 분석
+      pyrosetta_init.py            # PyRosetta 유틸리티
   # 구버전 단독 Vina 스크립트는 이 워크스페이스에 포함되지 않음
   # 필요 시 ../autodot_vina/run_docking.py 참고
 
@@ -147,7 +147,7 @@ python main.py
 ╚══════════════════════════════════════════════════════════╝
 ```
 
-Vina 도킹을 실행하려면 `1`을 선택합니다. 이후 `dock.py`의 인터랙티브 모드가 시작되어
+Vina 도킹을 실행하려면 `1`을 선택합니다. 이후 `vina_executor.py`의 인터랙티브 모드가 시작되어
 Receptor, Ligand, 영역, 파라미터를 순서대로 선택하고 최종 확인 후 실행됩니다.
 
 - Receptor/Ligand가 1개뿐이면 자동 선택
@@ -190,7 +190,7 @@ Config 파일에는 receptor 목록, ligand 경로, 도킹 파라미터, 후처�
 
 ### 4.3 Focused Docking -- 좌표 직접 지정
 
-`dock.py`의 인터랙티브 모드(메뉴 [1])를 통해 focused docking 실행 시
+`vina_executor.py`의 인터랙티브 모드(메뉴 [1])를 통해 focused docking 실행 시
 center 좌표와 box size를 직접 입력할 수 있습니다.
 
 ### 4.4 파라미터 조정
@@ -232,10 +232,10 @@ Vina 도킹 완료 후, 결과를 구조화된 CSV로 변환하는 6단계 후�
 | 순서 | 모듈 | 입력 | 출력 | 설명 |
 |------|------|------|------|------|
 | 1 | `parse_poses.py` | Vina PDBQT 결과 | `vina_pose_table.csv` | 포즈별 affinity, RMSD, 좌표 파싱 |
-| 2 | `contacts.py` | pose table + receptor PDB | pose table (enriched) | 각 포즈의 접촉 잔기 추출 |
-| 3 | `cluster.py` | enriched pose table | pose table (clustered) | 공간 기반 포켓 클러스터링 |
-| 4 | `summarize.py` | clustered pose table | `vina_pocket_table.csv`, `vina_drug_pocket_map.csv` | 포켓별 요약 통계 |
-| 5 | `compare.py` | pocket tables (다중 receptor) | `vina_pocket_comparison.csv` | 교차 receptor 포켓 비교 |
+| 2 | `pose_contacts.py` | pose table + receptor PDB | pose table (enriched) | 각 포즈의 접촉 잔기 추출 |
+| 3 | `pocket_cluster.py` | enriched pose table | pose table (clustered) | 공간 기반 포켓 클러스터링 |
+| 4 | `pocket_summary.py` | clustered pose table | `vina_pocket_table.csv`, `vina_drug_pocket_map.csv` | 포켓별 요약 통계 |
+| 5 | `cross_receptor.py` | pocket tables (다중 receptor) | `vina_pocket_comparison.csv` | 교차 receptor 포켓 비교 |
 | 6 | PPI 잔기 추출 | PPI 도킹 결과 | PPI 잔기 CSV | PyRosetta 결과에서 인터페이스 잔기 표준화 |
 
 ### 5.2 실행 방법
@@ -312,7 +312,7 @@ box 중심 좌표를 결정하는 방법:
 
 ### 7.1 Region 프리셋 (스크립트 내장)
 
-`egfr_pipeline/vina/dock.py` 내의 `REGION_PRESETS` 딕셔너리에 등록된 좌표:
+`egfr_pipeline/vina/vina_executor.py` 내의 `REGION_PRESETS` 딕셔너리에 등록된 좌표:
 
 ```python
 REGION_PRESETS = {
@@ -384,7 +384,7 @@ fpocket -f input/3gt8_monomer_anp.pdb
 ## 8. 다중 포켓 탐색 (--n-pockets)
 
 블라인드 도킹에서 여러 결합 부위를 자동으로 발견합니다.
-인터랙티브 모드(메뉴 [1])에서 "포켓 탐색" 옵션을 선택하거나, dock.py 내부 설정으로 지정합니다.
+인터랙티브 모드(메뉴 [1])에서 "포켓 탐색" 옵션을 선택하거나, vina_executor.py 내부 설정으로 지정합니다.
 
 **작동 원리:**
 포즈를 에너지 순서대로 하나씩 처리하면서 포켓에 배정합니다:

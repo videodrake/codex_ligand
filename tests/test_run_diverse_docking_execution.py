@@ -13,7 +13,7 @@ def test_execute_single_job_fails_fast_when_ligand_prep_returns_false(tmp_path):
     receptor_file.write_text("dummy receptor\n", encoding="utf-8")
 
     calls = {"run_docking": 0}
-    fake_dock = types.ModuleType("egfr_pipeline.vina.dock")
+    fake_dock = types.ModuleType("egfr_pipeline.vina.vina_executor")
 
     def fake_prepare_ligand(input_path, output_path):
         return False
@@ -41,7 +41,7 @@ def test_execute_single_job_fails_fast_when_ligand_prep_returns_false(tmp_path):
         "n_poses": "10",
     }
 
-    with patch.dict(sys.modules, {"egfr_pipeline.vina.dock": fake_dock}):
+    with patch.dict(sys.modules, {"egfr_pipeline.vina.vina_executor": fake_dock}):
         result = execute_single_job(job)
 
     assert result["status"] == "error"
@@ -56,7 +56,7 @@ def test_execute_single_job_passes_cpu_per_job_to_vina(tmp_path):
     receptor_file.write_text("dummy receptor\n", encoding="utf-8")
 
     calls = {}
-    fake_dock = types.ModuleType("egfr_pipeline.vina.dock")
+    fake_dock = types.ModuleType("egfr_pipeline.vina.vina_executor")
 
     def fake_run_docking(*args, **kwargs):
         calls["cpu"] = kwargs.get("cpu")
@@ -82,7 +82,7 @@ def test_execute_single_job_passes_cpu_per_job_to_vina(tmp_path):
         "cpu_per_job": "4",
     }
 
-    with patch.dict(sys.modules, {"egfr_pipeline.vina.dock": fake_dock}):
+    with patch.dict(sys.modules, {"egfr_pipeline.vina.vina_executor": fake_dock}):
         result = execute_single_job(job)
 
     assert result["status"] == "ok"

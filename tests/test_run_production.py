@@ -8,7 +8,7 @@ from pathlib import Path
 
 from egfr_pipeline.phase1 import launch_docking as launch_module
 from egfr_pipeline.phase1 import prepare_inputs as prepare_inputs_module
-from egfr_pipeline.vina import dock as dock_module
+from egfr_pipeline.vina import vina_executor as vina_executor_module
 import run_production
 
 
@@ -96,11 +96,11 @@ def test_phase1_vina_prepares_project_inputs_before_dispatch(monkeypatch) -> Non
         return receptor_entry["id"], {}
 
     monkeypatch.setattr(
-        dock_module,
+        vina_executor_module,
         "ensure_project_config_inputs_ready",
         fake_prepare_inputs,
     )
-    monkeypatch.setattr(dock_module, "dock_one_receptor", fake_dock_one_receptor)
+    monkeypatch.setattr(vina_executor_module, "dock_one_receptor", fake_dock_one_receptor)
 
     def fake_executor_factory(max_workers):
         executor_workers.append(max_workers)
@@ -143,8 +143,8 @@ def test_phase1_vina_caps_parallelism_to_visible_cores(monkeypatch) -> None:
 
     monkeypatch.setattr(run_production, "_load_config", lambda: config)
     monkeypatch.setattr(run_production.os, "cpu_count", lambda: 16)
-    monkeypatch.setattr(dock_module, "ensure_project_config_inputs_ready", lambda payload: None)
-    monkeypatch.setattr(dock_module, "dock_one_receptor", lambda receptor_entry, ligand_entries, payload: (receptor_entry["id"], {}))
+    monkeypatch.setattr(vina_executor_module, "ensure_project_config_inputs_ready", lambda payload: None)
+    monkeypatch.setattr(vina_executor_module, "dock_one_receptor", lambda receptor_entry, ligand_entries, payload: (receptor_entry["id"], {}))
 
     def fake_executor_factory(max_workers):
         executor_workers.append(max_workers)

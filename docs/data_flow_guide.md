@@ -177,7 +177,7 @@ Tool:
 
 Code path:
 
-- `egfr_pipeline/vina/dock.py`
+- `egfr_pipeline/vina/vina_executor.py`
 - `main.py vina`
 - `run_production.py` Phase 1
 
@@ -230,7 +230,7 @@ Scientific meaning:
 
 Tool:
 
-- `egfr_pipeline/vina/contacts.py`
+- `egfr_pipeline/vina/pose_contacts.py`
 
 Input:
 
@@ -262,7 +262,7 @@ Scientific meaning:
 
 Tool:
 
-- `egfr_pipeline/vina/cluster.py`
+- `egfr_pipeline/vina/pocket_cluster.py`
 
 Input:
 
@@ -286,7 +286,7 @@ Scientific meaning:
 
 Tool:
 
-- `egfr_pipeline/vina/summarize.py`
+- `egfr_pipeline/vina/pocket_summary.py`
 
 Outputs:
 
@@ -322,7 +322,7 @@ Scientific meaning:
 
 Tool:
 
-- `egfr_pipeline/vina/compare.py`
+- `egfr_pipeline/vina/cross_receptor.py`
 
 Output:
 
@@ -339,7 +339,7 @@ Scientific meaning:
 
 Tool:
 
-- `egfr_pipeline/vina/bootstrap.py`
+- `egfr_pipeline/vina/pocket_stability.py`
 
 Output:
 
@@ -369,7 +369,7 @@ Tool:
 Code path:
 
 - `egfr_pipeline/pyrosetta_docking/pipeline_manager.py`
-- `egfr_pipeline/pyrosetta_docking/docking.py`
+- `egfr_pipeline/pyrosetta_docking/movers.py`
 - `config/phase1/*.ini` (Phase 1 PyRosetta configs)
 
 Primary outputs include:
@@ -396,7 +396,7 @@ Scientific meaning:
 
 Tools:
 
-- `egfr_pipeline/pyrosetta_docking/analysis.py`
+- `egfr_pipeline/pyrosetta_docking/scoring.py`
 - `egfr_pipeline/ppi/pyrosetta_extract.py`
 - Phase 1 consensus modules
 

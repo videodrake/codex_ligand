@@ -20,7 +20,7 @@ Outputs:
   - output/phase4_perturbation/phase4_expanded_evidence_table.csv
 
 Usage:
-    python -m egfr_pipeline.phase4.review_output [--output_dir ...]
+    python -m egfr_pipeline.phase4.review_report [--output_dir ...]
 """
 
 import argparse

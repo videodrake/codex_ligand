@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from egfr_pipeline.runtime_support import (
+from egfr_pipeline.runtime import (
     lane_is_complete,
     resolve_runtime_resources,
     write_lane_completion,

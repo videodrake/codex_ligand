@@ -225,7 +225,7 @@ def _run_phase4_pipeline(env) -> Path:
     from egfr_pipeline.phase4.mechanistic_classification import run_mechanistic_classification
     from egfr_pipeline.phase4.perturbation_scoring import run_perturbation_scoring
     from egfr_pipeline.phase4.state_interpretation import run_state_interpretation
-    from egfr_pipeline.phase4.review_output import run_review_output
+    from egfr_pipeline.phase4.review_report import run_review_output
     from egfr_pipeline.phase4.final_report import run_final_report
     from egfr_pipeline.phase4.presentation_summary import run_presentation_summary
 
@@ -615,13 +615,13 @@ class TestReviewOutput:
     """Tests for TG 4.5 review tables."""
 
     def test_review_table_columns(self, tmp_phase4):
-        from egfr_pipeline.phase4.review_output import REVIEW_TABLE_COLUMNS
+        from egfr_pipeline.phase4.review_report import REVIEW_TABLE_COLUMNS
         out = _run_phase4_pipeline(tmp_phase4)
         actual = _csv_columns(out / "phase4_final_review_table.csv")
         assert actual == REVIEW_TABLE_COLUMNS
 
     def test_expanded_table_columns(self, tmp_phase4):
-        from egfr_pipeline.phase4.review_output import EXPANDED_TABLE_COLUMNS
+        from egfr_pipeline.phase4.review_report import EXPANDED_TABLE_COLUMNS
         out = _run_phase4_pipeline(tmp_phase4)
         actual = _csv_columns(out / "phase4_expanded_evidence_table.csv")
         assert actual == EXPANDED_TABLE_COLUMNS

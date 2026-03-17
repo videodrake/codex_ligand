@@ -113,9 +113,9 @@ def create_test_config() -> Path:
     config["output_root"] = "./output"
     config["vina"]["exhaustiveness"] = TEST_EXHAUSTIVENESS
     config["vina"]["n_poses"] = TEST_N_POSES
-    # top-level mode도 동기화 (dock.py가 양쪽 다 체크)
+    # top-level mode도 동기화 (vina_executor.py가 양쪽 다 체크)
     config["mode"] = config["vina"].get("mode", "blind")
-    # top-level exhaustiveness/n_poses도 설정 (dock.py fallback용)
+    # top-level exhaustiveness/n_poses도 설정 (vina_executor.py fallback용)
     config["exhaustiveness"] = TEST_EXHAUSTIVENESS
     config["n_poses"] = TEST_N_POSES
     config["bootstrap"] = {
@@ -136,7 +136,7 @@ def create_test_config() -> Path:
 
 def step1_convert_pdbqt():
     """PDB/SDF → PDBQT 변환."""
-    from egfr_pipeline.vina.dock import prepare_receptor, prepare_ligand
+    from egfr_pipeline.vina.vina_executor import prepare_receptor, prepare_ligand
 
     receptor_dir = REPO_ROOT / "input" / "receptors"
     ligand_dir = REPO_ROOT / "input" / "ligands"
@@ -163,8 +163,8 @@ def step1_convert_pdbqt():
 
 
 def _dock_one_receptor(receptor_entry, ligand_entries, config):
-    """단일 receptor 도킹 워커 — egfr_pipeline.vina.dock.dock_one_receptor 위임."""
-    from egfr_pipeline.vina.dock import dock_one_receptor
+    """단일 receptor 도킹 워커 — egfr_pipeline.vina.vina_executor.dock_one_receptor 위임."""
+    from egfr_pipeline.vina.vina_executor import dock_one_receptor
     return dock_one_receptor(receptor_entry, ligand_entries, config)
 
 
@@ -216,14 +216,14 @@ def step3_postprocess(config_path: str):
 
     # contacts
     print("\n  --- contacts ---")
-    from egfr_pipeline.vina.contacts import enrich_pose_table_with_contacts
+    from egfr_pipeline.vina.pose_contacts import enrich_pose_table_with_contacts
     cutoff = config.get("postprocess", {}).get("contact_cutoff", 4.0)
     out = enrich_pose_table_with_contacts(config_path, cutoff=cutoff)
     print(f"  → {out}")
 
     # cluster
     print("\n  --- cluster ---")
-    from egfr_pipeline.vina.cluster import cluster_pose_table
+    from egfr_pipeline.vina.pocket_cluster import cluster_pose_table
     pp = config.get("postprocess", {})
     out = cluster_pose_table(
         config_path,
@@ -237,7 +237,7 @@ def step3_postprocess(config_path: str):
 
     # summarize
     print("\n  --- summarize ---")
-    from egfr_pipeline.vina.summarize import summarize_from_config
+    from egfr_pipeline.vina.pocket_summary import summarize_from_config
     pocket_csv, drug_csv, occupancy_csv = summarize_from_config(config_path)
     print(f"  → {pocket_csv}")
     print(f"  → {drug_csv}")
@@ -245,13 +245,13 @@ def step3_postprocess(config_path: str):
 
     # compare
     print("\n  --- compare ---")
-    from egfr_pipeline.vina.compare import compare_from_config
+    from egfr_pipeline.vina.cross_receptor import compare_from_config
     out = compare_from_config(config_path)
     print(f"  → {out}")
 
     # bootstrap
     print("\n  --- bootstrap ---")
-    from egfr_pipeline.vina.bootstrap import bootstrap_from_config
+    from egfr_pipeline.vina.pocket_stability import bootstrap_from_config
     out = bootstrap_from_config(config_path)
     print(f"  → {out}")
 

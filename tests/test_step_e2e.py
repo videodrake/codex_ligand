@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 import run_production
-from egfr_pipeline.output_steps import STEP_SPECS
+from egfr_pipeline.step_view import STEP_SPECS
 from egfr_pipeline.validate import ValidationResult
 
 
@@ -63,12 +63,16 @@ def _ppi_targets(th1_dir: Path, beta_dir: Path) -> list[dict]:
         {
             "name": "TH1",
             "config_ini": "config/ppi_prod_TH1.ini",
-            "docking_dir": th1_dir,
+            "docking_dir": str(th1_dir),
+            "receptor_id": "3GT8_raw",
+            "seed_index": 0,
         },
         {
             "name": "beta-meander",
             "config_ini": "config/ppi_prod_beta_meander.ini",
-            "docking_dir": beta_dir,
+            "docking_dir": str(beta_dir),
+            "receptor_id": "3GT8_raw",
+            "seed_index": 1,
         },
     ]
 
