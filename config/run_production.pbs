@@ -9,6 +9,14 @@
 
 # ============================================================
 # EGFR-MYO1D Production Pipeline (PBS)
+# Legacy compatibility wrapper.
+#
+# Recommended production scheduling now uses the lane-specific PBS wrappers:
+#   - config/run_vina_cpu.pbs
+#   - config/run_ppi_state_seed.pbs
+#   - config/run_ppi_postprocess.pbs
+#   - config/run_vina_postprocess.pbs
+#   - config/run_finalize.pbs
 #
 # Recommended safe submission flow:
 #   PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)

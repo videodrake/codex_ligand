@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q workq
 #PBS -N pre_qsub_checks
-#PBS -l nodes=node05:ppn=16
+#PBS -l nodes=node05:ppn=4
 #PBS -l walltime=01:00:00
 #PBS -V
 #PBS -o ${PBS_O_WORKDIR}/pre_qsub_checks.o

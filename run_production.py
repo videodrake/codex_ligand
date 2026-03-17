@@ -30,8 +30,10 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
+from egfr_pipeline.config import load_config as load_pipeline_config
+from egfr_pipeline.config import resolve_resource_config
 from egfr_pipeline.output_steps import (
     build_current_run_manifest,
     record_step1_outputs,
@@ -46,6 +48,17 @@ from egfr_pipeline.output_steps import (
     update_run_overview,
     utc_now_iso,
     write_run_status,
+)
+from egfr_pipeline.runtime_support import (
+    cap_worker_count,
+    lane_is_complete,
+    lane_runtime_dir,
+    prepare_scratch_workspace,
+    reset_lane_completion,
+    resolve_runtime_resources,
+    sync_tree,
+    write_lane_completion,
+    write_lane_manifest,
 )
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
@@ -157,9 +170,34 @@ def run_step(name: str, func, *args, **kwargs):
 
 
 def _load_config():
-    import yaml
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    config = load_pipeline_config(str(CONFIG_PATH))
+    resources, warnings = resolve_resource_config(config)
+    config = dict(config)
+    config["resources"] = resources
+    if warnings:
+        config["_resource_warnings"] = warnings
+    return config
+
+
+def _emit_resource_warnings(config: dict) -> None:
+    for warning in config.get("_resource_warnings", []):
+        print(f"  [WARN] {warning}")
+
+
+def _select_ppi_targets(
+    *,
+    state: Optional[str] = None,
+    seed: Optional[int] = None,
+) -> List[dict]:
+    selected: List[dict] = []
+    for target in PPI_TARGETS:
+        if state and target.get("receptor_id") != state:
+            continue
+        target_seed = int(target.get("seed_index", 0))
+        if seed is not None and target_seed != int(seed):
+            continue
+        selected.append(target)
+    return selected
 
 
 def _project_root() -> Path:
@@ -205,6 +243,8 @@ def _ppi_docking_dir(target: dict) -> Optional[Path]:
 
 
 def _execution_mode_label(args: argparse.Namespace) -> str:
+    if getattr(args, "lane", ""):
+        return f"lane:{args.lane}"
     if args.only:
         return f"only:{args.only}"
     if args.from_phase:
@@ -563,21 +603,42 @@ def print_status(
 # Phase 실행 함수 (기존과 동일)
 # ---------------------------------------------------------------------------
 
-def phase1_vina():
+def phase1_vina(
+    *,
+    allocated_cpus: Optional[int] = None,
+    engine: str = "cpu-vina",
+):
     """Vina blind docking — receptor별 병렬 실행."""
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
+    if engine != "cpu-vina":
+        raise RuntimeError(f"Unsupported Vina engine for baseline lane: {engine}")
+
     config = _load_config()
+    _emit_resource_warnings(config)
     from egfr_pipeline.vina.dock import ensure_project_config_inputs_ready
 
     ensure_project_config_inputs_ready(config)
     receptors = config.get("receptors", [])
     ligands = config.get("ligands", [])
+    resources_cfg = config.get("resources")
+    if not resources_cfg:
+        resources_cfg, _warnings = resolve_resource_config(config)
     vina_cfg = config.get("vina", {}) if isinstance(config.get("vina"), dict) else {}
-    cpu_per_job = int(vina_cfg.get("cpu", 0))
-    configured_parallel = int(vina_cfg.get("parallel_receptors", len(receptors) or 1))
+    runtime_allocated = allocated_cpus
+    if runtime_allocated is None:
+        has_scheduler_env = bool(os.environ.get("PBS_NP")) or any(
+            os.environ.get(name)
+            for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+        )
+        if not has_scheduler_env:
+            runtime_allocated = os.cpu_count() or 1
+    runtime = resolve_runtime_resources(allocated_cpus=runtime_allocated)
+    cpu_per_job = int(resources_cfg.get("vina", {}).get("cpu_per_job", vina_cfg.get("cpu", 0)))
+    configured_parallel = int(
+        resources_cfg.get("vina", {}).get("parallel_receptors", len(receptors) or 1)
+    )
     max_workers = max(1, min(len(receptors) or 1, configured_parallel))
-    available_cores = os.cpu_count() or 0
     if cpu_per_job <= 0 and max_workers > 1:
         print(
             "  [WARN] vina.cpu=0 allows each docking job to use all visible cores; "
@@ -585,26 +646,32 @@ def phase1_vina():
         )
         max_workers = 1
 
-    requested_cores = cpu_per_job * max_workers if cpu_per_job > 0 else None
-    if requested_cores is not None and available_cores and requested_cores > available_cores:
-        capped_workers = max(1, available_cores // max(cpu_per_job, 1))
-        if capped_workers < max_workers:
-            print(
-                f"  [WARN] Requested Vina CPU budget exceeds visible cores: "
-                f"{requested_cores} > {available_cores}. "
-                f"Capping receptor parallelism {max_workers} -> {capped_workers}."
-            )
-            max_workers = capped_workers
-            requested_cores = cpu_per_job * max_workers
+    capped_workers = cap_worker_count(
+        requested_workers=max_workers,
+        n_jobs=len(receptors) or 1,
+        cpu_per_job=cpu_per_job,
+        available_cpus=runtime.effective_cpus,
+    )
+    if capped_workers < max_workers:
+        print(
+            f"  [WARN] Requested Vina CPU budget exceeds allocated CPUs: "
+            f"{max_workers * max(cpu_per_job, 1)} > {runtime.effective_cpus}. "
+            f"Capping receptor parallelism {max_workers} -> {capped_workers}."
+        )
+        max_workers = capped_workers
 
     print(f"  Receptor {len(receptors)}개 × Ligand {len(ligands)}개 = {len(receptors) * len(ligands)} 도킹 잡")
     print(
         f"  exhaustiveness={vina_cfg.get('exhaustiveness', '?')}, "
         f"n_poses={vina_cfg.get('n_poses', '?')}, "
         f"energy_range={vina_cfg.get('energy_range', '?')}, "
-        f"cpu/job={cpu_per_job}, seed={vina_cfg.get('seed', 'auto')}"
+        f"cpu/job={cpu_per_job}, seed={vina_cfg.get('seed', 'auto')}, "
+        f"engine={engine}"
     )
-    print(f"  병렬 실행: {max_workers}개 프로세스")
+    print(
+        f"  병렬 실행: {max_workers}개 프로세스 "
+        f"(allocated={runtime.allocated_cpus}, effective={runtime.effective_cpus})"
+    )
 
     from egfr_pipeline.vina.dock import dock_one_receptor as _dock_one_receptor
 
@@ -819,15 +886,25 @@ def _phase3_override_dirs() -> dict:
     return overrides
 
 
-def phase2_ppi():
+def phase2_ppi(
+    *,
+    state: Optional[str] = None,
+    seed: Optional[int] = None,
+    allocated_cpus: Optional[int] = None,
+    scratch_dir: Optional[Path] = None,
+):
     """PyRosetta PPI docking using runtime-prepared Phase 1 inputs."""
     from egfr_pipeline.phase1.launch_docking import run_single
     from egfr_pipeline.phase1.prepare_inputs import prepare_phase1_inputs
 
     prepare_phase1_inputs()
     failures: List[str] = []
+    targets = _select_ppi_targets(state=state, seed=seed)
+    if not targets:
+        selector = f"state={state or '*'}, seed={seed if seed is not None else '*'}"
+        raise RuntimeError(f"No PPI targets match selector: {selector}")
 
-    for target in PPI_TARGETS:
+    for target in targets:
         name = target["name"]
         config_ini = target["config_ini"]
         config_path = REPO_ROOT / config_ini
@@ -846,12 +923,19 @@ def phase2_ppi():
         print(f"  Config: {config_ini}")
         print(f"  Output: {_ppi_docking_dir(target)}")
 
+        run_kwargs = {
+            "seed_index": int(target.get("seed_index", 0)),
+            "is_production": bool(target.get("is_production", True)),
+            "dry_run": False,
+        }
+        if allocated_cpus is not None:
+            run_kwargs["allocated_cpus"] = allocated_cpus
+        if scratch_dir is not None:
+            run_kwargs["scratch_dir"] = scratch_dir
         meta = run_single(
             config_path,
             target["receptor_id"],
-            seed_index=int(target.get("seed_index", 0)),
-            is_production=bool(target.get("is_production", True)),
-            dry_run=False,
+            **run_kwargs,
         )
         if meta.get("status") == "failed":
             failures.append(f"{name}: {meta.get('error', 'unknown error')}")
@@ -879,6 +963,193 @@ def phase3_ppi_postprocess():
     print(f"  Model table:       {residue_csv.parent / 'ppi_pyrosetta_model_table.csv'}")
 
 
+def _finalize_lane() -> object:
+    phase5_verdict()
+    phase6_report()
+    return phase7_validate()
+
+
+def _lane_requested_cpus(config: dict, lane: str) -> int:
+    resources_cfg = config.get("resources", {})
+    vina_resources = resources_cfg.get("vina", {})
+    gpu_resources = resources_cfg.get("gpu", {})
+    if lane == "vina-cpu":
+        return max(
+            1,
+            int(vina_resources.get("cpu_per_job", 1))
+            * int(vina_resources.get("parallel_receptors", 1)),
+        )
+    if lane == "vina-gpu":
+        return max(1, int(gpu_resources.get("cpu_per_job", 1)))
+    if lane == "ppi":
+        return max(1, int(resources_cfg.get("ppi", {}).get("cpu_per_job", 1)))
+    if lane in {"ppi-post", "vina-post"}:
+        return 4
+    if lane == "finalize":
+        return 2
+    return 1
+
+
+def _phase_numbers_for_lane(lane: str) -> List[int]:
+    mapping = {
+        "vina-cpu": [1],
+        "ppi": [2],
+        "ppi-post": [3],
+        "vina-post": [4],
+        "finalize": [5, 6, 7],
+    }
+    return mapping.get(lane, [])
+
+
+def _refresh_lane_step_views(lane: str, config: dict) -> None:
+    dummy_args = argparse.Namespace(
+        lane=lane,
+        only="",
+        from_phase=0,
+        force=_FORCE_MODE,
+    )
+    for phase_num in _phase_numbers_for_lane(lane):
+        _refresh_step_view_outputs(
+            phase_num,
+            dummy_args,
+            config,
+            phase_result=None,
+            phase_error=None,
+            fresh_run=not _project_root().exists(),
+            stale_steps=[],
+        )
+
+
+def _run_lane(
+    lane: str,
+    *,
+    state: Optional[str] = None,
+    seed: Optional[int] = None,
+    allocated_cpus: Optional[int] = None,
+    engine: str = "cpu-vina",
+    gpu_required: bool = False,
+    scratch_dir: Optional[Path] = None,
+) -> object:
+    config = _load_config()
+    _emit_resource_warnings(config)
+    requested_cpus = _lane_requested_cpus(config, lane)
+    runtime = resolve_runtime_resources(
+        requested_cpus=requested_cpus,
+        allocated_cpus=allocated_cpus,
+    )
+    project_root = _project_root()
+    scratch_workspace = prepare_scratch_workspace(
+        project_root,
+        lane,
+        state=state,
+        seed=seed,
+        engine=engine,
+        scratch_dir=scratch_dir,
+    )
+
+    if lane in {"vina-gpu", "phase3-gpu"}:
+        gpu_cfg = config.get("resources", {}).get("gpu", {})
+        if not bool(gpu_cfg.get("enabled", False)):
+            raise RuntimeError(
+                f"{lane} lane is disabled. Set resources.gpu.enabled=true to opt in."
+            )
+        if gpu_required and not runtime.visible_gpu_ids:
+            raise RuntimeError("GPU required but CUDA_VISIBLE_DEVICES is empty.")
+        raise RuntimeError(
+            "GPU lanes are intentionally explicit but still require a site-local engine wrapper."
+        )
+
+    if not _FORCE_MODE and lane_is_complete(
+        project_root,
+        lane,
+        state=state,
+        seed=seed,
+        engine=engine,
+    ):
+        print(f"  [SKIP] lane {lane} already completed via marker.")
+        return {"status": "skipped", "lane": lane}
+
+    reset_lane_completion(
+        project_root,
+        lane,
+        state=state,
+        seed=seed,
+        engine=engine,
+    )
+    write_lane_manifest(
+        project_root,
+        lane,
+        resources=runtime,
+        state=state,
+        seed=seed,
+        engine=engine,
+        config_path=CONFIG_PATH,
+        extra={
+            "status": "running",
+            "requested_cpus": requested_cpus,
+            "gpu_required": gpu_required,
+            "scratch_workspace": str(scratch_workspace) if scratch_workspace else "",
+        },
+    )
+
+    started = time.time()
+    try:
+        if lane == "vina-cpu":
+            result = phase1_vina(
+                allocated_cpus=runtime.effective_cpus,
+                engine=engine,
+            )
+        elif lane == "ppi":
+            result = phase2_ppi(
+                state=state,
+                seed=seed,
+                allocated_cpus=runtime.effective_cpus,
+                scratch_dir=scratch_workspace,
+            )
+        elif lane == "ppi-post":
+            result = phase3_ppi_postprocess()
+        elif lane == "vina-post":
+            result = phase4_vina_postprocess()
+        elif lane == "finalize":
+            result = _finalize_lane()
+        elif lane == "status":
+            print_status(config=config, step_view_enabled_flag=step_output_view_enabled(config))
+            result = None
+        else:
+            raise ValueError(f"Unsupported lane: {lane}")
+
+        if lane != "status":
+            _refresh_lane_step_views(lane, config)
+        write_lane_completion(
+            project_root,
+            lane,
+            status="completed",
+            state=state,
+            seed=seed,
+            engine=engine,
+            extra={
+                "duration_seconds": max(0, int(time.time() - started)),
+                "scratch_workspace": str(scratch_workspace) if scratch_workspace else "",
+            },
+        )
+        return result
+    except Exception as exc:
+        write_lane_completion(
+            project_root,
+            lane,
+            status="failed",
+            state=state,
+            seed=seed,
+            engine=engine,
+            extra={
+                "duration_seconds": max(0, int(time.time() - started)),
+                "error": str(exc),
+                "scratch_workspace": str(scratch_workspace) if scratch_workspace else "",
+            },
+        )
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -896,6 +1167,33 @@ PHASES = [
 
 def main():
     parser = argparse.ArgumentParser(description="EGFR-MYO1D Production Pipeline")
+    parser.add_argument(
+        "--lane",
+        choices=[
+            "vina-cpu",
+            "ppi",
+            "ppi-post",
+            "vina-post",
+            "finalize",
+            "status",
+            "vina-gpu",
+            "phase3-gpu",
+        ],
+        default="",
+        help="Scheduler lane entry point (recommended PBS interface)",
+    )
+    parser.add_argument("--state", type=str, default="",
+                        help="Single receptor state selector for lane runs")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Single seed selector for lane runs")
+    parser.add_argument("--allocated-cpus", type=int, default=None,
+                        help="Scheduler-allocated CPUs used for safe worker caps")
+    parser.add_argument("--engine", choices=["cpu-vina", "gnina"], default="cpu-vina",
+                        help="Explicit docking engine for lane runs")
+    parser.add_argument("--gpu-required", action="store_true",
+                        help="Fail fast when a GPU lane has no visible devices")
+    parser.add_argument("--scratch-dir", type=Path, default=None,
+                        help="Optional scratch base directory for heavy lanes")
     parser.add_argument("--force", action="store_true",
                         help="전체 재실행 (기존 결과 무시)")
     parser.add_argument("--from", type=int, default=0, dest="from_phase",
@@ -913,6 +1211,18 @@ def main():
 
     global _FORCE_MODE
     _FORCE_MODE = args.force
+
+    if args.lane:
+        _run_lane(
+            args.lane,
+            state=args.state or None,
+            seed=args.seed,
+            allocated_cpus=args.allocated_cpus,
+            engine=args.engine,
+            gpu_required=args.gpu_required,
+            scratch_dir=args.scratch_dir,
+        )
+        return
 
     only_phases = set()
     if args.only:

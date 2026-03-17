@@ -16,6 +16,23 @@ ligands:
 max_workers: 16
 mode: blind
 output_root: ./output
+resources:
+  scheduler: pbs
+  detect_from_env: true
+  vina:
+    cpu_per_job: 8
+    parallel_receptors: 3
+  ppi:
+    cpu_per_job: 16
+  lightdock:
+    cpu_per_job: 16
+  phase3:
+    cpu_per_job: 4
+  gpu:
+    enabled: false
+    engine: gnina
+    cpu_per_job: 4
+    devices: auto
 postprocess:
   cluster_max_iterations: 15
   cluster_pockets: true
@@ -69,6 +86,7 @@ receptors:
   pdbqt: input/receptors/EGFR_170-200_receptor.pdbqt
   source_type: md_cluster_85_100
 vina:
+  # Legacy aliases retained for compatibility; canonical runtime policy lives in resources.*
   cpu: 8
   energy_range: 5.0
   exhaustiveness: 384

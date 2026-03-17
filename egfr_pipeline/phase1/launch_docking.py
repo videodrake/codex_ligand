@@ -27,6 +27,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 from datetime import datetime
@@ -38,6 +39,7 @@ from egfr_pipeline.phase1.prepare_inputs import (
     PHASE1_RUNTIME_INPUT_DIR,
     prepare_phase1_inputs,
 )
+from egfr_pipeline.runtime_support import resolve_scratch_base, sync_tree
 
 # Phase 1 output base directory
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
@@ -162,6 +164,8 @@ def run_single(
     seed_index: int = 0,
     is_production: bool = False,
     dry_run: bool = False,
+    allocated_cpus: Optional[int] = None,
+    scratch_dir: Optional[Path] = None,
 ) -> dict:
     """Execute a single docking run (or dry-run validation).
 
@@ -188,31 +192,57 @@ def run_single(
         print(f"  [DRY RUN] Skipping actual docking execution")
         return meta
 
-    # Actual execution — import pipeline manager
-    print(f"  Starting docking pipeline...")
-    try:
-        # Change to output directory for pipeline manager
-        original_cwd = os.getcwd()
-        os.chdir(str(output_dir))
+    scratch_base = resolve_scratch_base(scratch_dir=scratch_dir)
+    scratch_output_dir = output_dir
+    scratch_used = False
+    if scratch_base is not None:
+        scratch_output_dir = (
+            Path(scratch_base)
+            / "ppi_vina_phase1"
+            / state_name
+            / ("prod" if is_production else "test")
+            / f"seed{seed_index}"
+        )
+        if scratch_output_dir.exists():
+            shutil.rmtree(scratch_output_dir)
+        scratch_output_dir.mkdir(parents=True, exist_ok=True)
+        scratch_used = True
+        print(f"  Scratch: {scratch_output_dir}")
 
-        # The pipeline manager uses the config's input_pdb_name relative to CWD
-        # We need to provide an absolute path
+    print(f"  Starting docking pipeline...")
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(str(scratch_output_dir))
+
         abs_config = str(config_path.resolve())
         abs_pdb = str((PROJECT_ROOT / meta["input_pdb"]).resolve())
 
         from egfr_pipeline.pyrosetta_docking.pipeline_manager import PipelineManager
-        pm = PipelineManager(abs_config, override_input_pdb=abs_pdb)
+        pm = PipelineManager(
+            abs_config,
+            override_input_pdb=abs_pdb,
+            allocated_cpus=allocated_cpus,
+            runtime_dir=str(scratch_output_dir / "runtime"),
+        )
         pm.execute()
 
         os.chdir(original_cwd)
+        if scratch_used:
+            sync_tree(scratch_output_dir, output_dir)
 
         meta["status"] = "completed"
         meta["completed_at"] = datetime.now().isoformat()
+        meta["allocated_cpus"] = allocated_cpus
+        meta["scratch_output_dir"] = str(scratch_output_dir) if scratch_used else ""
 
     except Exception as e:
         os.chdir(original_cwd)
+        if scratch_used:
+            sync_tree(scratch_output_dir, output_dir)
         meta["status"] = "failed"
         meta["error"] = str(e)
+        meta["allocated_cpus"] = allocated_cpus
+        meta["scratch_output_dir"] = str(scratch_output_dir) if scratch_used else ""
         print(f"  ERROR: {e}")
 
     # Update metadata with final status

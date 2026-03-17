@@ -15,6 +15,9 @@ conda activate pyrosetta
 
 # ============================================================
 # LightDock Secondary Validation (production)
+# Legacy wrapper.
+# Prefer config/run_lightdock_state.pbs or config/run_lightdock_state_test.pbs
+# so each PBS job owns exactly one receptor state.
 #
 # 400 swarms × 200 glowworms × 100 steps
 # Estimated: 12-24 hours per state (16 cores)

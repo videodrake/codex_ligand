@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N ppi_state_seed
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=24:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/ppi_state_seed.o
+#PBS -e ${PBS_O_WORKDIR}/ppi_state_seed.e
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+STATE="${STATE:?STATE is required, e.g. 3GT8_raw}"
+SEED="${SEED:?SEED is required, e.g. 0}"
+
+python run_production.py \
+  --lane ppi \
+  --state "$STATE" \
+  --seed "$SEED" \
+  --allocated-cpus "${PBS_NP:-16}"

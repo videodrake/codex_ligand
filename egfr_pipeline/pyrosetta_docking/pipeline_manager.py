@@ -27,6 +27,7 @@ from pyrosetta.rosetta.core.scoring import calpha_superimpose_pose
 
 from . import analysis, common, docking
 from .common import TOP_LEVEL_DIR
+from ..runtime_support import resolve_runtime_resources
 from .metadata import (
     build_decoy_score_rows,
     build_input_validation_report,
@@ -64,7 +65,14 @@ QUALITY_THRESHOLDS = {
 
 
 class PipelineManager:
-    def __init__(self, config_file: str, override_input_pdb: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        config_file: str,
+        override_input_pdb: Optional[str] = None,
+        *,
+        allocated_cpus: Optional[int] = None,
+        runtime_dir: Optional[str] = None,
+    ) -> None:
         if not os.path.exists(config_file):
             raise FileNotFoundError(f"Config file not found: {config_file}")
 
@@ -73,13 +81,13 @@ class PipelineManager:
         self.config.read(config_file)
 
         req_cpus = self.config.getint('System', 'n_cpus', fallback=1)
-        real_cpus = multiprocessing.cpu_count()
+        self.runtime_resources = resolve_runtime_resources(
+            requested_cpus=req_cpus,
+            allocated_cpus=allocated_cpus,
+        )
         self.requested_cpus = req_cpus
-        self.n_cpus = min(req_cpus, real_cpus)
+        self.n_cpus = self.runtime_resources.effective_cpus
         self.chunksize = 1
-
-        self._setup_logging()
-        self._validate_config()
 
         if override_input_pdb:
             self.input_pdb = os.path.abspath(override_input_pdb)
@@ -94,6 +102,13 @@ class PipelineManager:
                 os.path.splitext(self.filename)[0],
             )
         )
+        self.runtime_dir = os.path.abspath(runtime_dir or os.path.join(self.root_dir, "runtime"))
+        self.runtime_log_dir = os.path.join(self.runtime_dir, "logs")
+        os.makedirs(self.runtime_log_dir, exist_ok=True)
+        os.environ["PYROSETTA_WORKER_LOG_DIR"] = self.runtime_log_dir
+
+        self._setup_logging()
+        self._validate_config()
 
         self.dir_cache = os.path.join(TOP_LEVEL_DIR, "relaxed_cache")
         os.makedirs(self.dir_cache, exist_ok=True)
@@ -134,13 +149,17 @@ class PipelineManager:
     # ------------------------------------------------------------------ #
     def _setup_logging(self) -> None:
         self.progress_logger = logging.getLogger('pipeline_progress')
-        self.internal_logger = logging.getLogger('python_internal')
-
-        if self.progress_logger.handlers:
-            return
-
+        self.internal_logger = logging.getLogger('pipeline_internal')
         self.progress_logger.setLevel(logging.INFO)
         self.internal_logger.setLevel(logging.DEBUG)
+
+        for logger in (self.progress_logger, self.internal_logger):
+            for handler in list(logger.handlers):
+                logger.removeHandler(handler)
+                try:
+                    handler.close()
+                except Exception:
+                    pass
 
         progress_fmt = logging.Formatter(
             '%(asctime)s [%(levelname)s] %(message)s',
@@ -155,7 +174,17 @@ class PipelineManager:
         progress_sh.setFormatter(progress_fmt)
         self.progress_logger.addHandler(progress_sh)
 
-        internal_fh = logging.FileHandler(os.path.join(TOP_LEVEL_DIR, "worker_debug.log"), encoding='utf-8')
+        progress_fh = logging.FileHandler(
+            os.path.join(self.runtime_log_dir, "pipeline_progress.log"),
+            encoding='utf-8',
+        )
+        progress_fh.setFormatter(progress_fmt)
+        self.progress_logger.addHandler(progress_fh)
+
+        internal_fh = logging.FileHandler(
+            os.path.join(self.runtime_log_dir, "pipeline_internal.log"),
+            encoding='utf-8',
+        )
         internal_fh.setFormatter(internal_fmt)
         self.internal_logger.addHandler(internal_fh)
 

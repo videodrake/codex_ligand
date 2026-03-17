@@ -14,7 +14,20 @@ if TYPE_CHECKING:
 TOP_LEVEL_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 _worker_logging_initialized = False
+_worker_logging_path = ""
 _master_seed = None
+
+
+def _worker_log_dir() -> str:
+    log_dir = os.environ.get("PYROSETTA_WORKER_LOG_DIR", "").strip()
+    if not log_dir:
+        log_dir = TOP_LEVEL_DIR
+    os.makedirs(log_dir, exist_ok=True)
+    return log_dir
+
+
+def _worker_log_path() -> str:
+    return os.path.join(_worker_log_dir(), f"worker_{os.getpid()}.log")
 
 
 def set_master_seed(seed: Optional[int]) -> None:
@@ -34,25 +47,40 @@ def setup_worker_logging() -> None:
     Must be called at the start of every worker task function.
     """
     global _worker_logging_initialized
-    if _worker_logging_initialized:
-        return
+    global _worker_logging_path
 
     logger = logging.getLogger('python_internal')
-    if not logger.handlers:
-        logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
+
+    desired_path = os.path.abspath(_worker_log_path())
+    if _worker_logging_initialized and _worker_logging_path == desired_path:
+        return
+    for handler in list(logger.handlers):
+        base_filename = getattr(handler, "baseFilename", "")
+        if base_filename and os.path.abspath(base_filename) != desired_path:
+            logger.removeHandler(handler)
+            try:
+                handler.close()
+            except Exception:
+                pass
+
+    has_file_handler = any(
+        os.path.abspath(getattr(handler, "baseFilename", "")) == desired_path
+        for handler in logger.handlers
+        if getattr(handler, "baseFilename", "")
+    )
+    if not has_file_handler:
         fmt = logging.Formatter(
             '%(asctime)s [%(name)s] (%(levelname)s) [PID:%(process)d] %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        fh = logging.FileHandler(
-            os.path.join(TOP_LEVEL_DIR, "worker_debug.log"),
-            encoding='utf-8'
-        )
+        fh = logging.FileHandler(desired_path, encoding='utf-8')
         fh.setFormatter(fmt)
         logger.addHandler(fh)
-        logger.propagate = False
+    logger.propagate = False
 
     _worker_logging_initialized = True
+    _worker_logging_path = desired_path
 
 
 internal_logger = logging.getLogger('python_internal')

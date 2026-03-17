@@ -1,0 +1,20 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N lightdock_test
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=04:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/lightdock_state_test.o
+#PBS -e ${PBS_O_WORKDIR}/lightdock_state_test.e
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+STATE="${STATE:?STATE is required, e.g. 3GT8_raw}"
+
+python -m egfr_pipeline.phase1.lightdock_validation --setup --state "$STATE" --n-cpus "${PBS_NP:-16}"
+python -m egfr_pipeline.phase1.lightdock_validation --extract --state "$STATE"
+python -m egfr_pipeline.phase1.lightdock_validation --convergence --state "$STATE"

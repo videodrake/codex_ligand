@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from egfr_pipeline.config import resolve_resource_config
+from egfr_pipeline.runtime_support import cap_worker_count, resolve_runtime_resources
 
 try:
     import yaml
@@ -364,7 +366,10 @@ def resolve_ligand_worker_count(
 ) -> int:
     """Cap ligand-level worker count to avoid oversubscribing visible cores."""
     worker_count = min(int(max_workers), max(int(n_jobs), 1))
-    visible_cores = os.cpu_count() if available_cores is None else available_cores
+    if available_cores is None:
+        visible_cores = resolve_runtime_resources().effective_cpus
+    else:
+        visible_cores = available_cores
 
     if cpu_per_job <= 0:
         if worker_count > 1:
@@ -374,15 +379,19 @@ def resolve_ligand_worker_count(
             )
         return 1
 
-    if visible_cores and worker_count * cpu_per_job > visible_cores:
-        capped = max(1, visible_cores // max(cpu_per_job, 1))
-        if capped < worker_count:
-            print(
-                f"[WARN] Requested ligand CPU budget exceeds visible cores: "
-                f"{worker_count * cpu_per_job} > {visible_cores}. "
-                f"Capping ligand workers {worker_count} -> {capped}."
-            )
-            worker_count = capped
+    capped = cap_worker_count(
+        requested_workers=worker_count,
+        n_jobs=n_jobs,
+        cpu_per_job=cpu_per_job,
+        available_cpus=max(1, int(visible_cores or 1)),
+    )
+    if capped < worker_count:
+        print(
+            f"[WARN] Requested ligand CPU budget exceeds visible cores: "
+            f"{worker_count * cpu_per_job} > {visible_cores}. "
+            f"Capping ligand workers {worker_count} -> {capped}."
+        )
+        worker_count = capped
 
     return max(1, worker_count)
 
@@ -2762,11 +2771,13 @@ def dock_one_receptor(receptor_entry, ligand_entries, config):
     out_dir = output_root / project_name / receptor_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    exhaustiveness = config.get("vina", {}).get("exhaustiveness", 8)
-    n_poses = config.get("vina", {}).get("n_poses", 5)
-    energy_range = float(config.get("vina", {}).get("energy_range", 3.0))
-    cpu = int(config.get("vina", {}).get("cpu", 0))
-    base_seed = normalize_optional_int(config.get("vina", {}).get("seed"))
+    resources_cfg, _warnings = resolve_resource_config(config)
+    vina_cfg = config.get("vina", {}) if isinstance(config.get("vina"), dict) else {}
+    exhaustiveness = vina_cfg.get("exhaustiveness", 8)
+    n_poses = vina_cfg.get("n_poses", 5)
+    energy_range = float(vina_cfg.get("energy_range", 3.0))
+    cpu = int(resources_cfg["vina"].get("cpu_per_job", vina_cfg.get("cpu", 0)))
+    base_seed = normalize_optional_int(vina_cfg.get("seed"))
 
     results = {}
     for lig_entry in ligand_entries:

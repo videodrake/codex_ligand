@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N phase3_cpu
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=08:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/phase3_cpu_round.o
+#PBS -e ${PBS_O_WORKDIR}/phase3_cpu_round.e
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+ROUND="${ROUND:?ROUND is required, e.g. 1}"
+
+python -m egfr_pipeline.phase3.run_diverse_docking \
+  --execute \
+  --round "$ROUND" \
+  --max_workers 16 \
+  --allocated-cpus "${PBS_NP:-16}" \
+  --output_dir "output/phase3_docking"
