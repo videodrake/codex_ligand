@@ -277,6 +277,16 @@ def execute_round(
     if not round_jobs:
         return []
 
+    # -- Vina 가용성 가드 (silent all-skip 방지) --
+    try:
+        from egfr_pipeline.vina.vina_executor import run_docking  # noqa: F401
+    except ImportError:
+        raise RuntimeError(
+            f"Vina 모듈을 불러올 수 없습니다. Round {round_id} 실행 불가.\n"
+            "Phase 3 execute 모드는 Vina가 설치된 compute node에서 실행해야 합니다.\n"
+            "--mode setup 으로 서버 실행 스크립트를 생성하세요."
+        )
+
     cpu_per_job = int(round_jobs[0].get("cpu_per_job", 0) or 0)
     runtime = resolve_runtime_resources(allocated_cpus=allocated_cpus)
     max_workers = cap_worker_count(

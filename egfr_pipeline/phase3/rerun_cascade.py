@@ -91,11 +91,26 @@ def run_phase3_cascade(
     if mode == "setup":
         steps = setup_steps + [setup_gen_step]
     elif mode == "execute":
+        # setup 완료 검증
+        job_table = output_dir / "phase3_docking_job_table.csv"
+        if not job_table.exists():
+            raise FileNotFoundError(
+                f"Phase 3 job table 없음: {job_table}\n"
+                "먼저 --mode setup 을 실행하세요."
+            )
         steps = [
             ("3.3", f"Docking Execution (round {round_id})",
              lambda: _run_tg33_execute(output_dir, round_id, allocated_cpus)),
         ]
     elif mode == "post":
+        # execute 완료 검증 (round log에 데이터 행이 있어야 함)
+        round_log = output_dir / "phase3_round_log.csv"
+        if not _has_data_rows(round_log):
+            raise FileNotFoundError(
+                f"Phase 3 round log 없음 또는 비어있음: {round_log}\n"
+                "최소 1회의 execute round가 완료되어야 합니다.\n"
+                "--mode execute --round 0 을 먼저 실행하세요."
+            )
         steps = post_steps + [review_step]
     else:  # full
         steps = setup_steps + [setup_gen_step]
@@ -213,6 +228,20 @@ def _run_tg37(output_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _has_data_rows(path: Path) -> bool:
+    """CSV 파일이 존재하고 데이터 행이 1개 이상인지 확인."""
+    if not path.exists():
+        return False
+    import csv
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader, None)  # header
+            return next(reader, None) is not None
+    except Exception:
+        return False
+
 
 def _get_round_count(output_dir: Path) -> int:
     """Read round count from budget policy output, default 3."""

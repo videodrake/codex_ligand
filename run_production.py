@@ -1042,9 +1042,59 @@ def _finalize_lane() -> object:
 # Advanced PPI-First pipeline lane functions (Workflow B)
 # ---------------------------------------------------------------------------
 
+def _validate_adv_handoff(lane: str) -> None:
+    """Advanced lane 사전 조건 파일 존재 검증. defense-in-depth."""
+    phase1_dir = REPO_ROOT / "output" / "phase1_ppi"
+    phase2_dir = REPO_ROOT / "output" / "phase2_pockets"
+    phase3_dir = REPO_ROOT / "output" / "phase3_docking"
+
+    checks = {
+        "adv-phase1": (
+            lambda: check_phase2(),
+            "PPI 도킹 미완료. Workflow A Phase 2를 먼저 완료하세요.\n"
+            "Run: qsub config/run_ppi_state_seed.pbs"
+        ),
+        "adv-phase2": (
+            lambda: [] if (phase1_dir / "phase1_downstream_patch_reference.csv").exists() else ["handoff"],
+            f"Phase 1 핸드오프 없음: {phase1_dir / 'phase1_downstream_patch_reference.csv'}\n"
+            "Run: qsub config/run_adv_phase1.pbs"
+        ),
+        "adv-phase3-setup": (
+            lambda: [] if (phase2_dir / "phase3_candidate_pocket_reference.csv").exists() else ["handoff"],
+            f"Phase 2 핸드오프 없음: {phase2_dir / 'phase3_candidate_pocket_reference.csv'}\n"
+            "Run: qsub config/run_adv_phase2.pbs"
+        ),
+        "adv-phase3-execute": (
+            lambda: [] if (phase3_dir / "phase3_docking_job_table.csv").exists() else ["setup"],
+            f"Phase 3 job table 없음: {phase3_dir / 'phase3_docking_job_table.csv'}\n"
+            "Run: qsub config/run_adv_phase3_setup.pbs"
+        ),
+        "adv-phase3-post": (
+            lambda: [] if _csv_has_rows(phase3_dir / "phase3_round_log.csv") else ["round_log"],
+            f"Phase 3 round log 없거나 비어있음.\n"
+            "최소 1회 execute round 필요.\n"
+            "Run: qsub -v ROUND=0 config/run_adv_phase3_execute.pbs"
+        ),
+        "adv-phase4": (
+            lambda: [] if (phase3_dir / "phase4_docking_evidence_reference.csv").exists() else ["handoff"],
+            f"Phase 3 핸드오프 없음: {phase3_dir / 'phase4_docking_evidence_reference.csv'}\n"
+            "Run: qsub config/run_adv_phase3_post.pbs"
+        ),
+    }
+
+    if lane not in checks:
+        return
+
+    check_fn, msg = checks[lane]
+    missing = check_fn()
+    if missing:
+        raise FileNotFoundError(msg)
+
+
 def _adv_phase1():
     """Run Phase 1 analysis: TG 1.1.5 (standardize) + TG 1.2 (extract interface)
     + PPI evidence extraction. Assumes PPI docking (Workflow A Phase 2) is complete."""
+    _validate_adv_handoff("adv-phase1")
     from egfr_pipeline.phase1.extract_interface import run_extract_interface
     from egfr_pipeline.phase1.standardize_scores import run_standardize_scores
 
@@ -1059,12 +1109,14 @@ def _adv_phase1():
 
 def _adv_phase2():
     """Run Phase 2 cascade (TG 2.0-2.7). Requires Phase 1 analysis complete."""
+    _validate_adv_handoff("adv-phase2")
     from egfr_pipeline.phase2.rerun_cascade import run_phase2_cascade
     run_phase2_cascade(parse_only=True)
 
 
 def _adv_phase3_setup(allocated_cpus: Optional[int] = None):
     """Run Phase 3 setup (TG 3.0-3.2 + script generation)."""
+    _validate_adv_handoff("adv-phase3-setup")
     from egfr_pipeline.phase3.rerun_cascade import run_phase3_cascade
     run_phase3_cascade(mode="setup", allocated_cpus=allocated_cpus)
 
@@ -1074,6 +1126,7 @@ def _adv_phase3_execute(
     allocated_cpus: Optional[int] = None,
 ):
     """Run Phase 3 Vina execution for one round."""
+    _validate_adv_handoff("adv-phase3-execute")
     from egfr_pipeline.phase3.rerun_cascade import run_phase3_cascade
     run_phase3_cascade(
         mode="execute",
@@ -1084,12 +1137,14 @@ def _adv_phase3_execute(
 
 def _adv_phase3_post():
     """Run Phase 3 post-docking analysis (TG 3.4-3.6)."""
+    _validate_adv_handoff("adv-phase3-post")
     from egfr_pipeline.phase3.rerun_cascade import run_phase3_cascade
     run_phase3_cascade(mode="post")
 
 
 def _adv_phase4():
     """Run Phase 4 cascade (TG 4.0-4.6)."""
+    _validate_adv_handoff("adv-phase4")
     from egfr_pipeline.phase4.rerun_cascade import run_phase4_cascade
     run_phase4_cascade()
 

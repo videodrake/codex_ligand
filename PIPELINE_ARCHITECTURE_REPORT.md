@@ -82,7 +82,7 @@ PPI_POST=$(qsub -W depend=afterok${PPI_JOBS} config/run_ppi_postprocess.pbs)
 qsub -W depend=afterok:${VINA_POST}:${PPI_POST} config/run_finalize.pbs
 ```
 
-### Workflow B: Advanced PPI-First Pipeline (모듈 구현 완료, 통합 자동화 미완)
+### Workflow B: Advanced PPI-First Pipeline (자동화 완료)
 
 > 진입점: `qsub config/run_advanced_pipeline.pbs` (전체 자동) 또는 `run_production.py --lane adv-*` (개별)
 > 상태: **자동화 완료** — `run_production.py`에 `adv-*` lane 6개 통합, PBS 스크립트 완비
@@ -162,7 +162,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 >
 > Workflow A에서는 blind docking(Phase 1) + postprocess(Phase 4)로 사용. Workflow B에서는 focused docking(Phase 3)으로 사용.
 
-### 2.1 Vina 도킹 실행 (`vina_executor.py`)
+### 3.1 Vina 도킹 실행 (`vina_executor.py`)
 
 **역할**: AutoDock Vina를 이용한 blind/focused 소분자 도킹 실행
 
@@ -855,6 +855,8 @@ Phase 2 전체 결과를 요약한 Markdown 리포트 생성
 
 **서버 제출**: `qsub config/run_advanced_pipeline.pbs` — 내부에서 PBS 의존성 체인으로 자동 제출.
 
+**안전성 가드**: 각 `_adv_*` lane 함수는 `_validate_adv_handoff()`를 통해 이전 Phase의 핸드오프 파일 존재를 사전 검증한다 (defense-in-depth). Phase 3 cascade는 모드별 사전 조건(setup → job table, post → round log)을 추가 검증하며, Vina 가용성 가드가 silent all-skip을 방지한다.
+
 ### 핵심 핸드오프 파일 (Workflow B)
 
 | 구간 | 파일 | 생성 TG |
@@ -866,4 +868,4 @@ Phase 2 전체 결과를 요약한 Markdown 리포트 생성
 
 ---
 
-*이 보고서는 2026-03-17 기준 소스코드를 분석하여 생성되었습니다. 워크플로우 구분 반영: 2026-03-17.*
+*이 보고서는 2026-03-17 기준 소스코드를 분석하여 생성되었습니다. 워크플로우 구분 반영: 2026-03-17. 견고성 가드 추가: 2026-03-17.*
