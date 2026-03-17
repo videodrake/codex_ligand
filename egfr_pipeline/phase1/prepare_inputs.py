@@ -154,6 +154,49 @@ def set_atom_serial(line: str, serial: int) -> str:
     return line[:6] + f"{serial:5d}" + line[11:]
 
 
+# Required backbone atoms for PyRosetta pose loading
+_BACKBONE_ATOMS = {"N", "CA", "C", "O"}
+
+
+def check_backbone_completeness(
+    atom_lines: List[str],
+) -> Tuple[List[int], Dict[int, Set[str]]]:
+    """Check backbone atom completeness for each residue.
+
+    Returns (incomplete_resnums, missing_map) where missing_map maps
+    resnum -> set of missing backbone atom names.
+    """
+    residue_atoms: Dict[int, Set[str]] = {}
+    for line in atom_lines:
+        resnum = get_resnum(line)
+        residue_atoms.setdefault(resnum, set()).add(get_atom_name(line))
+
+    incomplete: List[int] = []
+    missing_map: Dict[int, Set[str]] = {}
+    for resnum in sorted(residue_atoms):
+        missing = _BACKBONE_ATOMS - residue_atoms[resnum]
+        if missing:
+            incomplete.append(resnum)
+            missing_map[resnum] = missing
+
+    return incomplete, missing_map
+
+
+def strip_incomplete_residues(
+    atom_lines: List[str],
+    resnums: List[int],
+    incomplete_resnums: List[int],
+) -> Tuple[List[str], List[int], List[int]]:
+    """Remove residues with incomplete backbone atoms.
+
+    Returns (cleaned_lines, cleaned_resnums, removed_resnums).
+    """
+    remove_set = set(incomplete_resnums)
+    cleaned_lines = [l for l in atom_lines if get_resnum(l) not in remove_set]
+    cleaned_resnums = [r for r in resnums if r not in remove_set]
+    return cleaned_lines, cleaned_resnums, sorted(remove_set)
+
+
 def extract_chain_residue_range(
     pdb_path: Path,
     source_chain: str,
@@ -282,6 +325,21 @@ def prepare_receptor(
             f"range {KINASE_DOMAIN_START}-{KINASE_DOMAIN_END}"
         )
 
+    # --- Backbone completeness check ---
+    incomplete, missing_bb = check_backbone_completeness(lines)
+    stripped_resnums: List[int] = []
+    if incomplete:
+        lines, resnums, stripped_resnums = strip_incomplete_residues(
+            lines, resnums, incomplete,
+        )
+        for rn in stripped_resnums:
+            print(f"  STRIPPED residue {rn}: missing backbone {missing_bb[rn]}")
+        if not resnums:
+            raise ValueError(
+                f"All residues in {pdb_path} had incomplete backbone — "
+                f"source PDB may be corrupt"
+            )
+
     n_residues = len(resnums)
     n_atoms = len(lines)
     first_res = resnums[0]
@@ -302,6 +360,8 @@ def prepare_receptor(
 
     print(f"  Output: {output_pdb}")
     print(f"  Residues: {first_res}-{last_res} ({n_residues} residues, {n_atoms} atoms)")
+    if stripped_resnums:
+        print(f"  Backbone-incomplete residues removed: {format_ranges(stripped_resnums)}")
     print(f"  N-lobe: {n_nlobe} residues (< {NLOBE_CLOBE_BOUNDARY})")
     print(f"  C-lobe: {n_clobe} residues (>= {NLOBE_CLOBE_BOUNDARY})")
     if missing:
@@ -365,6 +425,21 @@ def prepare_extended_beta_meander(output_dir: Path) -> dict:
             f"No residues found in {th1_path} chain {BETA_MEANDER_SOURCE_CHAIN} "
             f"range {BETA_MEANDER_START}-{BETA_MEANDER_END}"
         )
+
+    # --- Backbone completeness check ---
+    incomplete, missing_bb = check_backbone_completeness(lines)
+    stripped_resnums: List[int] = []
+    if incomplete:
+        lines, resnums, stripped_resnums = strip_incomplete_residues(
+            lines, resnums, incomplete,
+        )
+        for rn in stripped_resnums:
+            print(f"  STRIPPED residue {rn}: missing backbone {missing_bb[rn]}")
+        if not resnums:
+            raise ValueError(
+                f"All residues in {th1_path} had incomplete backbone — "
+                f"source PDB may be corrupt"
+            )
 
     n_residues = len(resnums)
     n_atoms = len(lines)
@@ -470,8 +545,24 @@ def prepare_docking_pair(
     partner_b_lines = [set_chain(l, "B") for l in partner_lines]
     p_resnums = sorted(set(get_resnum(l) for l in partner_lines))
 
-    # Combine
+    # --- Final backbone completeness check on combined PDB ---
     combined = receptor_lines + partner_b_lines
+    incomplete, missing_bb = check_backbone_completeness(combined)
+    stripped: List[int] = []
+    if incomplete:
+        combined, _, stripped = strip_incomplete_residues(
+            combined, r_resnums + p_resnums, incomplete,
+        )
+        for rn in stripped:
+            print(f"    STRIPPED residue {rn}: missing backbone {missing_bb[rn]}")
+        # Rebuild per-chain residue lists from cleaned lines
+        r_resnums = sorted(set(
+            get_resnum(l) for l in combined if get_chain(l) == "A"
+        ))
+        p_resnums = sorted(set(
+            get_resnum(l) for l in combined if get_chain(l) == "B"
+        ))
+
     write_pdb(combined, output_pdb)
 
     # Compute excluded residues
@@ -482,6 +573,8 @@ def prepare_docking_pair(
 
     print(f"    Receptor: chain A, {r_resnums[0]}-{r_resnums[-1]} ({len(r_resnums)} res)")
     print(f"    Partner:  chain B, {p_resnums[0]}-{p_resnums[-1]} ({len(p_resnums)} res)")
+    if stripped:
+        print(f"    Backbone-incomplete residues removed: {format_ranges(stripped)}")
     print(f"    Excluded: {len(excl_actual)} membrane-proximal residues")
     print(f"    Output:   {output_pdb}")
 
@@ -497,6 +590,7 @@ def prepare_docking_pair(
         "excluded_residues_A": excl_str,
         "n_excluded": len(excl_actual),
         "total_atoms": len(combined),
+        "stripped_residues": format_ranges(stripped) if stripped else "",
     }
 
 
