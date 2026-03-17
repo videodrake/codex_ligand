@@ -194,7 +194,7 @@ def review_units() -> List[ReviewUnit]:
             "MD Analysis Surface",
             "md",
             "medium",
-            ("egfr_pipeline/md/*.py", "docs/md_interface_analysis.py"),
+            ("egfr_pipeline/md/*.py", "scripts/md_interface_analysis.py"),
             (
                 "Check submenu entrypoints and standalone execution assumptions.",
                 "Review output schema compatibility with the rest of the pipeline.",

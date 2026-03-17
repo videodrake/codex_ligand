@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 MODULE_PATH = (
-    Path(__file__).resolve().parents[1] / "docs" / "md_interface_analysis.py"
+    Path(__file__).resolve().parents[1] / "scripts" / "md_interface_analysis.py"
 )
 
 
