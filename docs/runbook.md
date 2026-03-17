@@ -1,28 +1,262 @@
-# Runbook
+# 실행 가이드 (Runbook)
 
-Last updated: 2026-03-13
+Last updated: 2026-03-17
 
-This document is the operator-facing run procedure for the current repository. Use it to understand what order to run things in, which checkpoints matter, and when to stop or escalate. For exact commands, use [manual_execution.md](manual_execution.md). For the current baseline summary, use [current_pipeline_status.md](current_pipeline_status.md). For artifact meaning, use [output_artifact_map.md](output_artifact_map.md).
+이 문서는 파이프라인 실행에 필요한 모든 절차와 명령어를 통합한 운영 가이드입니다.
+모든 무거운 연산(도킹, PPI)은 HPC 서버에서 qsub로 제출합니다. 로컬에서 도킹을 실행하지 마십시오.
 
-## Operating Frame
+참고 문서:
+- [architecture.md](architecture.md): 데이터 흐름 및 핸드오프 구조
+- [output_artifact_map.md](output_artifact_map.md): 산출물 의미 및 우선순위
+- [data_inventory.md](data_inventory.md): 물리적 입출력 위치
 
-Run this repository with the current baseline in mind:
+---
 
-| Topic | Operational rule |
-|------|------|
-| Receptor states | Treat `3GT8_raw`, `EGFR_160-185`, and `EGFR_170-200` as the fixed comparison set |
-| Ligand workflow center | Routine ligand evidence is Vina-centered |
-| Phase 1 primary evidence | PyRosetta |
-| Phase 1 secondary validation | LightDock |
-| AFM | Legacy optional only; do not include it in routine execution unless explicitly re-enabled |
-| Runtime environment | Production and pre-qsub lanes reuse the shared `pyrosetta` conda environment |
-| Worker policy | Treat `max_workers = 16` as the routine safe operating bound |
+## 환경 설정
 
-## Interpretation Start Point
+### 서버 접속 및 환경 활성화
 
-When a production run has completed, start with `output/{project}/step_index.md`.
+```bash
+cd ~/codex_ligand
+conda activate pyrosetta
+```
 
-Recommended reading order:
+- 프로덕션과 precheck 모두 동일한 `pyrosetta` conda 환경을 사용합니다.
+- 별도의 테스트 전용 환경을 가정하지 마십시오.
+
+### 설정 파일 확인
+
+기본 프로젝트 설정 파일:
+
+```bash
+config/example-project.yaml
+```
+
+CLI 실행 시 항상 `-c` 옵션을 명시합니다. `-c/--config`는 `main.py`의 최상위 옵션이며 서브커맨드 **앞에** 위치해야 합니다:
+
+```bash
+python main.py -c config/example-project.yaml <command>
+```
+
+### 사전 확인 사항
+
+제출 전 반드시 확인:
+
+1. 활성 config가 의도한 프로젝트 설정인지 확인
+2. 3개 receptor state (`3GT8_raw`, `EGFR_160-185`, `EGFR_170-200`)가 등록되어 있는지 확인
+3. 필요한 리간드와 준비된 입력 파일이 해당 lane에 사용 가능한지 확인
+4. worker 수가 routine safe bound(16)를 초과하지 않는지 확인
+
+---
+
+## Workflow A: Standard Pipeline (run_production.py)
+
+Vina 중심 리간드 증거 흐름 + PPI 인터페이스 증거를 통합 실행합니다.
+
+### Phase 구성
+
+| Phase | 내용 | 주요 산출물 |
+|-------|------|-------------|
+| 1 | Vina blind docking (3 receptor x 3 ligand) | `output/{project}/{receptor_id}/{ligand}_blind.pdbqt` |
+| 2 | PPI docking (3 states x 5 seeds = 300K models) | `final_ranking.csv` per seed |
+| 3 | PPI postprocess | PPI export 파일 |
+| 4 | Vina postprocess | `vina_pocket_table.csv` |
+| 5 | Verdict (3축 통합 scoring) | `valid_sites.csv` |
+| 6 | Report | `project_report.txt` |
+| 7 | Validate | validation 결과 |
+
+### Step 1: Pre-qsub Validation
+
+항상 무거운 작업 전에 precheck를 먼저 실행합니다.
+
+```bash
+qsub config/run_pre_qsub_checks.pbs
+```
+
+필수 체크포인트: `output/pre_qsub_status/last_pass.json`가 존재하고 pass 상태여야 합니다.
+통과하지 못하면 **중단**하고 설정/입력/환경 문제를 해결합니다.
+
+### Step 2: Production 제출
+
+#### 안전한 체인 제출 (권장)
+
+precheck 성공 후 자동으로 production 실행:
+
+```bash
+PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)
+qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs
+```
+
+#### 직접 제출
+
+```bash
+qsub config/run_production.pbs                                 # 자동 이어하기
+qsub -v MODE=force config/run_production.pbs                   # 전체 재실행
+qsub -v MODE=from,FROM=4 config/run_production.pbs             # Phase 4부터
+qsub -v MODE=status config/run_production.pbs                  # 상태 확인
+qsub -v MODE=vina-only config/run_production.pbs               # Vina lane만 (Phase 1,4,5,6,7)
+qsub -v MODE=ppi-only config/run_production.pbs                # PPI lane만 (Phase 2,3)
+qsub -v MODE=post-only config/run_production.pbs               # Phase 4부터 (후처리)
+qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs        # precheck 가드 우회 (의도적으로만)
+```
+
+#### Lane별 PBS 스크립트 (개별 제출)
+
+`run_production.pbs` 대신 lane별로 개별 제출할 수 있습니다:
+
+```bash
+qsub config/run_vina_cpu.pbs              # Vina CPU docking
+qsub config/run_ppi_state_seed.pbs        # PPI docking (state/seed별)
+qsub config/run_ppi_postprocess.pbs       # PPI 후처리
+qsub config/run_vina_postprocess.pbs      # Vina 후처리
+qsub config/run_finalize.pbs              # Verdict + Report + Validate
+```
+
+#### LightDock 2차 검증 (Phase 1)
+
+PyRosetta가 Phase 1 primary evidence이며, LightDock은 secondary validation입니다:
+
+```bash
+qsub config/run_lightdock.pbs             # 전체 state
+qsub config/run_lightdock_test.pbs        # 테스트
+```
+
+### Step 3: run_production.py 직접 실행 (서버 셸에서)
+
+PBS 없이 직접 실행하는 경우 (디버깅/개발용):
+
+```bash
+python run_production.py                  # 자동 이어하기 (완료된 Phase 스킵)
+python run_production.py --force          # 전체 재실행
+python run_production.py --from 4         # Phase 4부터 실행
+python run_production.py --status         # 상태 확인만 (실행 안 함)
+python run_production.py --only 2,3       # 특정 Phase만 실행
+```
+
+### Step-Folder 모드 의미
+
+- `--status`: 읽기 전용. step 폴더를 재생성하지 않음.
+- `--from N`: Phase N 이상 재실행. 이전 step 폴더는 유지.
+- `--only N[,M]`: 지정된 Phase만 재실행.
+- `--force`: 기존 출력이 있어도 재실행 후 step view 갱신.
+- 클린 재실행: `python scripts/reset_production_outputs.py --execute` 후 재제출.
+
+---
+
+## Workflow B: Advanced PPI-First Pipeline
+
+PPI 증거를 먼저 확보한 후 포켓 제안 -> 다양성 도킹 -> 교란 스코어링까지 수행하는 고급 워크플로우입니다.
+
+**전제 조건**: Workflow A의 Phase 2 (PPI docking) 완료 (`seed_complete.json` 존재)
+
+### 자동 체인 제출
+
+```bash
+qsub config/run_advanced_pipeline.pbs                                          # 전체 (Phase 1~4)
+qsub -v ADV_FROM=2 config/run_advanced_pipeline.pbs                            # Phase 2부터
+qsub -v ADV_ROUNDS=5 config/run_advanced_pipeline.pbs                          # Phase 3를 5 rounds
+qsub -v ADV_FROM=3,ADV_ROUNDS=2 config/run_advanced_pipeline.pbs              # Phase 3부터, 2 rounds
+```
+
+### Phase 구성
+
+| Phase | PBS 스크립트 | 내용 |
+|-------|-------------|------|
+| 1 | `run_adv_phase1.pbs` | PPI 분석 |
+| 2 | `run_adv_phase2.pbs` | 포켓 분석 |
+| 3-setup | `run_adv_phase3_setup.pbs` | 다양성 도킹 준비 |
+| 3-execute | `run_adv_phase3_execute.pbs` (x N rounds) | 다양성 도킹 실행 |
+| 3-post | `run_adv_phase3_post.pbs` | 다양성 도킹 후처리 |
+| 4 | `run_adv_phase4.pbs` | 교란 관련성 스코어링 |
+
+### 개별 Phase 수동 제출
+
+의존성 체인을 수동으로 구성할 때:
+
+```bash
+ADV1=$(qsub config/run_adv_phase1.pbs)
+ADV2=$(qsub -W depend=afterok:$ADV1 config/run_adv_phase2.pbs)
+ADV3S=$(qsub -W depend=afterok:$ADV2 config/run_adv_phase3_setup.pbs)
+ADV3E0=$(qsub -v ROUND=0 -W depend=afterok:$ADV3S config/run_adv_phase3_execute.pbs)
+ADV3E1=$(qsub -v ROUND=1 -W depend=afterok:$ADV3E0 config/run_adv_phase3_execute.pbs)
+ADV3E2=$(qsub -v ROUND=2 -W depend=afterok:$ADV3E1 config/run_adv_phase3_execute.pbs)
+ADV3P=$(qsub -W depend=afterok:$ADV3E2 config/run_adv_phase3_post.pbs)
+qsub -W depend=afterok:$ADV3P config/run_adv_phase4.pbs
+```
+
+---
+
+## 개별 명령 참고
+
+### main.py CLI 명령어
+
+| Command | 용도 | 주요 출력 위치 |
+|---------|------|---------------|
+| `vina` | Vina blind docking | 프로젝트 raw docking 출력 루트 |
+| `postprocess` | 포즈 파싱, 포켓 요약, receptor state 비교 | `output/{project}/vina/` |
+| `pyrosetta` | PyRosetta Phase 1 실행 | PyRosetta 결과 디렉토리 + PPI exports |
+| `ppi-postprocess` | PPI 후처리 출력 재생성/추출 | PPI export 영역 |
+| `verdict` | 사이트 판정 | `output/{project}/results/valid_sites.csv` |
+| `report` | 텍스트 및 통합 증거 보고서 | `output/{project}/results/project_report.txt` |
+| `validate` | 현재 출력 상태 검증 | validation 결과 |
+| `full` | 기본 통합 CLI 경로 (Vina 중심 baseline) | routine baseline 출력 트리 |
+| `organize` | Step별 출력 정리 | `output/{project}/steps/` |
+
+참고: `full`은 Vina 중심 routine baseline에 해당하며, 과학적 Phase 1->4 전체 경로를 의미하지 않습니다.
+
+### 수동 명령 시퀀스
+
+**Routine baseline (Vina 중심):**
+
+```bash
+python main.py -c config/example-project.yaml vina
+python main.py -c config/example-project.yaml postprocess
+python main.py -c config/example-project.yaml verdict
+python main.py -c config/example-project.yaml report
+python main.py -c config/example-project.yaml validate
+```
+
+**Phase 1 집중 (receptor-side evidence):**
+
+```bash
+python main.py -c config/example-project.yaml pyrosetta
+python main.py -c config/example-project.yaml ppi-postprocess
+```
+
+**단일 명령 전체 실행:**
+
+```bash
+python main.py -c config/example-project.yaml full
+```
+
+### 인터랙티브 모드
+
+```bash
+python main.py
+```
+
+사용 가능한 명령 목록을 확인할 수 있습니다.
+
+### 기타 PBS 스크립트
+
+```bash
+qsub config/run_vina_gpu.pbs              # Vina GPU docking
+qsub config/run_phase2_cascade.pbs        # Phase 2 cascade
+qsub config/run_phase3_gpu_round.pbs      # Phase 3 GPU round
+qsub config/run_phase3_cpu_round.pbs      # Phase 3 CPU round
+qsub config/run_full_test.pbs             # 전체 테스트
+qsub config/run_production_fresh.pbs      # 클린 프로덕션
+```
+
+---
+
+## 결과 확인
+
+### 해석 시작점
+
+프로덕션 완료 후 `output/{project}/step_index.md`부터 시작합니다.
+
+권장 읽기 순서:
 
 1. `output/{project}/step_index.md`
 2. `output/{project}/step6_report/project_report.txt`
@@ -30,9 +264,19 @@ Recommended reading order:
 4. `output/{project}/step4_vina_postprocess/vina_pocket_table.csv`
 5. `output/{project}/step3_ppi_postprocess/ppi_pyrosetta_residues.csv`
 
-Canonical runtime outputs remain under `output/{project}/` and remain the source of truth. The step folders are a derived interpretation view that can be regenerated from canonical outputs.
+Canonical runtime 출력은 `output/{project}/` 아래에 있으며 source of truth입니다. Step 폴더는 canonical 출력에서 파생된 해석 뷰이며 재생성 가능합니다.
 
-## Reference Output Layout
+### 출력 위치 매핑
+
+| 명령 계열 | 확인 위치 |
+|-----------|----------|
+| `vina`, `postprocess` | `output/{project}/vina/` |
+| `verdict`, `report`, `validate`, `full` | `output/{project}/results/` |
+| `pyrosetta`, `ppi-postprocess` | `output/phase1_ppi/` 및 등록된 PPI 결과 디렉토리 |
+| pre-qsub PBS | `output/pre_qsub_status/` |
+| advanced phases | `output/phase2_pockets/`, `output/phase3_docking/`, `output/phase4_perturbation/` (해당 lane이 범위 내일 때만) |
+
+### 참조 출력 레이아웃
 
 ```text
 output/egfr_myo1d_vina/
@@ -56,118 +300,44 @@ output/egfr_myo1d_vina/
   step7_validate/
 ```
 
-## Before You Run
+### 필수 체크포인트
 
-Confirm these conditions before submitting heavier work:
+| 단계 | 필수 체크포인트 | 중단 조건 |
+|------|---------------|----------|
+| Precheck | `output/pre_qsub_status/last_pass.json` 존재 및 pass | 미존재 또는 실패 |
+| Routine Vina postprocess | 핵심 Vina 테이블이 생성됨 | pose/pocket 요약 테이블 미존재 |
+| Routine integration | `valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` 존재 | 최종 판정 파일 미존재 또는 오래됨 |
+| Phase 1 PyRosetta | Phase 1 residue, patch, review 출력 존재 | 구조화된 Phase 1 export 없음 |
+| Phase 1 LightDock | LightDock 요청 시 cross-method 수렴 출력 존재 | LightDock 미완료인데 증거로 인용 |
 
-1. The active config is the intended project config, normally `config/example-project.yaml` or a direct derivative.
-2. The three receptor states are present and still mapped explicitly.
-3. Required ligands and prepared inputs are available for the intended lane.
-4. AFM-dependent fields are not being treated as active requirements.
-5. Worker count does not exceed the routine safe bound without an explicit reason.
-6. You know whether you are running the routine Vina-centered baseline, a Phase 1-focused branch, or both.
+### 해석 규칙
 
-If you need the exact shell or PBS commands for these checks, use [manual_execution.md](manual_execution.md).
+- Receptor state 분리를 모든 리뷰 단계에서 유지
+- PyRosetta = Phase 1 primary evidence
+- LightDock = independent secondary validation (standalone primary가 아님)
+- AFM = 비활성 (명시적 재활성화 전까지)
+- `verdict`, `report`, `validate` = routine baseline의 최종 해석 레이어
+- Advanced Phase 4 perturbation 출력을 기본 최종 레이어로 승격하지 말 것 (명시적 Phase 4 작업이 아닌 한)
 
-## Standard Operator Sequence
+---
 
-### 1. Run Pre-qsub Validation First
+## 흔한 실수
 
-Always run the lightweight precheck lane before the heavier production submission path.
+- `-c config/example-project.yaml`을 빠뜨리고 의도하지 않은 config로 실행
+- `full`이 과학적 4-Phase 전체 계획을 실행한다고 오해
+- AFM이 비활성인데 AFM 의존 작업 실행
+- 머신 코어 수를 보고 routine safe worker bound(16)를 초과
+- `output/{project}/`의 pointer stub 파일을 실제 payload로 착각
+- 과학적 Phase 번호와 production stage 번호를 혼동
+- 3개 receptor state를 요약/핸드오프 해석에서 너무 일찍 병합
 
-Required checkpoint:
+## 중단 및 에스컬레이션 조건
 
-- `output/pre_qsub_status/last_pass.json`
+다음 중 하나라도 해당되면 중단하고 문제를 해결합니다:
 
-If the precheck does not pass, stop and fix the configuration, input registration, or environment issue before moving on.
-
-### 2. Choose The Execution Lane
-
-Pick the run lane that matches the task instead of assuming every run should execute the full repository.
-
-| Lane | Use when | Primary outputs to review first |
-|------|------|------|
-| Routine baseline lane | You need the current default ligand-facing evidence flow | `output/egfr_myo1d_vina/results/valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` |
-| Phase 1 lane | You need receptor-side interface evidence or Phase 2 handoff material | `output/phase1_ppi/phase1_downstream_patch_reference.csv`, `phase1_interface_report.md` |
-| Combined review lane | You need routine baseline outputs plus current Phase 1 evidence for interpretation | Routine baseline result files plus the Phase 1 handoff and review artifacts |
-
-For the exact command surface of each lane, use [manual_execution.md](manual_execution.md).
-
-### 3. Submit Heavy Work In A Safe Order
-
-The default safe pattern is:
-
-1. Run pre-qsub validation.
-2. Submit the production lane only after precheck success.
-3. Run or review the Phase 1 PyRosetta branch when receptor-side evidence is required.
-4. Run LightDock only as the secondary validation path for Phase 1, not as a replacement for PyRosetta.
-5. Run verdict, report, and validate after the routine baseline outputs are available.
-
-Important rule:
-
-- Do not treat the scientific Phase 1-4 documents as proof that the whole repository should always run in a single unified end-to-end chain.
-
-## Required Checkpoints
-
-Review these checkpoints before moving to interpretation.
-
-| Stage | Required checkpoint | Stop condition |
-|------|------|------|
-| Precheck | `output/pre_qsub_status/last_pass.json` exists and reflects a pass | Missing or failed precheck |
-| Routine Vina postprocess | Core Vina tables are populated | Missing pose or pocket summary tables |
-| Routine integration | `valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` exist | Final decision files missing or obviously stale |
-| Phase 1 PyRosetta | Phase 1 residue, patch, and review outputs exist | No structured Phase 1 exports for downstream use |
-| Phase 1 LightDock | Cross-method convergence outputs exist when LightDock was requested | LightDock run incomplete but being cited as supporting evidence |
-
-For exact file names and which ones are handoff artifacts, use [output_artifact_map.md](output_artifact_map.md).
-
-## Step Folder Mode Semantics
-
-`run_production.py` keeps step-folder behavior aligned with canonical phase semantics:
-
-- `--status`: read-only for the step layer. It reports canonical phase status and derived step status without regenerating step folders, `step_index.md`, or `current_run_manifest.json`.
-- `--from N`: reruns canonical phases `N` and above. Earlier step folders remain untouched, while steps `N` through `7` are treated as stale until rebuilt.
-- `--only N[,M]`: rebuilds only the explicitly selected phases and matching step folders. Unselected steps are left unchanged.
-- `--force`: reruns the selected scope even when canonical outputs already exist and refreshes the matching derived step views.
-- Fresh run: there is no dedicated fresh-run flag in `run_production.py`. Use `python scripts/reset_production_outputs.py --execute` to clear the old project output root before a clean production rerun. This removes the step folders and root step files together with the canonical project outputs.
-
-Operational cautions:
-
-- Step folders are additive derived views, not replacements for canonical files.
-- `step2_ppi_raw/` records PyRosetta raw run paths and metadata, but it does not duplicate large raw directories.
-
-## Interpretation Rules During Operation
-
-- Preserve receptor-state separation in every review step.
-- Treat PyRosetta as the primary Phase 1 structural evidence layer.
-- Treat LightDock as independent secondary validation, not as standalone primary truth.
-- Treat AFM as inactive unless the user explicitly asks to re-enable it.
-- Treat `verdict`, `report`, and `validate` as the routine final interpretation layer for the default baseline.
-- Do not promote advanced Phase 4 perturbation outputs as the default final layer unless the task is explicitly Phase 4-oriented.
-
-## Common Operator Mistakes
-
-- Running with historical AFM expectations even though AFM is not in the routine baseline.
-- Assuming production stage numbers and scientific Phase 1-4 numbers mean the same thing.
-- Treating pointer stub files in `output/egfr_myo1d_vina/` as the actual payload files.
-- Running more than 16 workers by default because the machine exposes more cores.
-- Collapsing the three receptor states too early in summaries or handoff interpretation.
-
-## When To Stop And Escalate
-
-Stop and resolve the issue before continuing if any of these are true:
-
-- pre-qsub validation fails
-- receptor state registration is incomplete or ambiguous
-- the run depends on AFM inputs that are currently unset
-- LightDock is being cited without PyRosetta support in a context that expects primary evidence
-- the expected result files are missing but downstream interpretation is already starting
-- output files appear to be stale pointers rather than current payloads
-
-## Use These Docs Next
-
-- [manual_execution.md](manual_execution.md): exact commands and execution surfaces
-- [architecture.md](architecture.md): data-flow map and handoff structure
-- [data_inventory.md](data_inventory.md): physical input and output locations
-- [output_artifact_map.md](output_artifact_map.md): artifact meaning, priority, and downstream consumption
-- [current_vs_plan_matrix.md](current_vs_plan_matrix.md): current implementation gaps relative to the 4-phase plan
+- pre-qsub validation 실패
+- receptor state 등록이 불완전하거나 모호
+- 현재 미설정된 AFM 입력에 의존하는 실행
+- PyRosetta 지원 없이 LightDock만으로 primary evidence 인용
+- 예상 결과 파일이 없는데 하위 해석이 이미 시작됨
+- 출력 파일이 현재 payload가 아닌 오래된 pointer로 보임

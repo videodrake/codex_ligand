@@ -180,7 +180,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 ---
 
-### 2.2 포즈 파싱 (`parse_poses.py`)
+### 3.2 포즈 파싱 (`parse_poses.py`)
 
 **역할**: Vina 출력 PDBQT 파일에서 개별 포즈를 추출하고 구조화된 테이블로 변환
 
@@ -197,7 +197,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 ---
 
-### 2.3 접촉 잔기 추출 (`pose_contacts.py`)
+### 3.3 접촉 잔기 추출 (`pose_contacts.py`)
 
 **역할**: 각 도킹 포즈와 수용체 간 접촉 잔기를 거리 기반으로 계산
 
@@ -214,7 +214,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 ---
 
-### 2.4 포켓 클러스터링 (`pocket_cluster.py`)
+### 3.4 포켓 클러스터링 (`pocket_cluster.py`)
 
 **역할**: 도킹 포즈들을 3D 공간 위치 기반으로 포켓 단위로 그룹화
 
@@ -242,7 +242,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 ---
 
-### 2.5 포켓 요약 (`pocket_summary.py`)
+### 3.5 포켓 요약 (`pocket_summary.py`)
 
 **역할**: 포켓 단위 통계 집계 및 리간드-포켓 매핑
 
@@ -266,7 +266,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 ---
 
-### 2.6 교차 수용체 비교 (`cross_receptor.py`)
+### 3.6 교차 수용체 비교 (`cross_receptor.py`)
 
 **역할**: 서로 다른 수용체 상태의 포켓을 쌍별 비교
 
@@ -282,7 +282,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 ---
 
-### 2.7 부트스트랩 안정성 분석 (`pocket_stability.py`)
+### 3.7 부트스트랩 안정성 분석 (`pocket_stability.py`)
 
 **역할**: 포켓 클러스터링의 통계적 안정성을 부트스트랩 리샘플링으로 평가
 
@@ -300,7 +300,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 
 ---
 
-### 2.8 Phase 3 브릿지 (`phase3_bridge.py`)
+### 3.8 Phase 3 브릿지 (`phase3_bridge.py`)
 
 **역할**: Vina blind docking 결과를 Phase 3 focused docking의 입력 형식으로 변환
 

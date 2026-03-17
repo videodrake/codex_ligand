@@ -1,127 +1,88 @@
-﻿# EGFR-MYO1D Pipeline (`codex_ligand`)
+# EGFR-MYO1D Docking Pipeline
 
-This workspace contains the active EGFR-MYO1D state-comparison pipeline. The routine baseline is Vina-centered ligand analysis with Phase 1 PPI evidence from PyRosetta and secondary validation support from LightDock.
+EGFR 키나아제 도메인과 MYO1D beta-meander 간 단백질-단백질 상호작용(PPI)을 교란할 수 있는 **약물 결합 포켓**을 탐색하는 통합 파이프라인.
 
-## What This README Covers
+- AutoDock Vina (소분자 blind docking) + PyRosetta (PPI global blind docking) 이중 증거 통합
+- 3가지 EGFR 구조 상태 (3GT8_raw, EGFR_160-185, EGFR_170-200) 교차 비교
+- 모든 도킹/연산은 HPC 서버에서 `qsub`로 실행
 
-- what this workspace is
-- where to start reading
-- how to run main commands
-- where outputs are written
-
-For deep scientific or architecture detail, use `docs/`.
-
-## Quick Onboarding
-
-Read in this order:
-
-1. [docs/AI_START_HERE.md](docs/AI_START_HERE.md)
-2. [docs/current_pipeline_status.md](docs/current_pipeline_status.md)
-3. [docs/first_time_environment_setup.md](docs/first_time_environment_setup.md)
-4. [docs/runbook.md](docs/runbook.md)
-5. [docs/manual_execution.md](docs/manual_execution.md)
-6. [config/README.md](config/README.md)
-7. [output/README.md](output/README.md)
-
-## Current Output Reading Order
-
-For production runs driven by `run_production.py` or `qsub config/run_production.pbs`, start interpretation at `output/{project}/step_index.md`.
-
-Recommended reading order:
-
-1. `output/{project}/step_index.md`
-2. `output/{project}/step6_report/project_report.txt`
-3. `output/{project}/step5_verdict/valid_sites.csv`
-4. `output/{project}/step4_vina_postprocess/vina_pocket_table.csv`
-5. `output/{project}/step3_ppi_postprocess/ppi_pyrosetta_residues.csv`
-
-Canonical runtime outputs remain under the existing project root. The `step1_vina_raw/` through `step7_validate/` folders are derived interpretation views that can be regenerated from canonical outputs; they do not replace the root artifacts.
-
-## Repository Layout
-
-- `main.py`: Unified CLI entry point.
-- `egfr_pipeline/`: Core implementation package.
-- `config/`: YAML, INI, and PBS wrappers.
-- `docs/`: Onboarding, runbooks, architecture, and phase plans.
-- `input/`: Receptor and ligand inputs.
-- `output/`: Baseline and phase-separated outputs.
-- `tests/`: Validation and test suite.
-- `scripts/`: Utility scripts used by workflows.
-
-## Command Quickstart
-
-Run from `codex_ligand/` after activating the expected environment.
-
-Prerequisites:
-
-- `conda activate pyrosetta`
-- main config: `config/example-project.yaml`
-- run precheck before production or heavy submissions
+## 빠른 시작
 
 ```bash
-python main.py --help
-python main.py -c config/example-project.yaml validate --help
-qsub config/run_pre_qsub_checks.pbs
-```
-
-Routine baseline lane (execution order):
-
-```bash
-python main.py -c config/example-project.yaml vina
-python main.py -c config/example-project.yaml postprocess
-python main.py -c config/example-project.yaml verdict
-python main.py -c config/example-project.yaml report
-python main.py -c config/example-project.yaml validate
-```
-
-Additional commands:
-
-```bash
-python main.py -c config/example-project.yaml pyrosetta
-python main.py -c config/example-project.yaml md
-python main.py -c config/example-project.yaml ppi-postprocess
-python main.py -c config/example-project.yaml full
-```
-
-`md` opens the MD analysis submenu; the downstream analysis tools still take their own CLI arguments after that entry point.
-
-Scheduler wrappers:
-
-```bash
+# Workflow A: Standard Production (전체 자동)
 qsub config/run_pre_qsub_checks.pbs
 qsub config/run_production.pbs
+
+# Workflow B: Advanced PPI-First (PPI 결과 기반 정밀 탐색)
+qsub config/run_advanced_pipeline.pbs
 ```
 
-Expected output checkpoints after the routine baseline lane:
+상세 실행 방법: [docs/runbook.md](docs/runbook.md)
 
-- `output/egfr_myo1d_vina/step_index.md`
-- `output/egfr_myo1d_vina/vina_pose_table.csv`
-- `output/egfr_myo1d_vina/vina_pocket_table.csv`
-- `output/egfr_myo1d_vina/valid_sites.csv`
-- `output/egfr_myo1d_vina/project_report.txt`
+## 문서 안내
 
-## Output Entry Points
+| 문서 | 내용 | 대상 |
+|------|------|------|
+| [docs/PROJECT_USAGE_OVERVIEW.md](docs/PROJECT_USAGE_OVERVIEW.md) | 프로젝트 사용 개요 — 각 도구가 뭘 하는지, 어떤 정보를 얻는지 | 처음 읽는 사람 |
+| [PIPELINE_ARCHITECTURE_REPORT.md](PIPELINE_ARCHITECTURE_REPORT.md) | 전체 아키텍처 상세 보고서 — 모든 모듈, 알고리즘, 입출력 | 구조 파악 |
+| [docs/runbook.md](docs/runbook.md) | 실행 가이드 — qsub 명령, 순서, 결과 확인 | 실행할 때 |
+| [docs/environment_setup.md](docs/environment_setup.md) | 환경 설정 — conda, PyRosetta, 서버 설정 | 최초 설정 |
+| [config/README.md](config/README.md) | Config 파일 의미 — YAML, INI, PBS 설명 | 설정 변경 |
+| [docs/manual_vina.md](docs/manual_vina.md) | AutoDock Vina 상세 매뉴얼 | Vina 참고 |
+| [docs/manual_pyrosetta.md](docs/manual_pyrosetta.md) | PyRosetta PPI 도킹 상세 매뉴얼 | PPI 참고 |
+| [docs/phase1_notes.md](docs/phase1_notes.md) | Phase 1 참고 노트 — 실행, 샘플링, 필터, LightDock | Phase 1 상세 |
+| [docs/data_inventory.md](docs/data_inventory.md) | 입출력 데이터 인벤토리 | 데이터 추적 |
+| [docs/pre_qsub_test_line.md](docs/pre_qsub_test_line.md) | 사전 제출 테스트 절차 | 테스트 |
+| [docs/test_suite_triage.md](docs/test_suite_triage.md) | 테스트 분류 가이드 | 테스트 |
+| [docs/nightly_review_automation.md](docs/nightly_review_automation.md) | 자동 리뷰 스크립트 | 자동화 |
+| [CLAUDE.md](CLAUDE.md) | Claude Code AI 컨텍스트 | AI 세션 |
 
-- `output/{project}/step_index.md`: First human-readable entry point for completed production runs.
-- [output/README.md](output/README.md): Output root index.
-- [output/phase1_ppi/README.md](output/phase1_ppi/README.md)
-- [output/phase2_pockets/README.md](output/phase2_pockets/README.md)
-- [output/phase3_docking/README.md](output/phase3_docking/README.md)
-- [output/phase4_perturbation/README.md](output/phase4_perturbation/README.md)
+## 두 가지 워크플로우
 
-Routine baseline project output root:
+### Workflow A: Standard Production
 
-- `output/egfr_myo1d_vina/`
+Vina blind + PPI blind → 독립 결과 통합. `run_production.py` 자동화.
 
-## Documentation Indexes
+```
+Vina (약물 포켓) ──┐
+                    ├→ Verdict (겹치면 = 후보) → Report → Validate
+PPI (MYO1D 결합) ──┘
+```
 
-- [docs/README.md](docs/README.md): Full docs index.
-- [config/README.md](config/README.md): Config semantics and wrapper roles.
+### Workflow B: Advanced PPI-First
 
-## Current Baseline Guardrails
+PPI 결과 기반으로 포켓을 좁혀가며 정밀 탐색. 순차 의존.
 
-- Treat AFM as legacy optional unless explicitly re-enabled.
-- Keep the three receptor states separated in interpretation and reporting.
-- Treat `max_workers = 16` as the safe routine operating bound.
-- Prefer active code/config over older prose when conflicts appear.
+```
+PPI 도킹 → 포켓 분석(fpocket/P2Rank) → Focused Vina → 4축 스코어링
+```
 
+상세 설명: [docs/PROJECT_USAGE_OVERVIEW.md](docs/PROJECT_USAGE_OVERVIEW.md)
+
+## 레포 구조
+
+```
+main.py                    # 대화형 CLI
+run_production.py          # 프로덕션 자동화 (lane 기반)
+egfr_pipeline/             # 코어 구현
+  pyrosetta_docking/       #   PPI 도킹 엔진
+  vina/                    #   Vina 도킹 + 분석
+  phase1/ ~ phase4/        #   Phase별 모듈
+  ppi/                     #   PPI 준비/후처리
+config/                    # YAML, INI, PBS 스크립트
+docs/                      # 문서
+input/                     # 수용체/리간드 입력
+output/                    # 결과 출력
+tests/                     # 테스트
+scripts/                   # 유틸리티 스크립트
+```
+
+## 결과 확인
+
+프로덕션 완료 후:
+
+1. `output/{project}/step_index.md` — 진입점
+2. `output/{project}/project_report.txt` — 종합 보고서
+3. `output/{project}/valid_sites.csv` — 후보 포켓 판정
+4. `output/{project}/vina_pocket_table.csv` — 포켓별 상세
+5. PyMOL: `1_OVERVIEW_Clusters.pml` — 시각화
