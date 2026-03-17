@@ -149,7 +149,7 @@ class PipelineManager:
     # ------------------------------------------------------------------ #
     def _setup_logging(self) -> None:
         from .logging_config import setup_main_logging
-        self.logger = setup_main_logging(self.log_dir)
+        self.logger = setup_main_logging(self.log_dir, root_dir=self.root_dir)
 
     # ------------------------------------------------------------------ #
     #  Config

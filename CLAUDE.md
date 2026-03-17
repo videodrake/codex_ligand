@@ -277,6 +277,7 @@ output/{project}/steps/
 
 ```
 <PDB_NAME>/
+  PROGRESS.log           # 실시간 진행 상황 (tail -f로 모니터링, INFO 레벨)
   seed_complete.json     # 시드 완료 마커 (재실행 시 스킵 판단, --force로 초기화)
   scored_all_models.csv  # 전체 스코어링 모델 메트릭 + filter_status (재도킹 없이 재분석 가능)
   scored_stage2_models.csv # Stage 2 대상 모델의 비싼 메트릭 (packstat, unsatHb 등)

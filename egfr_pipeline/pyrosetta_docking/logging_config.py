@@ -28,11 +28,12 @@ _worker_initialized_path: str = ""
 
 # ---- Main process ---- #
 
-def setup_main_logging(log_dir: str) -> logging.Logger:
+def setup_main_logging(log_dir: str, root_dir: str = "") -> logging.Logger:
     """Configure and return the ``pipeline`` logger.
 
     * StreamHandler on *stdout* at INFO level
-    * FileHandler ``pipeline.log`` at DEBUG level
+    * FileHandler ``logs/pipeline.log`` at DEBUG level
+    * FileHandler ``PROGRESS.log`` at INFO level (output root, easy to find)
 
     Called once from ``PipelineManager.__init__``.
     """
@@ -55,13 +56,22 @@ def setup_main_logging(log_dir: str) -> logging.Logger:
     sh.setFormatter(main_fmt)
     logger.addHandler(sh)
 
-    # file — DEBUG and above
+    # file — DEBUG and above (detailed log)
     fh = logging.FileHandler(
         os.path.join(log_dir, "pipeline.log"), encoding="utf-8"
     )
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(main_fmt)
     logger.addHandler(fh)
+
+    # progress file — INFO and above (output root, tail -f friendly)
+    if root_dir:
+        ph = logging.FileHandler(
+            os.path.join(root_dir, "PROGRESS.log"), encoding="utf-8"
+        )
+        ph.setLevel(logging.INFO)
+        ph.setFormatter(main_fmt)
+        logger.addHandler(ph)
 
     logger.propagate = False
     return logger
