@@ -51,6 +51,7 @@ Last updated: 2026-03-17
 자동화는 장기 실행 브랜치 하나를 사용한다.
 
 - 브랜치명: `codex/nightly-incremental`
+- 수정 시작 전 선행 조건: 항상 최신 `main` 코드를 먼저 가져온다.
 - 원칙: 새벽 실행마다 최대 1개 논리 변경 = 최대 1개 커밋
 - 동기화 방식: 실행 시작 시 `origin/main` 기준으로 rebase 또는 fast-forward 정렬
 - 푸시 방식: 검증 통과 후에만 `origin/codex/nightly-incremental`로 푸시
@@ -67,10 +68,13 @@ Last updated: 2026-03-17
 
 자동화는 먼저 저장소를 안전 상태로 맞춘다.
 
-- `origin` 최신 상태 fetch
-- 자동화 브랜치 checkout
-- `origin/main`과 동기화
+- `origin/main` 최신 상태 fetch
+- 로컬 `main`을 최신 `origin/main` 기준으로 fast-forward
+- 자동화 브랜치를 checkout
+- 자동화 브랜치를 최신 `main` 기준으로 rebase
 - 충돌 발생 시 변경 없이 종료
+
+중요한 원칙은 "수정 전에 main부터 최신화"이다. 자동화 브랜치가 최신 `main`을 흡수하기 전에는 review unit 선택이나 파일 수정을 시작하지 않는다.
 
 이 단계에서 충돌이 나면 그날은 수정 작업을 하지 않는다. 새벽 자동화는 충돌 해결기가 아니라 유지보수 보조기이기 때문이다.
 
@@ -277,13 +281,15 @@ python scripts/nightly_review.py --label nightly-auto
 Review this repository and make at most one safe micro-improvement.
 
 Workflow:
-1. Generate the nightly review bundle with python scripts/nightly_review.py --label nightly-auto.
-2. Read the review manifest and checklist.
-3. Select exactly one review unit, preferring changed critical files first, then low-risk operational or documentation gaps.
-4. Make only a small change that is safe to verify locally. Avoid qsub, heavy docking, PyRosetta execution, and canonical output edits.
-5. Run the smallest relevant pytest target when executable code changes. If you only changed docs, say why tests were skipped.
-6. Overwrite the nightly review report with findings, change summary, tests run, and residual risks.
-7. Commit the change to the automation branch and push only if verification passed.
+1. Fetch origin/main and update local main before doing any review or edits.
+2. Rebase the automation branch onto the latest main snapshot.
+3. Generate the nightly review bundle with python scripts/nightly_review.py --label nightly-auto.
+4. Read the review manifest and checklist.
+5. Select exactly one review unit, preferring changed critical files first, then low-risk operational or documentation gaps.
+6. Make only a small change that is safe to verify locally. Avoid qsub, heavy docking, PyRosetta execution, and canonical output edits.
+7. Run the smallest relevant pytest target when executable code changes. If you only changed docs, say why tests were skipped.
+8. Overwrite the nightly review report with findings, change summary, tests run, and residual risks.
+9. Commit the change to the automation branch and push only if verification passed.
 
 Constraints:
 - Touch only one logical area.
