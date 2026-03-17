@@ -32,7 +32,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 from egfr_pipeline.residue_utils import (
     normalize_residue_id,
     extract_resnum,
@@ -284,15 +285,15 @@ def _euclidean_dist(
 # Evidence loading
 # ---------------------------------------------------------------------------
 
-def load_all_evidence(project_root: Path) -> dict:
+def load_all_evidence(vina_dir: Path, ppi_dir: Path) -> dict:
     return {
-        "pocket_table": _load_csv(project_root / "vina_pocket_table.csv"),
-        "drug_pocket_map": _load_csv(project_root / "vina_drug_pocket_map.csv"),
-        "pocket_comparison": _load_csv(project_root / "vina_pocket_comparison.csv"),
-        "ppi_residues": _load_csv(project_root / "ppi_pyrosetta_residues.csv"),
-        "ppi_summary": _load_csv(project_root / "ppi_pyrosetta_summary.csv"),
-        "afm_residues": _load_csv(project_root / "ppi_afm_residues.csv"),
-        "afm_summary": _load_csv(project_root / "ppi_afm_summary.csv"),
+        "pocket_table": _load_csv(vina_dir / "vina_pocket_table.csv"),
+        "drug_pocket_map": _load_csv(vina_dir / "vina_drug_pocket_map.csv"),
+        "pocket_comparison": _load_csv(vina_dir / "vina_pocket_comparison.csv"),
+        "ppi_residues": _load_csv(ppi_dir / "ppi_pyrosetta_residues.csv"),
+        "ppi_summary": _load_csv(ppi_dir / "ppi_pyrosetta_summary.csv"),
+        "afm_residues": _load_csv(ppi_dir / "ppi_afm_residues.csv"),
+        "afm_summary": _load_csv(ppi_dir / "ppi_afm_summary.csv"),
     }
 
 
@@ -1453,12 +1454,13 @@ def generate_verdict(
     Returns: (cross_method_agreement_csv_path, valid_sites_csv_path)
     """
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
-    out_dir = Path(output_dir) if output_dir else project_root
+    vina_post = paths.wa_phase4_vina_postprocess(config)
+    ppi_post = paths.wa_phase3_ppi_postprocess(config)
+    out_dir = Path(output_dir) if output_dir else paths.wa_phase5_verdict(config)
     thresholds = _get_thresholds(config)
 
     # Load evidence
-    evidence = load_all_evidence(project_root)
+    evidence = load_all_evidence(vina_post, ppi_post)
     pocket_rows = evidence["pocket_table"]
     if not pocket_rows:
         print("[verdict] No pocket table found — skipping.")
@@ -1576,7 +1578,7 @@ def generate_verdict(
         )
 
     # Step 2.8: Bootstrap stability data (optional)
-    bootstrap_path = project_root / "vina_pocket_bootstrap.csv"
+    bootstrap_path = vina_post / "vina_pocket_bootstrap.csv"
     bootstrap_index: Dict[Tuple[str, str], dict] = {}
     if bootstrap_path.exists():
         bootstrap_rows = _load_csv(bootstrap_path)

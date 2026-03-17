@@ -70,13 +70,14 @@ PRODUCTION_N_SEEDS = 5  # generate_configs.py와 동일
 
 
 def _build_ppi_targets() -> List[dict]:
+    from egfr_pipeline.paths import wa_phase2_ppi_seed
     targets = []
     for state in RECEPTOR_STATES:
         for seed_idx in range(PRODUCTION_N_SEEDS):
             targets.append({
                 "name": f"{state}_seed{seed_idx}",
                 "config_ini": f"config/phase1/phase1_prod_{state}_seed{seed_idx}.ini",
-                "docking_dir": f"output/phase1_ppi/{state}/prod_seed{seed_idx}",
+                "docking_dir": str(wa_phase2_ppi_seed(state=state, seed=seed_idx)),
                 "mapping_csv": "",
                 "receptor_id": state,
                 "partner_name": "ext_beta_meander",
@@ -188,10 +189,9 @@ def _select_ppi_targets(
 
 
 def _project_root() -> Path:
-    config = _load_config()
-    output_root = Path(config.get("output_root", "./output"))
-    project_name = config.get("project_name", "")
-    return output_root / project_name if project_name else output_root
+    """Workflow A root directory."""
+    from egfr_pipeline.paths import workflow_a_root
+    return workflow_a_root(_load_config())
 
 
 def _csv_has_rows(path: Path) -> bool:
@@ -481,17 +481,18 @@ def _refresh_step_view_outputs(
 
 def check_phase1() -> List[str]:
     """Phase 1 (Vina): 모든 receptor×ligand .pdbqt 결과 존재 여부.
-    결과물: output/{project}/{receptor_id}/{ligand}_blind.pdbqt
+    결과물: workflow_a/phase1_vina_docking/{receptor_id}/{ligand}_blind.pdbqt
     """
+    from egfr_pipeline.paths import wa_phase1_vina_docking
     config = _load_config()
-    project_root = _project_root()
+    vina_root = wa_phase1_vina_docking(config)
     mode = config.get("mode", config.get("vina", {}).get("mode", "blind"))
     missing = []
 
     for rec in config.get("receptors", []):
         for lig in config.get("ligands", []):
             lig_name = Path(lig["pdbqt"]).stem.replace("_ligand", "")
-            pdbqt = project_root / rec["id"] / f"{lig_name}_{mode}.pdbqt"
+            pdbqt = vina_root / rec["id"] / f"{lig_name}_{mode}.pdbqt"
             if not pdbqt.exists():
                 missing.append(f"{rec['id']}/{lig_name}_{mode}.pdbqt")
 
@@ -509,9 +510,10 @@ def check_phase2() -> List[str]:
 
 def check_phase3() -> List[str]:
     """Phase 3 (PPI postprocess): residue + summary tables exist and are non-empty."""
-    project_root = _project_root()
-    residue_path = project_root / "ppi_pyrosetta_residues.csv"
-    summary_path = project_root / "ppi_pyrosetta_summary.csv"
+    from egfr_pipeline.paths import wa_phase3_ppi_postprocess
+    ppi_post = wa_phase3_ppi_postprocess(_load_config())
+    residue_path = ppi_post / "ppi_pyrosetta_residues.csv"
+    summary_path = ppi_post / "ppi_pyrosetta_summary.csv"
     if _csv_has_rows(residue_path) and _csv_has_rows(summary_path):
         return []
     missing = []
@@ -523,12 +525,10 @@ def check_phase3() -> List[str]:
 
 
 def check_phase4() -> List[str]:
-    """Phase 4 (Vina Postprocess): 핵심 CSV들 존재+비어있지 않음.
-    결과물: vina_pose_table.csv, vina_pocket_table.csv, vina_drug_pocket_map.csv,
-           vina_pocket_comparison.csv, vina_pocket_bootstrap.csv
-    """
+    """Phase 4 (Vina Postprocess): 핵심 CSV들 존재+비어있지 않음."""
+    from egfr_pipeline.paths import wa_phase4_vina_postprocess
     config = _load_config()
-    project_root = _project_root()
+    project_root = wa_phase4_vina_postprocess(config)
     required = [
         "vina_pose_table.csv",
         "vina_pocket_table.csv",
@@ -557,10 +557,9 @@ def check_phase4() -> List[str]:
 
 
 def check_phase5() -> List[str]:
-    """Phase 5 (Verdict): valid_sites.csv 존재+비어있지 않음.
-    결과물: valid_sites.csv, cross_method_agreement.csv
-    """
-    project_root = _project_root()
+    """Phase 5 (Verdict): valid_sites.csv 존재+비어있지 않음."""
+    from egfr_pipeline.paths import wa_phase5_verdict
+    project_root = wa_phase5_verdict(_load_config())
     missing = []
     for name in ["valid_sites.csv", "cross_method_agreement.csv"]:
         if not _csv_has_rows(project_root / name):
@@ -569,10 +568,9 @@ def check_phase5() -> List[str]:
 
 
 def check_phase6() -> List[str]:
-    """Phase 6 (Report): project_report.txt 존재.
-    결과물: project_report.txt, combined_residue_evidence.csv
-    """
-    project_root = _project_root()
+    """Phase 6 (Report): project_report.txt 존재."""
+    from egfr_pipeline.paths import wa_phase6_report
+    project_root = wa_phase6_report(_load_config())
     missing = []
     report = project_root / "project_report.txt"
     if not report.exists() or report.stat().st_size < 100:
@@ -669,11 +667,13 @@ def phase1_vina(
 ):
     """Vina blind docking — receptor별 병렬 실행."""
     from concurrent.futures import ProcessPoolExecutor, as_completed
+    from egfr_pipeline.paths import ensure_wa_dirs
 
     if engine != "cpu-vina":
         raise RuntimeError(f"Unsupported Vina engine for baseline lane: {engine}")
 
     config = _load_config()
+    ensure_wa_dirs(config)
     _emit_resource_warnings(config)
     from egfr_pipeline.vina.vina_executor import ensure_project_config_inputs_ready
 
@@ -827,10 +827,12 @@ def _legacy_phase3_ppi_postprocess():
 def phase4_vina_postprocess():
     """Vina 후처리 전체 체인."""
     from egfr_pipeline.config import load_config
+    from egfr_pipeline.paths import wa_phase4_vina_postprocess, ensure_wa_dirs
     config_str = str(CONFIG_PATH)
     config = load_config(config_str)
     pp = config.get("postprocess") or {}
-    project_root = _project_root()
+    ensure_wa_dirs(config)
+    project_root = wa_phase4_vina_postprocess(config)
 
     def _stage_enabled(flag_name: str) -> bool:
         return bool(pp.get(flag_name, True))
@@ -1044,9 +1046,15 @@ def _finalize_lane() -> object:
 
 def _validate_adv_handoff(lane: str) -> None:
     """Advanced lane 사전 조건 파일 존재 검증. defense-in-depth."""
-    phase1_dir = REPO_ROOT / "output" / "phase1_ppi"
-    phase2_dir = REPO_ROOT / "output" / "phase2_pockets"
-    phase3_dir = REPO_ROOT / "output" / "phase3_docking"
+    from egfr_pipeline.paths import (
+        wa_phase2_ppi_docking, wb_phase1_ppi_analysis,
+        wb_phase2_pocket_analysis, wb_phase3_focused_docking,
+    )
+    config = _load_config()
+    ppi_dock_dir = wa_phase2_ppi_docking(config)
+    wb_p1 = wb_phase1_ppi_analysis(config)
+    wb_p2 = wb_phase2_pocket_analysis(config)
+    wb_p3 = wb_phase3_focused_docking(config)
 
     checks = {
         "adv-phase1": (
@@ -1055,29 +1063,29 @@ def _validate_adv_handoff(lane: str) -> None:
             "Run: qsub config/run_ppi_state_seed.pbs"
         ),
         "adv-phase2": (
-            lambda: [] if (phase1_dir / "phase1_downstream_patch_reference.csv").exists() else ["handoff"],
-            f"Phase 1 핸드오프 없음: {phase1_dir / 'phase1_downstream_patch_reference.csv'}\n"
+            lambda: [] if (wb_p1 / "phase1_downstream_patch_reference.csv").exists() else ["handoff"],
+            f"Phase 1 핸드오프 없음: {wb_p1 / 'phase1_downstream_patch_reference.csv'}\n"
             "Run: qsub config/run_adv_phase1.pbs"
         ),
         "adv-phase3-setup": (
-            lambda: [] if (phase2_dir / "phase3_candidate_pocket_reference.csv").exists() else ["handoff"],
-            f"Phase 2 핸드오프 없음: {phase2_dir / 'phase3_candidate_pocket_reference.csv'}\n"
+            lambda: [] if (wb_p2 / "phase3_candidate_pocket_reference.csv").exists() else ["handoff"],
+            f"Phase 2 핸드오프 없음: {wb_p2 / 'phase3_candidate_pocket_reference.csv'}\n"
             "Run: qsub config/run_adv_phase2.pbs"
         ),
         "adv-phase3-execute": (
-            lambda: [] if (phase3_dir / "phase3_docking_job_table.csv").exists() else ["setup"],
-            f"Phase 3 job table 없음: {phase3_dir / 'phase3_docking_job_table.csv'}\n"
+            lambda: [] if (wb_p3 / "phase3_docking_job_table.csv").exists() else ["setup"],
+            f"Phase 3 job table 없음: {wb_p3 / 'phase3_docking_job_table.csv'}\n"
             "Run: qsub config/run_adv_phase3_setup.pbs"
         ),
         "adv-phase3-post": (
-            lambda: [] if _csv_has_rows(phase3_dir / "phase3_round_log.csv") else ["round_log"],
+            lambda: [] if _csv_has_rows(wb_p3 / "phase3_round_log.csv") else ["round_log"],
             f"Phase 3 round log 없거나 비어있음.\n"
             "최소 1회 execute round 필요.\n"
             "Run: qsub -v ROUND=0 config/run_adv_phase3_execute.pbs"
         ),
         "adv-phase4": (
-            lambda: [] if (phase3_dir / "phase4_docking_evidence_reference.csv").exists() else ["handoff"],
-            f"Phase 3 핸드오프 없음: {phase3_dir / 'phase4_docking_evidence_reference.csv'}\n"
+            lambda: [] if (wb_p3 / "phase4_docking_evidence_reference.csv").exists() else ["handoff"],
+            f"Phase 3 핸드오프 없음: {wb_p3 / 'phase4_docking_evidence_reference.csv'}\n"
             "Run: qsub config/run_adv_phase3_post.pbs"
         ),
     }

@@ -85,9 +85,9 @@ def _make_pdb(path: Path, chain: str, start: int = 699, count: int = 4) -> None:
 def test_run_validation_smoke(tmp_path: Path) -> None:
     output_root = tmp_path / "output"
     project_name = "smoke_project"
-    project_root = output_root / project_name
+    vina_post = output_root / "workflow_a" / "phase4_vina_postprocess"
     receptors_dir = tmp_path / "input" / "receptors"
-    raw_pose = project_root / "raw_pose_1.pdbqt"
+    raw_pose = vina_post / "raw_pose_1.pdbqt"
 
     _make_pdb(receptors_dir / "3GT8_raw.pdb", "A")
     _make_pdb(receptors_dir / "EGFR_160-185.pdb", "A")
@@ -95,7 +95,7 @@ def test_run_validation_smoke(tmp_path: Path) -> None:
     _write(raw_pose, ["MODEL 1", "ENDMDL"])
 
     _write(
-        project_root / "vina_pose_table.csv",
+        vina_post / "vina_pose_table.csv",
         [
             ",".join(POSE_HEADER),
             ",".join(
@@ -126,7 +126,7 @@ def test_run_validation_smoke(tmp_path: Path) -> None:
         ],
     )
     _write(
-        project_root / "vina_pocket_table.csv",
+        vina_post / "vina_pocket_table.csv",
         [
             ",".join(POCKET_HEADER),
             ",".join(
@@ -152,7 +152,7 @@ def test_run_validation_smoke(tmp_path: Path) -> None:
         ],
     )
     _write(
-        project_root / "vina_drug_pocket_map.csv",
+        vina_post / "vina_drug_pocket_map.csv",
         [
             ",".join(MAP_HEADER),
             ",".join(

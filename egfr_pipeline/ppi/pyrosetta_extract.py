@@ -19,6 +19,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from egfr_pipeline import paths
 from egfr_pipeline.config import load_config
 from egfr_pipeline.phase1.extract_interface import extract_run
 from egfr_pipeline.residue_utils import extract_resnum, normalize_residue_id
@@ -614,10 +615,7 @@ def extract_pyrosetta_batch(
 ) -> Tuple[Path, Path]:
     """Extract PyRosetta PPI evidence for all receptors in config."""
     config = load_config(config_path)
-    out_root = Path(output_dir) if output_dir else Path(config.get("output_root", "./output"))
-    project_name = config.get("project_name", "")
-    if project_name:
-        out_root = out_root / project_name
+    out_root = Path(output_dir) if output_dir else paths.wa_phase3_ppi_postprocess(config)
 
     ppi_config = config.get("ppi", {})
     pyrosetta_dirs = pyrosetta_result_dirs or ppi_config.get("pyrosetta_result_dirs", {})

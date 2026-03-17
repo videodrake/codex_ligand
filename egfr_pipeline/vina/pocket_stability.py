@@ -17,7 +17,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 from egfr_pipeline.vina.pocket_cluster import (
     assign_pockets,
     euclidean_distance,
@@ -299,8 +300,8 @@ def bootstrap_from_config(
 ) -> Path:
     """Run bootstrap analysis from config, save vina_pocket_bootstrap.csv."""
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
-    pose_table = project_root / "vina_pose_table.csv"
+    postprocess_root = paths.wa_phase4_vina_postprocess(config)
+    pose_table = postprocess_root / "vina_pose_table.csv"
 
     if not pose_table.exists():
         raise FileNotFoundError(f"Pose table not found: {pose_table}")
@@ -338,7 +339,7 @@ def bootstrap_from_config(
         row["sample_fraction"] = round(float(fraction), 4)
         row["stability_scope"] = "pose_resampling"
 
-    out_csv = Path(output_path) if output_path else project_root / "vina_pocket_bootstrap.csv"
+    out_csv = Path(output_path) if output_path else postprocess_root / "vina_pocket_bootstrap.csv"
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=BOOTSTRAP_FIELDS)

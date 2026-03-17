@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+from egfr_pipeline import paths
 from egfr_pipeline.config import resolve_resource_config
 from egfr_pipeline.runtime import cap_worker_count, resolve_runtime_resources
 
@@ -410,11 +411,8 @@ def build_receptor_output_dir(args, receptor_id: str) -> Optional[Path]:
     output_root = getattr(args, "output_root", None)
     if not output_root:
         return None
-    base = Path(output_root)
-    project_name = getattr(args, "project_name", None)
-    if project_name:
-        base = base / project_name
-    return base / receptor_id
+    config = {"output_root": output_root}
+    return paths.wa_phase1_vina_receptor(config, receptor_id)
 
 
 def append_job_status(out_dir: Path, record: Dict[str, Any]) -> None:

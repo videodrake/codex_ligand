@@ -19,7 +19,7 @@ def test_validate_precheck_status_requires_marker(tmp_path: Path):
 
 
 def test_validate_precheck_status_accepts_existing_marker(tmp_path: Path):
-    status_dir = tmp_path / "output" / "pre_qsub_status"
+    status_dir = tmp_path / "output" / "precheck"
     status_dir.mkdir(parents=True, exist_ok=True)
     (status_dir / "last_pass.json").write_text('{"status":"passed"}', encoding="utf-8")
 
@@ -30,7 +30,7 @@ def test_validate_precheck_status_accepts_existing_marker(tmp_path: Path):
 
 
 def test_validate_precheck_status_rejects_failed_marker(tmp_path: Path):
-    status_dir = tmp_path / "output" / "pre_qsub_status"
+    status_dir = tmp_path / "output" / "precheck"
     status_dir.mkdir(parents=True, exist_ok=True)
     (status_dir / "last_pass.json").write_text('{"status":"failed"}', encoding="utf-8")
 

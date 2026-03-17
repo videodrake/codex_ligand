@@ -14,7 +14,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +113,43 @@ OPTIONAL_OUTPUTS = [
 ]
 
 
-def check_output_existence(project_root: Path, result: ValidationResult):
+class _PhaseLayout:
+    """Route filenames to their correct phase directory.
+
+    Implements ``__truediv__`` so existing ``project_root / name`` expressions
+    work unchanged while resolving to the new per-phase directory layout.
+    """
+
+    def __init__(self, config: dict):
+        self.vina = paths.wa_phase4_vina_postprocess(config)
+        self.ppi = paths.wa_phase3_ppi_postprocess(config)
+        self.verdict = paths.wa_phase5_verdict(config)
+        self.report = paths.wa_phase6_report(config)
+
+    def __truediv__(self, name: str) -> Path:
+        if isinstance(name, str):
+            if name.startswith("vina_"):
+                return self.vina / name
+            if name.startswith("ppi_"):
+                return self.ppi / name
+            if name in (
+                "cross_method_agreement.csv",
+                "valid_sites.csv",
+                "vina_consensus_sites.csv",
+            ):
+                return self.verdict / name
+            if name in ("project_report.txt", "combined_residue_evidence.csv"):
+                return self.report / name
+        return self.vina / name
+
+    def __repr__(self):
+        return (
+            f"_PhaseLayout(vina={self.vina}, ppi={self.ppi}, "
+            f"verdict={self.verdict}, report={self.report})"
+        )
+
+
+def check_output_existence(project_root, result: ValidationResult):
     """8.1: Verify core outputs exist."""
     for name in CORE_OUTPUTS:
         path = project_root / name
@@ -731,14 +768,14 @@ def run_validation(
     repo_root: Optional[str] = None,
 ) -> ValidationResult:
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
+    project_root = _PhaseLayout(config)
     repo = Path(repo_root) if repo_root else Path(".")
 
     result = ValidationResult()
 
     print("Running validation checks...")
     print(f"  Config: {config_path}")
-    print(f"  Project root: {project_root}")
+    print(f"  Phase layout: {project_root}")
     print(f"  Repo root: {repo}")
     print()
 

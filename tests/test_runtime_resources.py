@@ -39,7 +39,7 @@ def test_lane_is_complete_requires_completed_marker(tmp_path: Path) -> None:
 
     manifest_path = (
         project_root
-        / "runtime"
+        / "logs"
         / "lanes"
         / "vina-cpu__cpu-vina"
         / "runtime_manifest.json"

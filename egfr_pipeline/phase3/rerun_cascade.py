@@ -32,9 +32,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
-PHASE3_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase3_docking"
+from egfr_pipeline import paths
+
+_CFG = {"output_root": str(paths.REPO_ROOT / "output")}
 
 
 def run_phase3_cascade(
@@ -57,10 +57,10 @@ def run_phase3_cascade(
     allocated_cpus : int, optional
         Scheduler-allocated CPUs for worker cap.
     """
-    output_dir = PHASE3_OUTPUT_DIR
+    output_dir = paths.wb_phase3_focused_docking(_CFG)
 
     # Handoff file validation
-    handoff = PHASE2_OUTPUT_DIR / "phase3_candidate_pocket_reference.csv"
+    handoff = paths.wb_phase2_pocket_analysis(_CFG) / "phase3_candidate_pocket_reference.csv"
     if not handoff.exists():
         raise FileNotFoundError(
             f"Phase 2 handoff file not found: {handoff}\n"

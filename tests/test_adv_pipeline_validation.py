@@ -6,6 +6,18 @@ from pathlib import Path
 import pytest
 
 import run_production
+from egfr_pipeline import paths as paths_mod
+
+
+def _patch_output_root(tmp_path: Path, monkeypatch):
+    """Patch paths module to use tmp_path as output root."""
+    monkeypatch.setattr(paths_mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(run_production, "REPO_ROOT", tmp_path)
+
+    def _fake_output_root(config=None):
+        return tmp_path / "output"
+
+    monkeypatch.setattr(paths_mod, "output_root", _fake_output_root)
 
 
 # ---------------------------------------------------------------------------
@@ -16,8 +28,9 @@ def test_validate_adv_handoff_phase2_raises_without_phase1_handoff(
     tmp_path: Path, monkeypatch,
 ) -> None:
     """Phase 2 requires phase1_downstream_patch_reference.csv from Phase 1."""
-    monkeypatch.setattr(run_production, "REPO_ROOT", tmp_path)
-    (tmp_path / "output" / "phase1_ppi").mkdir(parents=True)
+    _patch_output_root(tmp_path, monkeypatch)
+    wb_p1 = tmp_path / "output" / "workflow_b" / "phase1_ppi_analysis"
+    wb_p1.mkdir(parents=True)
 
     with pytest.raises(FileNotFoundError, match="Phase 1 핸드오프 없음"):
         run_production._validate_adv_handoff("adv-phase2")
@@ -27,10 +40,10 @@ def test_validate_adv_handoff_phase2_passes_with_handoff(
     tmp_path: Path, monkeypatch,
 ) -> None:
     """Phase 2 passes when handoff file exists."""
-    monkeypatch.setattr(run_production, "REPO_ROOT", tmp_path)
-    phase1_dir = tmp_path / "output" / "phase1_ppi"
-    phase1_dir.mkdir(parents=True)
-    (phase1_dir / "phase1_downstream_patch_reference.csv").write_text(
+    _patch_output_root(tmp_path, monkeypatch)
+    wb_p1 = tmp_path / "output" / "workflow_b" / "phase1_ppi_analysis"
+    wb_p1.mkdir(parents=True)
+    (wb_p1 / "phase1_downstream_patch_reference.csv").write_text(
         "col1,col2\na,b\n", encoding="utf-8",
     )
 
@@ -42,8 +55,7 @@ def test_validate_adv_handoff_phase1_checks_ppi_completion(
     tmp_path: Path, monkeypatch,
 ) -> None:
     """Phase 1 (adv-phase1) fails when PPI docking is incomplete."""
-    monkeypatch.setattr(run_production, "REPO_ROOT", tmp_path)
-    # check_phase2 returns non-empty list = missing targets
+    _patch_output_root(tmp_path, monkeypatch)
     monkeypatch.setattr(
         run_production, "check_phase2", lambda: ["3GT8_raw_seed0"],
     )
@@ -56,10 +68,9 @@ def test_validate_adv_handoff_phase3_post_requires_round_log(
     tmp_path: Path, monkeypatch,
 ) -> None:
     """Phase 3 post mode requires a non-empty round log."""
-    monkeypatch.setattr(run_production, "REPO_ROOT", tmp_path)
-    phase3_dir = tmp_path / "output" / "phase3_docking"
-    phase3_dir.mkdir(parents=True)
-    # No round log file at all
+    _patch_output_root(tmp_path, monkeypatch)
+    wb_p3 = tmp_path / "output" / "workflow_b" / "phase3_focused_docking"
+    wb_p3.mkdir(parents=True)
 
     with pytest.raises(FileNotFoundError, match="round log"):
         run_production._validate_adv_handoff("adv-phase3-post")
@@ -73,14 +84,18 @@ def test_phase3_execute_raises_without_setup(tmp_path: Path, monkeypatch) -> Non
     """Phase 3 cascade execute mode raises when job table is missing."""
     from egfr_pipeline.phase3 import rerun_cascade
 
-    monkeypatch.setattr(rerun_cascade, "PHASE3_OUTPUT_DIR", tmp_path)
-    # Create handoff so it doesn't fail on that check
-    phase2_dir = tmp_path.parent / "phase2_pockets"
-    phase2_dir.mkdir(parents=True, exist_ok=True)
-    (phase2_dir / "phase3_candidate_pocket_reference.csv").write_text(
+    def _fake_output_root(config=None):
+        return tmp_path
+
+    monkeypatch.setattr(paths_mod, "output_root", _fake_output_root)
+
+    wb_p2 = tmp_path / "workflow_b" / "phase2_pocket_analysis"
+    wb_p2.mkdir(parents=True, exist_ok=True)
+    (wb_p2 / "phase3_candidate_pocket_reference.csv").write_text(
         "col\nval\n", encoding="utf-8",
     )
-    monkeypatch.setattr(rerun_cascade, "PHASE2_OUTPUT_DIR", phase2_dir)
+    wb_p3 = tmp_path / "workflow_b" / "phase3_focused_docking"
+    wb_p3.mkdir(parents=True, exist_ok=True)
 
     with pytest.raises(FileNotFoundError, match="job table"):
         rerun_cascade.run_phase3_cascade(mode="execute", round_id=0)
@@ -96,7 +111,6 @@ def test_execute_round_raises_when_vina_unavailable(monkeypatch) -> None:
 
     jobs = [{"seed_index": "0", "cpu_per_job": "4", "job_id": "test_001"}]
 
-    # Make the Vina import fail
     import builtins
     original_import = builtins.__import__
 

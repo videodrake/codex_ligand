@@ -6,7 +6,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 
 
 def load_pose_table(path: Path) -> List[dict]:
@@ -166,15 +167,15 @@ def write_csv(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
 
 def summarize_from_config(config_path: str, pose_table_path: Optional[str] = None) -> Tuple[Path, Path, Path]:
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
-    pose_table = Path(pose_table_path) if pose_table_path else project_root / "vina_pose_table.csv"
+    postprocess_root = paths.wa_phase4_vina_postprocess(config)
+    pose_table = Path(pose_table_path) if pose_table_path else postprocess_root / "vina_pose_table.csv"
     rows = load_pose_table(pose_table)
 
     # Cross-receptor comparison is not implemented yet; residue numbering consistency
     # should be verified on the real server before Task Group 5 uses these summaries.
     pocket_rows, drug_map_rows, residue_occupancy_rows = summarize_pose_rows(rows)
     pocket_csv = write_csv(
-        project_root / "vina_pocket_table.csv",
+        postprocess_root / "vina_pocket_table.csv",
         pocket_rows,
         [
             "receptor_id",
@@ -196,7 +197,7 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
         ],
     )
     drug_csv = write_csv(
-        project_root / "vina_drug_pocket_map.csv",
+        postprocess_root / "vina_drug_pocket_map.csv",
         drug_map_rows,
         [
             "receptor_id",
@@ -212,7 +213,7 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
         ],
     )
     occupancy_csv = write_csv(
-        project_root / "vina_pocket_residue_occupancy.csv",
+        postprocess_root / "vina_pocket_residue_occupancy.csv",
         residue_occupancy_rows,
         [
             "receptor_id",

@@ -154,7 +154,8 @@ def _write_simple_pdb(path: Path, chain: str = "A") -> None:
 
 def test_generate_verdict_prefers_stable_recurrent_site_over_pose_heavy_site(tmp_path: Path):
     output_root = tmp_path / "output"
-    project_root = output_root / "verdict_project"
+    vina_post = output_root / "workflow_a" / "phase4_vina_postprocess"
+    ppi_post = output_root / "workflow_a" / "phase3_ppi_postprocess"
     receptors_dir = tmp_path / "input" / "receptors"
 
     for name in ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]:
@@ -174,7 +175,7 @@ def test_generate_verdict_prefers_stable_recurrent_site_over_pose_heavy_site(tmp
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
     _write_csv(
-        project_root / "vina_pocket_table.csv",
+        vina_post / "vina_pocket_table.csv",
         [
             "receptor_id", "pocket_id", "centroid_x", "centroid_y", "centroid_z",
             "n_pose", "n_ligand", "best_affinity", "mean_affinity",
@@ -189,7 +190,7 @@ def test_generate_verdict_prefers_stable_recurrent_site_over_pose_heavy_site(tmp
         ],
     )
     _write_csv(
-        project_root / "vina_drug_pocket_map.csv",
+        vina_post / "vina_drug_pocket_map.csv",
         [
             "receptor_id", "ligand_id", "dominant_pocket_id", "dominant_pocket_pose_count",
             "dominant_pocket_fraction", "best_affinity", "best_pose_rank",
@@ -206,7 +207,7 @@ def test_generate_verdict_prefers_stable_recurrent_site_over_pose_heavy_site(tmp
         ],
     )
     _write_csv(
-        project_root / "vina_pocket_comparison.csv",
+        vina_post / "vina_pocket_comparison.csv",
         [
             "receptor_a", "pocket_a", "receptor_b", "pocket_b", "centroid_dist",
             "residue_jaccard", "residue_overlap_coeff", "shared_residues",
@@ -221,7 +222,7 @@ def test_generate_verdict_prefers_stable_recurrent_site_over_pose_heavy_site(tmp
         ],
     )
     _write_csv(
-        project_root / "ppi_pyrosetta_residues.csv",
+        ppi_post / "ppi_pyrosetta_residues.csv",
         [
             "receptor_id", "partner_id", "source", "chain", "residue_id", "residue_num",
             "residue_name", "lobe_label", "construct_type", "orientation_validation_status",
@@ -235,7 +236,7 @@ def test_generate_verdict_prefers_stable_recurrent_site_over_pose_heavy_site(tmp
         ],
     )
     _write_csv(
-        project_root / "ppi_pyrosetta_summary.csv",
+        ppi_post / "ppi_pyrosetta_summary.csv",
         [
             "receptor_id", "partner_id", "source", "construct_type", "orientation_validation_status",
             "n_runs_total", "n_runs_completed", "seed_indices",
@@ -250,7 +251,7 @@ def test_generate_verdict_prefers_stable_recurrent_site_over_pose_heavy_site(tmp
         ]],
     )
     _write_csv(
-        project_root / "vina_pocket_bootstrap.csv",
+        vina_post / "vina_pocket_bootstrap.csv",
         [
             "receptor_id", "pocket_id", "pocket_exists_frac", "centroid_std_A",
             "affinity_mean", "affinity_std", "affinity_iqr",

@@ -14,7 +14,7 @@ set +u
 source ~/.bashrc
 set -u
 
-PRECHECK_STATUS_DIR="${PBS_O_WORKDIR}/output/pre_qsub_status"
+PRECHECK_STATUS_DIR="${PBS_O_WORKDIR}/output/precheck"
 PRECHECK_STATUS_FILE="${PRECHECK_STATUS_DIR}/last_pass.json"
 
 mkdir -p "${PRECHECK_STATUS_DIR}"

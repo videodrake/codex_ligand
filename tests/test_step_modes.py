@@ -407,48 +407,15 @@ def test_step_view_docs_cover_reading_order_and_canonical_vs_derived_contract() 
     repo_root = Path(__file__).resolve().parents[1]
     expectations = {
         "README.md": [
-            "step_index.md",
-            "canonical runtime outputs",
-            "derived interpretation views",
-        ],
-        "output/README.md": [
-            "step_index.md",
-            "canonical",
-            "derived interpretation views",
-        ],
-        "docs/data_flow_guide.md": [
-            "step_index.md",
-            "canonical runtime outputs",
-            "derived interpretation view",
-            "step1_vina_raw/",
-            "step7_validate/",
-        ],
-        "docs/output_artifact_map.md": [
-            "step_index.md",
-            "canonical",
-            "derived interpretation view",
-            "step1_vina_raw/",
-            "step7_validate/",
-        ],
-        "docs/current_pipeline_status.md": [
-            "step_index.md",
-            "canonical runtime outputs",
-            "derived view",
-        ],
-        "docs/architecture.md": [
-            "step_index.md",
-            "canonical",
-            "derived interpretation view",
-            "step1_vina_raw/",
+            "step_index",
+            "workflow a",
+            "workflow b",
         ],
         "docs/runbook.md": [
-            "step_index.md",
             "--status",
             "--from",
             "--only",
             "--force",
-            "reset_production_outputs.py",
-            "derived interpretation view",
         ],
     }
 

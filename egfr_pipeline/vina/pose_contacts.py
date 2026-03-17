@@ -4,7 +4,8 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 from egfr_pipeline.vina.parse_poses import parse_pose_blocks
 
 
@@ -105,8 +106,8 @@ def build_receptor_pdb_map(config: dict) -> Dict[str, Path]:
 
 def enrich_pose_table_with_contacts(config_path: str, pose_table_path: Optional[str] = None, cutoff: float = 4.0) -> Path:
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
-    pose_table = Path(pose_table_path) if pose_table_path else project_root / "vina_pose_table.csv"
+    postprocess_root = paths.wa_phase4_vina_postprocess(config)
+    pose_table = Path(pose_table_path) if pose_table_path else postprocess_root / "vina_pose_table.csv"
     rows = load_pose_table(pose_table)
     receptor_pdb_map = build_receptor_pdb_map(config)
     receptor_cache: Dict[str, List[dict]] = {}

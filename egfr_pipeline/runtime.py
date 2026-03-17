@@ -138,7 +138,8 @@ def lane_identity(
 
 
 def runtime_root(project_root: Path) -> Path:
-    return Path(project_root) / "runtime"
+    """Runtime logs directory. With new layout, project_root is workflow_a/."""
+    return Path(project_root) / "logs"
 
 
 def lane_runtime_dir(

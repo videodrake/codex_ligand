@@ -20,7 +20,7 @@ def validate_precheck_status(
     skip_precheck_guard: str,
 ) -> tuple[bool, str]:
     """Validate the precheck marker and return (ok, message)."""
-    status_file = workdir / "output" / "pre_qsub_status" / "last_pass.json"
+    status_file = workdir / "output" / "precheck" / "last_pass.json"
 
     if not should_enforce_precheck(mode, skip_precheck_guard):
         return True, f"Precheck guard bypassed (mode={mode}, skip={skip_precheck_guard})."

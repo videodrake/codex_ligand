@@ -15,7 +15,8 @@ from itertools import combinations
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 from egfr_pipeline.residue_utils import normalize_residue_id, parse_residue_set
 
 
@@ -247,18 +248,18 @@ def compare_from_config(
     output_path: Optional[str] = None,
 ) -> Path:
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
+    postprocess_root = paths.wa_phase4_vina_postprocess(config)
     pp = config.get("postprocess", {})
 
-    pocket_csv = Path(pocket_table_path) if pocket_table_path else project_root / "vina_pocket_table.csv"
-    drug_csv = Path(drug_map_path) if drug_map_path else project_root / "vina_drug_pocket_map.csv"
-    out_csv = Path(output_path) if output_path else project_root / "vina_pocket_comparison.csv"
+    pocket_csv = Path(pocket_table_path) if pocket_table_path else postprocess_root / "vina_pocket_table.csv"
+    drug_csv = Path(drug_map_path) if drug_map_path else postprocess_root / "vina_drug_pocket_map.csv"
+    out_csv = Path(output_path) if output_path else postprocess_root / "vina_pocket_comparison.csv"
 
     pocket_rows = load_pocket_table(pocket_csv)
     drug_map_rows = load_drug_pocket_map(drug_csv)
 
     # Load bootstrap data for CI if available
-    bootstrap_csv = project_root / "vina_pocket_bootstrap.csv"
+    bootstrap_csv = postprocess_root / "vina_pocket_bootstrap.csv"
     bootstrap_idx: Optional[Dict[Tuple[str, str], dict]] = None
     if bootstrap_csv.exists():
         with open(bootstrap_csv, newline="", encoding="utf-8") as f:

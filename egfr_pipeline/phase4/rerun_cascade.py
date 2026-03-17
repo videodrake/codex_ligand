@@ -14,11 +14,9 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
-PHASE3_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase3_docking"
-PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_scoring"
+from egfr_pipeline import paths
+
+_CFG = {"output_root": str(paths.REPO_ROOT / "output")}
 
 
 def run_phase4_cascade(
@@ -31,10 +29,10 @@ def run_phase4_cascade(
     from_tg : str
         Start from this TG (e.g. "4.3" to skip earlier steps).
     """
-    output_dir = PHASE4_OUTPUT_DIR
+    output_dir = paths.wb_phase4_scoring(_CFG)
 
     # Handoff file validation
-    handoff = PHASE3_OUTPUT_DIR / "phase4_docking_evidence_reference.csv"
+    handoff = paths.wb_phase3_focused_docking(_CFG) / "phase4_docking_evidence_reference.csv"
     if not handoff.exists():
         raise FileNotFoundError(
             f"Phase 3 handoff file not found: {handoff}\n"

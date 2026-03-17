@@ -15,7 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 
 
 # ---------------------------------------------------------------------------
@@ -536,18 +537,20 @@ def generate_report(
     output_dir: Optional[str] = None,
 ) -> Tuple[Path, Path]:
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
-    out_root = Path(output_dir) if output_dir else project_root
+    vina_post = paths.wa_phase4_vina_postprocess(config)
+    ppi_post = paths.wa_phase3_ppi_postprocess(config)
+    verdict_dir = paths.wa_phase5_verdict(config)
+    out_root = Path(output_dir) if output_dir else paths.wa_phase6_report(config)
 
     # Load all available data
-    pocket_rows = load_csv(project_root / "vina_pocket_table.csv")
-    drug_map_rows = load_csv(project_root / "vina_drug_pocket_map.csv")
-    comparison_rows = load_csv(project_root / "vina_pocket_comparison.csv")
-    pyrosetta_summary = load_csv(project_root / "ppi_pyrosetta_summary.csv")
-    pyrosetta_residues = load_csv(project_root / "ppi_pyrosetta_residues.csv")
-    afm_residues = load_csv(project_root / "ppi_afm_residues.csv")
-    verdict_rows = load_csv(project_root / "valid_sites.csv")
-    agreement_rows = load_csv(project_root / "cross_method_agreement.csv")
+    pocket_rows = load_csv(vina_post / "vina_pocket_table.csv")
+    drug_map_rows = load_csv(vina_post / "vina_drug_pocket_map.csv")
+    comparison_rows = load_csv(vina_post / "vina_pocket_comparison.csv")
+    pyrosetta_summary = load_csv(ppi_post / "ppi_pyrosetta_summary.csv")
+    pyrosetta_residues = load_csv(ppi_post / "ppi_pyrosetta_residues.csv")
+    afm_residues = load_csv(ppi_post / "ppi_afm_residues.csv")
+    verdict_rows = load_csv(verdict_dir / "valid_sites.csv")
+    agreement_rows = load_csv(verdict_dir / "cross_method_agreement.csv")
 
     # --- Text report ---
     report_lines = []

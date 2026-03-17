@@ -17,7 +17,8 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 
 # ---------------------------------------------------------------------------
 # Step metadata: (folder_name, display_title, description)
@@ -140,7 +141,7 @@ def _link_dir(src: Path, link: Path) -> bool:
 
 
 def _step1_vina(
-    project_root: Path,
+    vina_dock: Path,
     config: dict,
     step_dir: Path,
 ) -> List[Tuple[str, str]]:
@@ -153,16 +154,16 @@ def _step1_vina(
         rid = str(receptor.get("id", ""))
         if not rid:
             continue
-        rec_dir = project_root / rid
+        rec_dir = vina_dock / rid
         if _link_dir(rec_dir, step_dir / rid):
             n = len(list(rec_dir.glob(f"*_{mode}.pdbqt")))
             linked.append((f"{rid}/", f"{n} pose file(s)"))
     return linked
 
 
-def _discover_ppi_dirs(repo_root: Path) -> Dict[str, Path]:
-    """Auto-discover PPI run directories under ``output/phase1_ppi/``."""
-    ppi_base = repo_root / "output" / "phase1_ppi"
+def _discover_ppi_dirs(ppi_dock: Path) -> Dict[str, Path]:
+    """Auto-discover PPI run directories under wa_phase2_ppi_docking()."""
+    ppi_base = ppi_dock
     result: Dict[str, Path] = {}
     if not ppi_base.is_dir():
         return result
@@ -195,13 +196,14 @@ def _discover_ppi_dirs(repo_root: Path) -> Dict[str, Path]:
 
 
 def _step2_ppi(
-    repo_root: Path,
+    ppi_dock: Path,
+    wb_analysis: Path,
     step_dir: Path,
     ppi_dirs: Optional[Dict[str, Path]] = None,
 ) -> List[Tuple[str, str]]:
     """Step 2 — symlink each receptor state's PPI run directory."""
     if ppi_dirs is None:
-        ppi_dirs = _discover_ppi_dirs(repo_root)
+        ppi_dirs = _discover_ppi_dirs(ppi_dock)
 
     linked: List[Tuple[str, str]] = []
     for state_name, run_dir in sorted(ppi_dirs.items()):
@@ -222,7 +224,7 @@ def _step2_ppi(
             linked.append((f"{state_name}/", summary or "PPI run directory"))
 
     # Also link LightDock cross-method summaries at top level
-    ppi_base = repo_root / "output" / "phase1_ppi"
+    ppi_base = wb_analysis
     if ppi_base.is_dir():
         for pattern, desc in [
             ("*_interface_summary.csv", "LightDock interface summary"),
@@ -245,8 +247,8 @@ def _step2_ppi(
 
 
 def _step3_ppi_evidence(
-    project_root: Path,
-    repo_root: Path,
+    ppi_post: Path,
+    wb_analysis: Path,
     step_dir: Path,
 ) -> List[Tuple[str, str]]:
     """Step 3 — PPI interface evidence tables."""
@@ -259,16 +261,16 @@ def _step3_ppi_evidence(
         ("ppi_afm_residues.csv", "AlphaFold-Multimer contact residues"),
         ("ppi_afm_summary.csv", "AlphaFold-Multimer summary"),
     ]:
-        if _safe_symlink(project_root / name, step_dir / name):
+        if _safe_symlink(ppi_post / name, step_dir / name):
             linked.append((name, desc))
 
     # Phase 1 interface report
-    report = repo_root / "output" / "phase1_ppi" / "phase1_interface_report.md"
+    report = wb_analysis / "phase1_interface_report.md"
     if _safe_symlink(report, step_dir / "phase1_interface_report.md"):
         linked.append(("phase1_interface_report.md", "Phase 1 interface report"))
 
     # Phase 1 cross-state comparison files
-    ppi_base = repo_root / "output" / "phase1_ppi"
+    ppi_base = wb_analysis
     for name, desc in [
         ("ppi_patch_cross_state_comparison.csv", "Cross-state patch comparison"),
         ("ppi_patch_state_robustness.csv", "Patch robustness across states"),
@@ -282,7 +284,7 @@ def _step3_ppi_evidence(
 
 
 def _step4_vina_analysis(
-    project_root: Path,
+    vina_post: Path,
     step_dir: Path,
 ) -> List[Tuple[str, str]]:
     """Step 4 — Vina pocket clustering and analysis."""
@@ -299,13 +301,13 @@ def _step4_vina_analysis(
         ("vina_clustering_merge_log.csv", "Cluster merge decisions"),
         ("vina_clustering_parameters.json", "Clustering parameters (reproducibility)"),
     ]:
-        if _safe_symlink(project_root / name, step_dir / name):
+        if _safe_symlink(vina_post / name, step_dir / name):
             linked.append((name, desc))
     return linked
 
 
 def _step5_verdict(
-    project_root: Path,
+    verdict_dir: Path,
     step_dir: Path,
 ) -> List[Tuple[str, str]]:
     """Step 5 — site verdict."""
@@ -315,13 +317,13 @@ def _step5_verdict(
         ("cross_method_agreement.csv", "Vina vs PPI agreement scores"),
         ("vina_consensus_sites.csv", "Vina-only consensus sites"),
     ]:
-        if _safe_symlink(project_root / name, step_dir / name):
+        if _safe_symlink(verdict_dir / name, step_dir / name):
             linked.append((name, desc))
     return linked
 
 
 def _step6_report(
-    project_root: Path,
+    report_dir: Path,
     step_dir: Path,
 ) -> List[Tuple[str, str]]:
     """Step 6 — report."""
@@ -330,20 +332,21 @@ def _step6_report(
         ("project_report.txt", "Comprehensive project report"),
         ("combined_residue_evidence.csv", "Integrated residue findings"),
     ]:
-        if _safe_symlink(project_root / name, step_dir / name):
+        if _safe_symlink(report_dir / name, step_dir / name):
             linked.append((name, desc))
     return linked
 
 
 def _step7_validation(
-    project_root: Path,
+    validation_dir: Path,
+    out_root: Path,
     step_dir: Path,
 ) -> List[Tuple[str, str]]:
     """Step 7 — validation results."""
     linked: List[Tuple[str, str]] = []
 
     # Pull from existing step7_validate dir (includes subdirs)
-    existing = project_root / "step7_validate"
+    existing = validation_dir / "step7_validate"
     if existing.is_dir():
         if _link_dir(existing, step_dir / "step7_validate"):
             for f in sorted(existing.rglob("*")):
@@ -351,15 +354,15 @@ def _step7_validation(
                     rel = f.relative_to(existing)
                     linked.append((f"step7_validate/{rel}", ""))
     else:
-        # Fallback: link any validation files from project root
+        # Fallback: link any validation files from validation dir
         for name, desc in [
             ("validation_report.txt", "Validation checklist"),
             ("validation_summary.csv", "Validation summary"),
         ]:
-            if _safe_symlink(project_root / name, step_dir / name):
+            if _safe_symlink(validation_dir / name, step_dir / name):
                 linked.append((name, desc))
 
-    # Root metadata files produced by step_view.py
+    # Root metadata files produced by step_view.py (live at output root)
     for name, desc in [
         ("run_status.json", "Run status metadata"),
         ("run_overview.md", "Run overview (Markdown)"),
@@ -368,23 +371,22 @@ def _step7_validation(
         ("step_index.md", "Step index (from output_steps)"),
         ("report_digest.md", "Report digest"),
     ]:
-        if _safe_symlink(project_root / name, step_dir / name):
+        if _safe_symlink(out_root / name, step_dir / name):
             linked.append((name, desc))
 
     return linked
 
 
 def _step_optional_phase(
-    repo_root: Path,
-    phase_dir_name: str,
+    phase_dir: Path,
     step_dir: Path,
 ) -> List[Tuple[str, str]]:
-    """Generic organizer for optional Phase 2/3/4 analysis directories."""
+    """Generic organizer for optional Workflow B analysis directories."""
     linked: List[Tuple[str, str]] = []
-    src = repo_root / "output" / phase_dir_name
+    src = phase_dir
     if not src.is_dir():
         return linked
-    if _link_dir(src, step_dir / phase_dir_name):
+    if _link_dir(src, step_dir / phase_dir.name):
         for f in sorted(src.rglob("*")):
             if f.is_file():
                 rel = f.relative_to(src)
@@ -484,10 +486,9 @@ def organize_outputs(
     config_path: str,
     *,
     ppi_dirs: Optional[Dict[str, Path]] = None,
-    repo_root: Optional[Path] = None,
     clean: bool = True,
 ) -> Path:
-    """Create step-based output view under ``{project_root}/steps/``.
+    """Create step-based output view under ``{output_root}/steps/``.
 
     Parameters
     ----------
@@ -495,9 +496,7 @@ def organize_outputs(
         Path to the project YAML config.
     ppi_dirs : dict, optional
         Map of state name -> run directory for PPI results.
-        Auto-discovered from ``output/phase1_ppi/`` if not provided.
-    repo_root : Path, optional
-        Repository root.  Auto-detected from *config_path* if not provided.
+        Auto-discovered from ``wa_phase2_ppi_docking/`` if not provided.
     clean : bool
         Remove existing ``steps/`` directory before recreating.
 
@@ -507,38 +506,43 @@ def organize_outputs(
         Path to the created ``STEP_INDEX.txt``.
     """
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
 
-    if repo_root is None:
-        cfg = Path(config_path).resolve()
-        repo_root = cfg.parents[1] if cfg.parent.name == "config" else cfg.parent
+    # Resolve all phase directories to absolute paths for reliable symlinks
+    vina_dock = paths.wa_phase1_vina_docking(config).resolve()
+    ppi_dock = paths.wa_phase2_ppi_docking(config).resolve()
+    ppi_post = paths.wa_phase3_ppi_postprocess(config).resolve()
+    vina_post = paths.wa_phase4_vina_postprocess(config).resolve()
+    verdict_dir = paths.wa_phase5_verdict(config).resolve()
+    report_dir = paths.wa_phase6_report(config).resolve()
+    validation_dir = paths.wa_phase7_validation(config).resolve()
+    wb_analysis = paths.wb_phase1_ppi_analysis(config).resolve()
+    wb_pocket = paths.wb_phase2_pocket_analysis(config).resolve()
+    wb_docking = paths.wb_phase3_focused_docking(config).resolve()
+    wb_scoring = paths.wb_phase4_scoring(config).resolve()
+    out_root = paths.output_root(config).resolve()
 
-    # Resolve to absolute for reliable relative symlinks
-    project_root = project_root.resolve()
-    repo_root = repo_root.resolve()
-
-    steps_root = project_root / "steps"
+    steps_root = out_root / "steps"
 
     if clean and steps_root.exists():
         shutil.rmtree(steps_root)
     steps_root.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n  Project root: {project_root}")
+    print(f"\n  Output root: {out_root}")
     print(f"  Organizing outputs -> {steps_root}\n")
 
     all_items: Dict[int, List[Tuple[str, str]]] = {}
 
     organizers = [
-        (1, lambda sd: _step1_vina(project_root, config, sd)),
-        (2, lambda sd: _step2_ppi(repo_root, sd, ppi_dirs)),
-        (3, lambda sd: _step3_ppi_evidence(project_root, repo_root, sd)),
-        (4, lambda sd: _step4_vina_analysis(project_root, sd)),
-        (5, lambda sd: _step5_verdict(project_root, sd)),
-        (6, lambda sd: _step6_report(project_root, sd)),
-        (7, lambda sd: _step7_validation(project_root, sd)),
-        (8, lambda sd: _step_optional_phase(repo_root, "phase2_pockets", sd)),
-        (9, lambda sd: _step_optional_phase(repo_root, "phase3_docking", sd)),
-        (10, lambda sd: _step_optional_phase(repo_root, "phase4_perturbation", sd)),
+        (1, lambda sd: _step1_vina(vina_dock, config, sd)),
+        (2, lambda sd: _step2_ppi(ppi_dock, wb_analysis, sd, ppi_dirs)),
+        (3, lambda sd: _step3_ppi_evidence(ppi_post, wb_analysis, sd)),
+        (4, lambda sd: _step4_vina_analysis(vina_post, sd)),
+        (5, lambda sd: _step5_verdict(verdict_dir, sd)),
+        (6, lambda sd: _step6_report(report_dir, sd)),
+        (7, lambda sd: _step7_validation(validation_dir, out_root, sd)),
+        (8, lambda sd: _step_optional_phase(wb_pocket, sd)),
+        (9, lambda sd: _step_optional_phase(wb_docking, sd)),
+        (10, lambda sd: _step_optional_phase(wb_scoring, sd)),
     ]
 
     for step_num, organizer_fn in organizers:

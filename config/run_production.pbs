@@ -44,7 +44,7 @@ conda activate pyrosetta
 MODE=${MODE:-auto}
 FROM=${FROM:-0}
 SKIP_PRECHECK_GUARD=${SKIP_PRECHECK_GUARD:-0}
-PRECHECK_STATUS_FILE="${PBS_O_WORKDIR}/output/pre_qsub_status/last_pass.json"
+PRECHECK_STATUS_FILE="${PBS_O_WORKDIR}/output/precheck/last_pass.json"
 
 echo "============================================"
 echo "  EGFR-MYO1D Production Pipeline"

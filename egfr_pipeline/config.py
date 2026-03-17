@@ -35,9 +35,9 @@ def save_config(config: dict, path: str):
 
 
 def project_root_from_config(config: dict) -> Path:
-    output_root = Path(config.get("output_root", "./output"))
-    project_name = config.get("project_name")
-    return output_root / project_name if project_name else output_root
+    """Legacy project root — returns workflow_a root for new layout."""
+    from egfr_pipeline.paths import workflow_a_root
+    return workflow_a_root(config)
 
 
 RESOURCE_DEFAULTS = {

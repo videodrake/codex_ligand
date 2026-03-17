@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+from egfr_pipeline import paths
 from egfr_pipeline.phase1.prepare_inputs import (
     PHASE1_RUNTIME_INPUT_DIR,
     prepare_phase1_inputs,
@@ -42,7 +43,7 @@ from egfr_pipeline.phase1.prepare_inputs import (
 from egfr_pipeline.runtime import resolve_scratch_base, sync_tree
 
 # Phase 1 output base directory
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
+PHASE1_OUTPUT_DIR = paths.wa_phase2_ppi_docking()
 
 # Input validation
 PHASE1_INPUT_DIR = PHASE1_RUNTIME_INPUT_DIR

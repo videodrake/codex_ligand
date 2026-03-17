@@ -18,7 +18,8 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 
 
 # ---------------------------------------------------------------------------
@@ -206,9 +207,9 @@ def bridge_vina_to_phase3(
     Returns path to the generated reference CSV.
     """
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
+    postprocess_root = paths.wa_phase4_vina_postprocess(config)
 
-    pocket_table_path = project_root / "vina_pocket_table.csv"
+    pocket_table_path = postprocess_root / "vina_pocket_table.csv"
     if not pocket_table_path.exists():
         raise FileNotFoundError(
             f"Pocket table not found: {pocket_table_path}\n"
@@ -229,7 +230,7 @@ def bridge_vina_to_phase3(
     )
 
     # Write to Phase 2 export location (where Phase 3 TG 3.0 expects it)
-    phase2_dir = project_root.parent / "phase2_pockets"
+    phase2_dir = paths.wb_phase2_pocket_analysis(config)
     phase2_dir.mkdir(parents=True, exist_ok=True)
     output_path = phase2_dir / "phase3_candidate_pocket_reference.csv"
 

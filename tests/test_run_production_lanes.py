@@ -93,7 +93,7 @@ def test_main_lane_run_writes_marker_and_manifest(tmp_path: Path, monkeypatch) -
 
     run_production.main()
 
-    lane_dir = project_root / "runtime" / "lanes" / "ppi-post__cpu-vina"
+    lane_dir = project_root / "logs" / "lanes" / "ppi-post__cpu-vina"
     marker = json.loads((lane_dir / "lane_complete.json").read_text(encoding="utf-8"))
     manifest = json.loads((lane_dir / "runtime_manifest.json").read_text(encoding="utf-8"))
 

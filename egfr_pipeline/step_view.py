@@ -23,6 +23,7 @@ from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, 
 from urllib.parse import urlencode
 
 from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 from egfr_pipeline.pyrosetta_docking.run_metadata import build_output_root_name
 
 
@@ -185,6 +186,106 @@ STEP_SPECS: Dict[int, StepSpec] = {
 STEP_NAME_TO_FOLDER = {
     spec.step_name: spec.folder_name for spec in STEP_SPECS.values()
 }
+
+
+# ---------------------------------------------------------------------------
+# Phase-aware project root shim
+# ---------------------------------------------------------------------------
+
+# Artifact filenames that live in specific phase directories
+_ARTIFACT_ROUTES: Dict[str, str] = {}
+# Populated from STEP_SPECS: map filename → "vina_post" | "ppi_post" | "verdict" | "report"
+for _spec in STEP_SPECS.values():
+    _phase = _spec.phase_number
+    for _name in (*_spec.required_artifacts, *_spec.optional_artifacts, *_spec.primary_files):
+        if not _name:
+            continue
+        if _name.startswith("vina_"):
+            _ARTIFACT_ROUTES[_name] = "vina_post"
+        elif _name.startswith("ppi_"):
+            _ARTIFACT_ROUTES[_name] = "ppi_post"
+        elif _name in ("valid_sites.csv", "cross_method_agreement.csv", "vina_consensus_sites.csv"):
+            _ARTIFACT_ROUTES[_name] = "verdict"
+        elif _name in ("project_report.txt", "combined_residue_evidence.csv"):
+            _ARTIFACT_ROUTES[_name] = "report"
+# Extras not captured by STEP_SPECS
+_ARTIFACT_ROUTES.update({
+    "ppi_afm_residues.csv": "ppi_post",
+    "ppi_afm_summary.csv": "ppi_post",
+    "ppi_pyrosetta_residue_long.csv": "ppi_post",
+    "ppi_pyrosetta_model_table.csv": "ppi_post",
+    "vina_pocket_bootstrap.csv": "vina_post",
+    "vina_contact_distances.csv": "vina_post",
+    "vina_pocket_residue_occupancy.csv": "vina_post",
+    "vina_clustering_merge_log.csv": "vina_post",
+    "vina_clustering_parameters.json": "vina_post",
+})
+
+
+class _ProjectView:
+    """Drop-in shim for the old flat project_root Path.
+
+    Routes artifact file lookups to phase-specific directories in the
+    new ``output/workflow_a/`` layout while keeping step directories
+    and metadata files at the project directory level.
+    """
+
+    def __init__(self, project_dir: Path, abs_output_root: Path):
+        self._dir = project_dir
+        wa = abs_output_root / "workflow_a"
+        self._routes = {
+            "vina_post": wa / "phase4_vina_postprocess",
+            "ppi_post": wa / "phase3_ppi_postprocess",
+            "verdict": wa / "phase5_verdict",
+            "report": wa / "phase6_report",
+        }
+
+    def __truediv__(self, other) -> Path:
+        name = str(other)
+        route_key = _ARTIFACT_ROUTES.get(name)
+        if route_key:
+            return self._routes[route_key] / name
+        return self._dir / name
+
+    # Delegate common Path operations to the underlying directory
+    def mkdir(self, *args, **kwargs):
+        self._dir.mkdir(*args, **kwargs)
+
+    def resolve(self, strict: bool = False) -> Path:
+        return self._dir.resolve(strict=strict)
+
+    def exists(self) -> bool:
+        return self._dir.exists()
+
+    def is_dir(self) -> bool:
+        return self._dir.is_dir()
+
+    @property
+    def parent(self) -> Path:
+        return self._dir.parent
+
+    @property
+    def name(self) -> str:
+        return self._dir.name
+
+    def __str__(self) -> str:
+        return str(self._dir)
+
+    def __repr__(self) -> str:
+        return f"_ProjectView({self._dir})"
+
+    def __fspath__(self) -> str:
+        return str(self._dir)
+
+    def as_posix(self) -> str:
+        return self._dir.as_posix()
+
+    def iterdir(self):
+        return self._dir.iterdir()
+
+    @property
+    def parts(self):
+        return self._dir.parts
 
 
 def _validation_artifact_phase_map() -> Dict[str, int]:
@@ -783,12 +884,30 @@ def _resolve_project_artifact_path(project_root: Path, name: str) -> Optional[Pa
     fallback = project_root / "ppi" / name
     if fallback.exists():
         return fallback
+    # New layout: check per-phase directories under workflow_a/
+    wa_root = project_root.parent / "workflow_a" if project_root.parent else None
+    if wa_root and wa_root.is_dir():
+        for phase_dir_name in (
+            "phase4_vina_postprocess",
+            "phase3_ppi_postprocess",
+            "phase5_verdict",
+            "phase6_report",
+            "phase7_validation",
+        ):
+            candidate = wa_root / phase_dir_name / name
+            if candidate.exists():
+                return candidate
     return None
 
 
 def _phase1_interface_report_path(repo_root: Path) -> Optional[Path]:
-    report_path = repo_root / "output" / "phase1_ppi" / "phase1_interface_report.md"
-    return report_path if report_path.exists() else None
+    # New layout
+    new_path = repo_root / "output" / "workflow_b" / "phase1_ppi_analysis" / "phase1_interface_report.md"
+    if new_path.exists():
+        return new_path
+    # Legacy fallback
+    legacy = repo_root / "output" / "phase1_ppi" / "phase1_interface_report.md"
+    return legacy if legacy.exists() else None
 
 
 def _validation_message_groups(messages: Sequence[str]) -> Tuple[List[str], List[str]]:

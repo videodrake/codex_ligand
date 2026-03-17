@@ -3,7 +3,8 @@ import csv
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 from egfr_pipeline.vina.vina_executor import derive_docking_seed
 
 
@@ -141,7 +142,7 @@ def _pose_job_metadata(config: dict) -> Dict[str, object]:
 
 
 def collect_pose_rows(config: dict) -> Tuple[List[dict], List[dict]]:
-    project_root = project_root_from_config(config)
+    vina_docking_root = paths.wa_phase1_vina_docking(config)
     metadata = _pose_job_metadata(config)
     mode = str(metadata["mode"])
     requested_n_poses = _safe_int(metadata["requested_n_poses"])
@@ -151,7 +152,7 @@ def collect_pose_rows(config: dict) -> Tuple[List[dict], List[dict]]:
 
     for receptor in config.get("receptors", []):
         receptor_id = receptor["id"]
-        receptor_dir = project_root / receptor_id
+        receptor_dir = vina_docking_root / receptor_id
         for ligand in config.get("ligands", []):
             ligand_id = ligand["id"]
             ligand_name = Path(ligand["pdbqt"]).stem.replace("_ligand", "")
@@ -249,10 +250,10 @@ def build_pose_table_from_config(
     coverage_csv: Optional[str] = None,
 ) -> Path:
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
-    target = Path(output_csv) if output_csv else project_root / "vina_pose_table.csv"
+    postprocess_root = paths.wa_phase4_vina_postprocess(config)
+    target = Path(output_csv) if output_csv else postprocess_root / "vina_pose_table.csv"
     coverage_target = (
-        Path(coverage_csv) if coverage_csv else project_root / "vina_postprocess_coverage.csv"
+        Path(coverage_csv) if coverage_csv else postprocess_root / "vina_postprocess_coverage.csv"
     )
     rows, coverage_rows = collect_pose_rows(config)
     write_pose_coverage_table(coverage_rows, coverage_target)

@@ -21,10 +21,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
+from egfr_pipeline import paths
+
+_CFG = {"output_root": str(paths.REPO_ROOT / "output")}
+PHASE1_INPUT_DIR = paths.REPO_ROOT / "input" / "PPI" / "phase1"
 
 
 def run_phase2_cascade(
@@ -43,9 +43,9 @@ def run_phase2_cascade(
     ftmap_dir : Path, optional
         FTMap output directory for TG 2.4 druggability enrichment.
     """
-    output_dir = PHASE2_OUTPUT_DIR
+    output_dir = paths.wb_phase2_pocket_analysis(_CFG)
     receptor_dir = PHASE1_INPUT_DIR
-    phase1_dir = PHASE1_OUTPUT_DIR
+    phase1_dir = paths.wb_phase1_ppi_analysis(_CFG)
 
     steps = [
         ("2.0", "Patch Ingestion", lambda: _run_tg20(phase1_dir, output_dir)),

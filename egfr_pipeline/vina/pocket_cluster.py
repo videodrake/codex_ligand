@@ -23,7 +23,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from egfr_pipeline.config import load_config, project_root_from_config
+from egfr_pipeline.config import load_config
+from egfr_pipeline import paths
 from egfr_pipeline.residue_utils import parse_residue_set
 
 
@@ -546,8 +547,8 @@ def cluster_pose_table(
     max_per_pocket: int = 0,
 ) -> Path:
     config = load_config(config_path)
-    project_root = project_root_from_config(config)
-    target = Path(pose_table_path) if pose_table_path else project_root / "vina_pose_table.csv"
+    postprocess_root = paths.wa_phase4_vina_postprocess(config)
+    target = Path(pose_table_path) if pose_table_path else postprocess_root / "vina_pose_table.csv"
     rows = load_pose_table(target)
     clustered_rows = assign_pockets(
         rows, cutoff=cutoff,
