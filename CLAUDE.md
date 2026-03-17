@@ -49,7 +49,7 @@ PPI 결과를 기반으로 포켓을 **순차적으로 좁혀가며** 분석. �
 
 ```
 main.py                          # 대화형 CLI 진입점 (932줄)
-run_production.py                # Workflow A PBS 배치 오케스트레이터 (1609줄)
+run_production.py                # Workflow A PBS 배치 오케스트레이터 (1664줄)
 
 egfr_pipeline/
   config.py                      # YAML/JSON 설정 로드
@@ -120,7 +120,7 @@ egfr_pipeline/
     job_construction.py          # 도킹 job 구성 (413줄)
     review_report.py             # Phase 3 리뷰 (389줄)
     diversity_validation.py      # 포켓 점유율 & 다양성 검증 (384줄)
-    rerun_cascade.py             # Cascade 러너 TG 3.0→3.7 (284줄)
+    rerun_cascade.py             # Cascade 러너 TG 3.0→3.7 (313줄)
 
   phase4/                        # ── Workflow B Adv Phase 4: 교란 분석 ──
     evidence_ingestion.py        # 다중 Phase 증거 수집 (703줄)

@@ -61,6 +61,8 @@ Phase 7: Validate                  (출력 검증)
 
 **핵심 특징**: Phase 1(Vina)과 Phase 2(PPI)는 서로의 결과를 사용하지 않는다. 독립 증거원이며, Phase 5(Verdict)에서 처음으로 병합된다.
 
+**`run_production.py` 전체 lane 목록**: `vina-cpu`, `ppi`, `ppi-post`, `vina-post`, `finalize`, `status`, `vina-gpu`, `phase3-gpu`, `adv-phase1`, `adv-phase2`, `adv-phase3-setup`, `adv-phase3-execute`, `adv-phase3-post`, `adv-phase4` (총 14개)
+
 **서버 제출 방법**:
 ```bash
 # 방법 1: 올인원 (순차 실행)
@@ -139,7 +141,7 @@ qsub -W depend=afterok:<job> config/run_adv_phase4.pbs
 | **전략** | Blind 탐색 → 나중에 비교 | PPI 결과로 포켓 좁히기 → Focused 도킹 |
 | **Vina↔PPI 관계** | 독립 (병렬 가능) | 순차 의존 (PPI → Pocket → Vina) |
 | **자동화** | `run_production.py` 완전 자동 | `run_production.py --lane adv-*` 완전 자동 |
-| **PBS** | lane 스크립트 5개 | `run_advanced_pipeline.pbs` + lane 스크립트 6개 |
+| **PBS** | lane 스크립트 5개 + status/vina-gpu/phase3-gpu | `run_advanced_pipeline.pbs` + lane 스크립트 6개 |
 | **사용 모듈** | Vina모듈 + PyRosetta Core + Verdict/Report/Validate | Phase 1~4 전체 + PyRosetta Core |
 
 ### 모듈-워크플로우 소속 매핑
@@ -376,7 +378,9 @@ PyRosetta 초기화 유틸리티: PID 기반 랜덤 시드, `-mute all`, stdout/
 - 메타데이터 CSV 생성: receptor_metadata.csv, partner_metadata.csv, docking_pair_metadata.csv
 - 입력 검증 리포트 생성
 
-### TG 1.1: PyRosetta 도킹 실행 (`launch_docking.py`)
+### TG 1.1: Config 생성 + PyRosetta 도킹 실행 (`generate_configs.py`, `launch_docking.py`)
+
+`generate_configs.py`는 3 states × 5 seeds에 대한 `.ini` 설정 파일을 자동 생성하고, `launch_docking.py`가 해당 config로 실제 도킹을 실행한다.
 
 **역할**: PyRosetta PPI 도킹을 표준화된 방식으로 실행
 
@@ -494,6 +498,13 @@ PyRosetta 초기화 유틸리티: PID 기반 랜덤 시드, `-mute all`, stdout/
 
 - `phase1_downstream_patch_reference.csv` — **Phase 2 핸드오프 파일** (17개 컬럼):
   - 각 수용체측 잔기의 evidence_source, robustness_class, method_agreement, confidence(high/medium/low)
+
+### TG 1.7: 파일럿 데이터 비교 (`pilot_comparison.py`)
+
+**역할**: 이전 파일럿 실행(C-lobe fragment 기반)과 현재 Phase 1(full kinase domain) 결과를 비교
+
+- 파일럿 데이터가 존재하는 경우에만 실행 (선택적)
+- 잔기 수준 겹침, 에너지 분포 비교, construct_type 차이 분석
 
 ---
 
