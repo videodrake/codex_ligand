@@ -8,7 +8,7 @@
 EGFR-MYO1D 상호작용 결합 사이트 탐색을 위한 **이중 워크플로우 파이프라인**.
 AutoDock Vina(소분자 blind docking)와 PyRosetta(PPI global blind docking) 결과를 통합하여 후보 결합 포켓을 식별한다.
 
-- **상태**: Workflow A 자동화 완료 (3 states × 5 seeds, 300K PPI 모델), Workflow B 모듈 구현 완료 (통합 자동화 미완)
+- **상태**: Workflow A 자동화 완료 (3 states × 5 seeds, 300K PPI 모델), Workflow B 자동화 완료 (핸드오프 검증 + Vina 가드 포함)
 - **실행 환경**: Linux HPC (PBS/qsub), 32 CPU cores, 네트워크 차단
 - **언어**: Python 3.x + PyRosetta (구버전 호환성 필수)
 
@@ -30,7 +30,7 @@ Phase 7: 검증                     (validate.py)
 
 진입점: `run_production.py` (Phase 1→7 자동 순차), `main.py` (대화형 CLI)
 
-### Workflow B: Advanced PPI-First Pipeline (모듈 구현 완료, 통합 자동화 미완)
+### Workflow B: Advanced PPI-First Pipeline (자동화 완료)
 
 PPI 결과를 기반으로 포켓을 **순차적으로 좁혀가며** 분석. 각 Phase 출력이 다음 Phase 입력.
 
@@ -40,6 +40,10 @@ PPI 결과를 기반으로 포켓을 **순차적으로 좁혀가며** 분석. �
   → Adv Phase 3: 포켓 유도 focused 도킹 (phase3/, TG 3.0→3.7)
   → Adv Phase 4: 교란 분석 & 최종 스코어 (phase4/, TG 4.0→4.6)
 ```
+
+진입점: `run_production.py --lane adv-*` (개별), `qsub config/run_advanced_pipeline.pbs` (전체 자동)
+
+**안전성 가드**: `_validate_adv_handoff()`가 각 lane 실행 전 이전 Phase 핸드오프 파일을 검증 (defense-in-depth). Phase 3 cascade는 모드별 사전 조건(execute → job table, post → round log)을 추가 검증. Vina 가용성 가드가 `execute_round()`에서 silent all-skip을 방지.
 
 ## 파일 구조
 
