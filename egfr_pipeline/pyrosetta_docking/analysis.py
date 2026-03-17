@@ -10,6 +10,13 @@ import pyrosetta.rosetta.core.pose
 from pyrosetta import pose_from_pdb, create_score_function, get_score_function
 from pyrosetta.rosetta.core.pose import getPoseExtraScore
 from pyrosetta.rosetta.core.scoring import fa_atr, fa_rep, fa_sol, fa_elec, calpha_superimpose_pose
+
+# Extended score terms (may not exist in older PyRosetta versions)
+try:
+    from pyrosetta.rosetta.core.scoring import hbond_sr_bb, hbond_lr_bb, hbond_bb_sc, hbond_sc, fa_dun
+    _HAS_EXTENDED_TERMS = True
+except ImportError:
+    _HAS_EXTENDED_TERMS = False
 from pyrosetta.rosetta.core.select.residue_selector import ChainSelector, NeighborhoodResidueSelector
 from pyrosetta.rosetta.protocols.analysis import InterfaceAnalyzerMover
 
@@ -51,6 +58,32 @@ def _extract_iam_metric(pose: "Pose", iam: Any, score_key: str, method_name: str
             except Exception:
                 pass
     return val
+
+
+def _extract_dSASA_decomposition(pose: "Pose") -> Tuple[float, float]:
+    """Extract dSASA polar and hydrophobic components from IAM pose extra scores.
+
+    After InterfaceAnalyzerMover.apply(), polar/hydrophobic dSASA values are
+    deposited into pose.scores under version-dependent key names.
+    Returns (dSASA_polar, dSASA_hydrophobic) with safe defaults of 0.0.
+    """
+    dSASA_polar = 0.0
+    dSASA_hydrophobic = 0.0
+    try:
+        scores = pose.scores
+        # IAM deposits polar/hydrophobic dSASA under these keys
+        for key in ('dSASA_polar',):
+            if key in scores:
+                dSASA_polar = float(scores[key])
+                break
+        for key in ('dSASA_hphobic',):
+            if key in scores:
+                dSASA_hydrophobic = float(scores[key])
+                break
+    except Exception:
+        dSASA_polar = 0.0
+        dSASA_hydrophobic = 0.0
+    return dSASA_polar, dSASA_hydrophobic
 
 
 def _load_pose(target: str) -> Tuple[Optional["Pose"], str]:
@@ -99,7 +132,7 @@ def get_residue_energy_csv_string(pose: "Pose", scorefxn: Any) -> str:
     Uses residue_total_energies() for per-term EMapVector access.
     """
     weights = scorefxn.weights()
-    lines = ["Residue_ID,Residue_Name,Total_Energy,fa_atr,fa_rep,fa_sol,fa_elec"]
+    lines = ["Residue_ID,Residue_Name,Total_Energy,fa_atr,fa_rep,fa_sol,fa_elec,hbond_sr_bb,hbond_lr_bb,hbond_bb_sc,hbond_sc,fa_dun"]
 
     has_details = hasattr(pose.energies(), 'residue_total_energies')
 
@@ -110,6 +143,7 @@ def get_residue_energy_csv_string(pose: "Pose", scorefxn: Any) -> str:
         total = pose.energies().residue_total_energy(i)
 
         atr, rep, sol, elec = 0.0, 0.0, 0.0, 0.0
+        hb_sr_bb, hb_lr_bb, hb_bb_sc, hb_sc, dunbrack = 0.0, 0.0, 0.0, 0.0, 0.0
 
         if has_details:
             try:
@@ -118,11 +152,18 @@ def get_residue_energy_csv_string(pose: "Pose", scorefxn: Any) -> str:
                 rep = emap[fa_rep] * weights[fa_rep]
                 sol = emap[fa_sol] * weights[fa_sol]
                 elec = emap[fa_elec] * weights[fa_elec]
+                if _HAS_EXTENDED_TERMS:
+                    hb_sr_bb = emap[hbond_sr_bb] * weights[hbond_sr_bb]
+                    hb_lr_bb = emap[hbond_lr_bb] * weights[hbond_lr_bb]
+                    hb_bb_sc = emap[hbond_bb_sc] * weights[hbond_bb_sc]
+                    hb_sc = emap[hbond_sc] * weights[hbond_sc]
+                    dunbrack = emap[fa_dun] * weights[fa_dun]
             except Exception as e:
                 internal_logger.warning(f"Error getting residue energies for residue {i}: {e}")
                 internal_logger.debug(traceback.format_exc())
 
-        lines.append(f"{chain}{pdb_num},{name},{total:.4f},{atr:.4f},{rep:.4f},{sol:.4f},{elec:.4f}")
+        lines.append(f"{chain}{pdb_num},{name},{total:.4f},{atr:.4f},{rep:.4f},{sol:.4f},{elec:.4f},"
+                     f"{hb_sr_bb:.4f},{hb_lr_bb:.4f},{hb_bb_sc:.4f},{hb_sc:.4f},{dunbrack:.4f}")
     return "\n".join(lines)
 
 def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: float = 0.5) -> str:
@@ -145,6 +186,7 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
         for i in range(1, total_res + 1):
             total_e = pose.energies().residue_total_energy(i)
             atr, rep, sol, elec = 0.0, 0.0, 0.0, 0.0
+            hb_sr_bb, hb_lr_bb, hb_bb_sc, hb_sc, dunbrack = 0.0, 0.0, 0.0, 0.0, 0.0
             if has_details:
                 try:
                     emap = pose.energies().residue_total_energies(i)
@@ -152,6 +194,12 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
                     rep = emap[fa_rep] * weights[fa_rep]
                     sol = emap[fa_sol] * weights[fa_sol]
                     elec = emap[fa_elec] * weights[fa_elec]
+                    if _HAS_EXTENDED_TERMS:
+                        hb_sr_bb = emap[hbond_sr_bb] * weights[hbond_sr_bb]
+                        hb_lr_bb = emap[hbond_lr_bb] * weights[hbond_lr_bb]
+                        hb_bb_sc = emap[hbond_bb_sc] * weights[hbond_bb_sc]
+                        hb_sc = emap[hbond_sc] * weights[hbond_sc]
+                        dunbrack = emap[fa_dun] * weights[fa_dun]
                 except Exception:
                     pass
             chain = pose.pdb_info().chain(i)
@@ -161,6 +209,8 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
                 'chain': chain, 'pdb_num': pdb_num, 'name': res_name,
                 'total': total_e, 'fa_atr': atr, 'fa_rep': rep,
                 'fa_sol': sol, 'fa_elec': elec,
+                'hbond_sr_bb': hb_sr_bb, 'hbond_lr_bb': hb_lr_bb,
+                'hbond_bb_sc': hb_bb_sc, 'hbond_sc': hb_sc, 'fa_dun': dunbrack,
             }
 
         # 2. Split by chain and score individually
@@ -184,6 +234,7 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
                 orig_i = rosetta_offset + j
                 total_e = chain_pose.energies().residue_total_energy(j)
                 atr, rep, sol, elec = 0.0, 0.0, 0.0, 0.0
+                hb_sr_bb, hb_lr_bb, hb_bb_sc, hb_sc, dunbrack = 0.0, 0.0, 0.0, 0.0, 0.0
                 if chain_has_details:
                     try:
                         emap = chain_pose.energies().residue_total_energies(j)
@@ -191,17 +242,26 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
                         rep = emap[fa_rep] * weights[fa_rep]
                         sol = emap[fa_sol] * weights[fa_sol]
                         elec = emap[fa_elec] * weights[fa_elec]
+                        if _HAS_EXTENDED_TERMS:
+                            hb_sr_bb = emap[hbond_sr_bb] * weights[hbond_sr_bb]
+                            hb_lr_bb = emap[hbond_lr_bb] * weights[hbond_lr_bb]
+                            hb_bb_sc = emap[hbond_bb_sc] * weights[hbond_bb_sc]
+                            hb_sc = emap[hbond_sc] * weights[hbond_sc]
+                            dunbrack = emap[fa_dun] * weights[fa_dun]
                     except Exception:
                         pass
                 sep_energies[orig_i] = {
                     'total': total_e, 'fa_atr': atr, 'fa_rep': rep,
                     'fa_sol': sol, 'fa_elec': elec,
+                    'hbond_sr_bb': hb_sr_bb, 'hbond_lr_bb': hb_lr_bb,
+                    'hbond_bb_sc': hb_bb_sc, 'hbond_sc': hb_sc, 'fa_dun': dunbrack,
                 }
 
             rosetta_offset += chain_pose.total_residue()
 
         # 3. Calculate DeltaE and filter
-        lines = ["Residue_ID,Residue_Name,Chain,DeltaE_total,DeltaE_fa_atr,DeltaE_fa_rep,DeltaE_fa_sol,DeltaE_fa_elec"]
+        lines = ["Residue_ID,Residue_Name,Chain,DeltaE_total,DeltaE_fa_atr,DeltaE_fa_rep,DeltaE_fa_sol,DeltaE_fa_elec,"
+                 "DeltaE_hbond_sr_bb,DeltaE_hbond_lr_bb,DeltaE_hbond_bb_sc,DeltaE_hbond_sc,DeltaE_fa_dun"]
 
         for i in range(1, total_res + 1):
             if i not in complex_energies or i not in sep_energies:
@@ -217,11 +277,18 @@ def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: floa
             d_rep = ce['fa_rep'] - se['fa_rep']
             d_sol = ce['fa_sol'] - se['fa_sol']
             d_elec = ce['fa_elec'] - se['fa_elec']
+            d_hb_sr_bb = ce['hbond_sr_bb'] - se['hbond_sr_bb']
+            d_hb_lr_bb = ce['hbond_lr_bb'] - se['hbond_lr_bb']
+            d_hb_bb_sc = ce['hbond_bb_sc'] - se['hbond_bb_sc']
+            d_hb_sc = ce['hbond_sc'] - se['hbond_sc']
+            d_dunbrack = ce['fa_dun'] - se['fa_dun']
 
             res_id = f"{ce['chain']}{ce['pdb_num']}"
             lines.append(f"{res_id},{ce['name']},{ce['chain']},"
                          f"{d_total:.4f},{d_atr:.4f},{d_rep:.4f},"
-                         f"{d_sol:.4f},{d_elec:.4f}")
+                         f"{d_sol:.4f},{d_elec:.4f},"
+                         f"{d_hb_sr_bb:.4f},{d_hb_lr_bb:.4f},{d_hb_bb_sc:.4f},"
+                         f"{d_hb_sc:.4f},{d_dunbrack:.4f}")
 
         if len(lines) <= 1:
             return ""
@@ -453,6 +520,56 @@ def calculate_l_rmsd(mobile: "Pose", ref: "Pose") -> float:
         internal_logger.debug(traceback.format_exc())
         return RMSD_ERROR_VALUE
 
+
+def calculate_interface_rmsd(mobile: "Pose", ref: "Pose", interface_residues_B: Set[int]) -> float:
+    """Calculate Interface RMSD: CA RMSD of Chain B interface residues only.
+
+    Poses must already be superimposed on Chain A (call after calculate_l_rmsd
+    which performs calpha_superimpose_pose).
+
+    Args:
+        mobile: Docked pose (already superimposed on ref via Chain A).
+        ref: Relaxed reference pose.
+        interface_residues_B: Set of PDB residue numbers from Chain B that
+            participate in the binding interface.
+
+    Returns:
+        I_RMSD in Angstroms, or -1.0 if interface is empty / calculation fails.
+    """
+    if not interface_residues_B:
+        return -1.0
+
+    try:
+        conf = mobile.conformation()
+        chain_b_start = conf.chain_begin(2)
+        chain_b_end = conf.chain_end(2)
+
+        rmsd_sum = 0.0
+        count = 0
+
+        for i in range(chain_b_start, chain_b_end + 1):
+            pdb_num = mobile.pdb_info().number(i)
+            if pdb_num not in interface_residues_B:
+                continue
+            if not mobile.residue(i).has("CA"):
+                continue
+            try:
+                d2 = mobile.residue(i).xyz("CA").distance_squared(
+                    ref.residue(i).xyz("CA"))
+                rmsd_sum += d2
+                count += 1
+            except Exception:
+                continue
+
+        if count == 0:
+            return -1.0
+        return math.sqrt(rmsd_sum / count)
+    except Exception as e:
+        internal_logger.error(f"Error calculating I_RMSD: {e}")
+        internal_logger.debug(traceback.format_exc())
+        return -1.0
+
+
 def run_lrmsd_dual_task(args: tuple) -> Dict[str, Any]:
     """Compute L_RMSD against both relaxed reference and best-dG reference.
     args: (pdb_data_string, relaxed_ref_path, best_ref_path)
@@ -538,6 +655,9 @@ def run_fast_scoring_task(args: tuple) -> Dict[str, Any]:
 
         sc_val = _extract_iam_metric(pose, iam, "sc_value", "get_sc_value", 0.0)
 
+        # dSASA polar/hydrophobic decomposition
+        dSASA_polar, dSASA_hydrophobic = _extract_dSASA_decomposition(pose)
+
         step_status = "Center"
         center = get_chain_b_center(pose)
 
@@ -557,6 +677,8 @@ def run_fast_scoring_task(args: tuple) -> Dict[str, Any]:
             "status": "success",
             "dG_separated": iam.get_interface_dG(),
             "dSASA": iam.get_interface_delta_sasa(),
+            "dSASA_polar": dSASA_polar,
+            "dSASA_hydrophobic": dSASA_hydrophobic,
             "sc_value": sc_val,
             "total_score": total_score,
             "center_x": center[0],
@@ -640,6 +762,130 @@ def run_intermediate_scoring_task(args: tuple) -> Dict[str, Any]:
         }
 
 
+def compute_contact_pair_distances(
+    pose: "Pose",
+    binding_res_dict: Dict[str, str],
+    contact_distance: float = DEFAULT_CONTACT_DISTANCE,
+) -> str:
+    """Compute pairwise minimum distances between interface residues.
+
+    Uses CB atoms (CA for GLY) as the primary distance measure, with fallback
+    to minimum heavy-atom distance when CB/CA is unavailable.
+
+    Only pairs with min distance < contact_distance are included.
+
+    Returns a CSV string with columns: Residue_A, Residue_B, Min_Distance_A
+    sorted by Min_Distance_A ascending.  Returns empty string on failure.
+    """
+    try:
+        if pose.num_chains() < MIN_CHAINS:
+            return ""
+
+        conf = pose.conformation()
+        chain1_id = pose.pdb_info().chain(conf.chain_begin(1))
+        chain2_id = pose.pdb_info().chain(conf.chain_begin(2))
+
+        # Parse interface residue Rosetta indices from binding_res_dict
+        def _parse_interface_rosetta_indices(chain_id, binding_str):
+            """Return list of Rosetta residue indices for the given chain's binding residues."""
+            if not binding_str or binding_str in ("None", "Analysis_Failed", "No_Chain_2"):
+                return []
+            pdb_nums = set()
+            for token in binding_str.split(','):
+                token = token.strip()
+                m = re.search(r'(-?\d+)$', token)
+                if m:
+                    pdb_nums.add(int(m.group(1)))
+            if not pdb_nums:
+                return []
+            indices = []
+            for i in range(1, pose.total_residue() + 1):
+                if pose.pdb_info().chain(i) == chain_id and pose.pdb_info().number(i) in pdb_nums:
+                    indices.append(i)
+            return indices
+
+        a_indices = _parse_interface_rosetta_indices(chain1_id, binding_res_dict.get(chain1_id, ""))
+        b_indices = _parse_interface_rosetta_indices(chain2_id, binding_res_dict.get(chain2_id, ""))
+
+        if not a_indices or not b_indices:
+            return ""
+
+        def _get_representative_atom(res):
+            """Return CB coordinate (CA for GLY), or None if unavailable."""
+            name3 = res.name3().strip()
+            if name3 == "GLY":
+                return res.xyz("CA") if res.has("CA") else None
+            return res.xyz("CB") if res.has("CB") else (res.xyz("CA") if res.has("CA") else None)
+
+        def _min_heavy_atom_distance(res_a, res_b):
+            """Compute minimum distance between heavy atoms of two residues."""
+            min_d2 = float('inf')
+            for ai in range(1, res_a.natoms() + 1):
+                if res_a.atom_type(ai).is_hydrogen():
+                    continue
+                xyz_a = res_a.xyz(ai)
+                for bi in range(1, res_b.natoms() + 1):
+                    if res_b.atom_type(bi).is_hydrogen():
+                        continue
+                    dx = xyz_a.x - res_b.xyz(bi).x
+                    dy = xyz_a.y - res_b.xyz(bi).y
+                    dz = xyz_a.z - res_b.xyz(bi).z
+                    d2 = dx * dx + dy * dy + dz * dz
+                    if d2 < min_d2:
+                        min_d2 = d2
+            return math.sqrt(min_d2) if min_d2 < float('inf') else float('inf')
+
+        cutoff_sq = contact_distance * contact_distance
+        pairs = []
+
+        for ai in a_indices:
+            res_a = pose.residue(ai)
+            rep_a = _get_representative_atom(res_a)
+            pdb_a = pose.pdb_info().number(ai)
+            name_a = res_a.name3().strip()
+            label_a = f"{chain1_id}:{name_a}{pdb_a}"
+
+            for bi in b_indices:
+                res_b = pose.residue(bi)
+                rep_b = _get_representative_atom(res_b)
+                pdb_b = pose.pdb_info().number(bi)
+                name_b = res_b.name3().strip()
+
+                # Primary: CB-CB (or CA for GLY) distance
+                if rep_a is not None and rep_b is not None:
+                    dx = rep_a.x - rep_b.x
+                    dy = rep_a.y - rep_b.y
+                    dz = rep_a.z - rep_b.z
+                    d2 = dx * dx + dy * dy + dz * dz
+                    if d2 < cutoff_sq:
+                        dist = math.sqrt(d2)
+                        label_b = f"{chain2_id}:{name_b}{pdb_b}"
+                        pairs.append((label_a, label_b, dist))
+                        continue
+
+                # Fallback: minimum heavy-atom distance
+                min_d = _min_heavy_atom_distance(res_a, res_b)
+                if min_d < contact_distance:
+                    label_b = f"{chain2_id}:{name_b}{pdb_b}"
+                    pairs.append((label_a, label_b, min_d))
+
+        if not pairs:
+            return ""
+
+        # Sort by distance ascending
+        pairs.sort(key=lambda x: x[2])
+
+        lines = ["Residue_A,Residue_B,Min_Distance_A"]
+        for label_a, label_b, dist in pairs:
+            lines.append(f"{label_a},{label_b},{dist:.2f}")
+        return "\n".join(lines)
+
+    except Exception as e:
+        internal_logger.warning(f"Error computing contact pair distances: {e}")
+        internal_logger.debug(traceback.format_exc())
+        return ""
+
+
 def run_scoring_task(args: tuple) -> Dict[str, Any]:
     """
     Full scoring task. Calculates Score, RMSD, SC, Contacts, B-factors, CSV.
@@ -704,6 +950,9 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
         hbonds_int = _extract_iam_metric(
             pose, iam, "hbonds_int", "get_interface_hbonds", 0)
 
+        # dSASA polar/hydrophobic decomposition
+        dSASA_polar, dSASA_hydrophobic = _extract_dSASA_decomposition(pose)
+
         step_status = "Injecting B-factors"
         inject_bfactors(pose)
 
@@ -713,8 +962,41 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
         step_status = "Analyzing Contacts"
         binding_res_dict = analyze_interface_contacts(pose, contact_dist)
 
+        # Compute I_RMSD (interface-only ligand RMSD) using Chain B interface residues
+        step_status = "Calculating I_RMSD"
+        i_rmsd = -1.0
+        try:
+            br_b_str = binding_res_dict.get("B", "")
+            if (br_b_str and br_b_str not in ("None", "Analysis_Failed", "No_Chain_2")
+                    and ref_path and os.path.exists(ref_path)):
+                # Parse PDB residue numbers from Binding_Residues_B
+                iface_res_b: Set[int] = set()
+                for token in br_b_str.split(','):
+                    m = re.search(r'(-?\d+)$', token.strip())
+                    if m:
+                        iface_res_b.add(int(m.group(1)))
+                if iface_res_b:
+                    try:
+                        ref_pose_for_irmsd = pose_from_pdb(ref_path)
+                        mobile_clone = pose.clone()
+                        calpha_superimpose_pose(mobile_clone, ref_pose_for_irmsd)
+                        i_rmsd = calculate_interface_rmsd(
+                            mobile_clone, ref_pose_for_irmsd, iface_res_b)
+                    except Exception as e_irmsd:
+                        internal_logger.warning(f"I_RMSD calculation failed: {e_irmsd}")
+                        i_rmsd = -1.0
+        except Exception:
+            i_rmsd = -1.0
+
         step_status = "Generating Interface Energy CSV"
         interface_csv_data = get_interface_energy_csv_string(pose, scorefxn)
+
+        step_status = "Computing Contact Pair Distances"
+        try:
+            contact_pairs_csv = compute_contact_pair_distances(
+                pose, binding_res_dict, contact_dist)
+        except Exception:
+            contact_pairs_csv = ""
 
         step_status = "Calculating Center"
         center = get_chain_b_center(pose)
@@ -742,12 +1024,15 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
             "dG_separated": iam.get_interface_dG(),
             "Total_Score": total_score,
             "dSASA": iam.get_interface_delta_sasa(),
+            "dSASA_polar": dSASA_polar,
+            "dSASA_hydrophobic": dSASA_hydrophobic,
             "sc_value": sc_val,
             "packstat": packstat_val,
             "delta_unsatHbonds": delta_unsatHbonds,
             "nres_int": nres_int,
             "hbonds_int": hbonds_int,
             "L_RMSD": l_rmsd,
+            "I_RMSD": i_rmsd,
             "Binding_Residues": binding_res_dict.get("A", ""),
             "Binding_Residues_A": binding_res_dict.get("A", ""),
             "Binding_Residues_B": binding_res_dict.get("B", ""),
@@ -760,6 +1045,7 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
             "pdb_data": aligned_pdb_string,
             "csv_data": csv_data,
             "interface_csv_data": interface_csv_data,
+            "contact_pairs_csv_data": contact_pairs_csv,
         }
     except Exception as e:
         return {

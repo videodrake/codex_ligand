@@ -1,8 +1,12 @@
+> Status note (2026-03-12): Read `docs/current_pipeline_status.md` first.
+> Vina remains active, but current Phase 1 secondary validation uses LightDock, not AFM.
+
 # AutoDock Vina Docking Pipeline - Manual
 
 > **Deprecation Notice**: 이전 버전의 `run_docking.py` 단독 실행은 더 이상 지원되지 않습니다.
 > 모든 기능은 통합 CLI인 `main.py`를 통해 접근합니다.
-> 기존 스크립트는 `legacy/` 디렉토리에 보관되어 있으며, 매핑 정보는 `legacy/README.md`를 참고하세요.
+> 이 저장소에서는 통합 CLI(`main.py`)를 기준으로 사용하세요.
+> 구버전 단독 스크립트는 이 저장소에 없으며, 필요하면 `../autodot_vina/`를 참고하세요.
 
 ## 1. 개요
 
@@ -11,7 +15,7 @@
 
 **두 가지 실행 방식:**
 - `python main.py` -- 인터랙티브 모드 (메뉴 [1]-[9] 선택)
-- `python main.py vina -c config/example-project.yaml` -- CLI 모드 (서브커맨드)
+- `python main.py -c config/example-project.yaml vina` -- CLI 모드 (서브커맨드)
 
 **사용 가능한 서브커맨드:**
 
@@ -36,12 +40,9 @@ codex_ligand/
   main.py                          # 통합 CLI 진입점
   config/
     example-project.yaml           # 프로젝트 설정 (YAML)
-    ppi_test_beta_meander.ini      # PPI 도킹 설정 (테스트)
-    ppi_test_TH1.ini               # PPI 도킹 설정 (테스트)
-    ppi_prod_beta_meander.ini      # PPI 도킹 설정 (프로덕션)
-    ppi_prod_TH1.ini               # PPI 도킹 설정 (프로덕션)
-    run_ppi_test.pbs               # PBS 스크립트 (테스트)
-    run_ppi_prod.pbs               # PBS 스크립트 (프로덕션)
+    phase1/                        # Phase 1 PyRosetta 설정 (18 INI files)
+    run_lightdock.pbs              # Phase 1 LightDock PBS
+    run_lightdock_test.pbs         # Phase 1 LightDock 테스트 PBS
   egfr_pipeline/
     config.py                      # Config 로드 유틸리티
     report.py                      # 종합 보고서 생성
@@ -64,10 +65,9 @@ codex_ligand/
       docking.py                   # PyRosetta 워커 (Relax, Docking, Refinement)
       analysis.py                  # 스코어링, RMSD, Interface 분석
       common.py                    # PyRosetta 유틸리티
-  legacy/                          # 구버전 스크립트 (참조용, 매핑은 legacy/README.md)
-    run_docking.py
-    parse_vina_results.py
-    ...
+  # 구버전 단독 Vina 스크립트는 이 워크스페이스에 포함되지 않음
+  # 필요 시 ../autodot_vina/run_docking.py 참고
+
   input/                           # 입력 파일
   output/                          # 출력 결과
 ```
@@ -159,22 +159,22 @@ YAML 프로젝트 설정 파일(`config/example-project.yaml`)을 사용합니�
 
 ```bash
 # Vina 도킹
-python main.py vina -c config/example-project.yaml
+python main.py -c config/example-project.yaml vina
 
 # 후처리 (파싱 + 클러스터링 + 비교)
-python main.py postprocess -c config/example-project.yaml
+python main.py -c config/example-project.yaml postprocess
 
 # 사이트 판정
-python main.py verdict -c config/example-project.yaml
+python main.py -c config/example-project.yaml verdict
 
 # 보고서 생성
-python main.py report -c config/example-project.yaml
+python main.py -c config/example-project.yaml report
 
 # 출력 검증
-python main.py validate -c config/example-project.yaml
+python main.py -c config/example-project.yaml validate
 
 # 전체 파이프라인 (vina → postprocess → verdict → report → validate)
-python main.py full -c config/example-project.yaml
+python main.py -c config/example-project.yaml full
 ```
 
 ### 4.2 Config 파일
@@ -242,7 +242,7 @@ Vina 도킹 완료 후, 결과를 구조화된 CSV로 변환하는 6단계 후�
 
 ```bash
 # CLI 모드 — 전체 후처리
-python main.py postprocess -c config/example-project.yaml
+python main.py -c config/example-project.yaml postprocess
 
 # 인터랙티브 모드 — 메뉴 [2] 선택 후 단계별 또는 전체(a) 실행
 python main.py
@@ -258,7 +258,7 @@ python main.py
 - **적응적 점수 배분**: PPI 데이터가 있으면 Vina(50)+PPI(20)+Cross(30)=100, 없으면 Vina(60)+Cross(40)=100
 
 ```bash
-python main.py verdict -c config/example-project.yaml
+python main.py -c config/example-project.yaml verdict
 ```
 
 ---
@@ -405,7 +405,7 @@ pose 6 → Pocket #3 (1/3)
 pose 7 → Pocket #3 (2/3)
 pose 8 → Pocket #2 (3/3) → Pocket #2 완성!
 pose 9 → [Pocket #1 닫힘, skip] → Pocket #4 (1/3)
-...
+
 → 5개 포켓 모두 완성!
 ```
 
@@ -526,7 +526,7 @@ conda install -c conda-forge rdkit      # SMILES 3D 생성 (선택)
     1      -8.52    0.000    0.000
     2      -8.31    2.145    4.892
     3      -7.98    1.853    3.201
-    ...
+
 ```
 
 | 컬럼 | 의미 |
@@ -615,7 +615,7 @@ color yellow, receptor and resi 997-1002    # AP2 helix
 
 3. 도킹 실행 (자동 감지됨):
    ```bash
-   python main.py vina -c config/example-project.yaml
+   python main.py -c config/example-project.yaml vina
    # 또는 인터랙티브: python main.py → [1]
    ```
 
@@ -632,7 +632,7 @@ color yellow, receptor and resi 997-1002    # AP2 helix
 권장되는 전체 실행 흐름:
 
 ```
-python main.py full -c config/example-project.yaml
+python main.py -c config/example-project.yaml full
 ```
 
 이 명령은 다음을 순차 실행합니다:
@@ -672,14 +672,15 @@ Step 5: Validate              → 출력 파일 무결성 검증
 | 구버전 | 신버전 |
 |--------|--------|
 | `python run_docking.py` | `python main.py` (메뉴 [1]) |
-| `python run_docking.py --mode blind` | `python main.py vina -c config/example-project.yaml` |
-| `python run_docking.py --config output/.../config.yaml` | `python main.py vina -c config/example-project.yaml` |
-| `python parse_vina_results.py ...` | `python main.py postprocess` (단계 1) |
-| `python extract_contacts.py ...` | `python main.py postprocess` (단계 2) |
-| `python cluster_pockets.py ...` | `python main.py postprocess` (단계 3) |
-| `python summarize_pockets.py ...` | `python main.py postprocess` (단계 4) |
-| `python compare_pockets.py ...` | `python main.py postprocess` (단계 5) |
-| `python generate_report.py ...` | `python main.py report` |
-| `python validate_outputs.py ...` | `python main.py validate` |
+| `python run_docking.py --mode blind` | `python main.py -c config/example-project.yaml vina` |
+| `python run_docking.py --config output/.../config.yaml` | `python main.py -c config/example-project.yaml vina` |
+| `python parse_vina_results.py ...` | `python main.py -c config/example-project.yaml postprocess` (단계 1) |
+| `python extract_contacts.py ...` | `python main.py -c config/example-project.yaml postprocess` (단계 2) |
+| `python cluster_pockets.py ...` | `python main.py -c config/example-project.yaml postprocess` (단계 3) |
+| `python summarize_pockets.py ...` | `python main.py -c config/example-project.yaml postprocess` (단계 4) |
+| `python compare_pockets.py ...` | `python main.py -c config/example-project.yaml postprocess` (단계 5) |
+| `python generate_report.py ...` | `python main.py -c config/example-project.yaml report` |
+| `python validate_outputs.py ...` | `python main.py -c config/example-project.yaml validate` |
 
-구버전 스크립트는 `legacy/` 디렉토리에 보관되어 있습니다. 상세 매핑은 `legacy/README.md`를 참고하세요.
+이 저장소에는 `legacy/` 디렉토리가 없습니다.
+구버전 단독 실행 흐름이 필요하면 `../autodot_vina/`를 참고하세요.

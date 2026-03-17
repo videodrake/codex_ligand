@@ -1,0 +1,75 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N LightDock_test
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=24:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/lightdock_test.o
+#PBS -e ${PBS_O_WORKDIR}/lightdock_test.e
+
+cd $PBS_O_WORKDIR
+
+# Conda 환경 활성화
+source ~/.bashrc
+conda activate pyrosetta
+
+# ============================================================
+# LightDock Secondary Validation (test — reduced parameters)
+#
+# 50 swarms × 50 glowworms × 50 steps
+# Estimated: 1-2 hours per state (16 cores)
+#
+# 사용법:
+#   qsub config/run_lightdock_test.pbs                         # 단일 state (3GT8_raw)
+#   qsub -v STATE=EGFR_160-185 config/run_lightdock_test.pbs   # 다른 state
+# ============================================================
+
+STATE=${STATE:-3GT8_raw}
+
+echo "============================================"
+echo "  LightDock Secondary Validation [TEST]"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "  State: $STATE"
+echo "============================================"
+
+# Override parameters for test run
+export LIGHTDOCK_N_SWARMS=50
+export LIGHTDOCK_N_GLOWWORMS=50
+export LIGHTDOCK_N_STEPS=50
+
+# Generate setup with reduced parameters
+echo ""
+echo "[Phase 1] Generating test setup..."
+python3 -c "
+from egfr_pipeline.phase1.lightdock_validation import generate_lightdock_setup, PHASE1_OUTPUT_DIR
+params = {
+    'scoring_function': 'fastdfire',
+    'n_swarms': 50,
+    'n_glowworms': 50,
+    'n_steps': 50,
+    'n_top_poses': 5,
+    'contact_cutoff_A': 10.0,
+    'receptor_chain': 'A',
+    'partner_chain': 'B',
+    'n_cpus': 16,
+}
+generate_lightdock_setup('${STATE}', PHASE1_OUTPUT_DIR, params)
+"
+
+# Execute
+echo ""
+echo "[Phase 2] Executing LightDock (test)..."
+bash "output/phase1_ppi/${STATE}/lightdock/run_lightdock_${STATE}.sh"
+
+# Extract + convergence
+echo ""
+echo "[Phase 3-4] Extraction and convergence..."
+python -m egfr_pipeline.phase1.lightdock_validation \
+    --extract --convergence --note --state "$STATE" --max_poses 50
+
+echo ""
+echo "============================================"
+echo "  Finished: $(date)"
+echo "============================================"

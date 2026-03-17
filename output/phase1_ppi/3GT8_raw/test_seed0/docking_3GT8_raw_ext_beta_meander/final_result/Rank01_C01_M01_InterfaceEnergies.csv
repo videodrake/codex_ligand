@@ -1,4 +1,0 @@
-Residue_ID,Residue_Name,Chain,DeltaE_total,DeltaE_fa_atr,DeltaE_fa_rep,DeltaE_fa_sol,DeltaE_fa_elec
-819,LEU,A,-3.21,-2.10,0.15,-0.86,-0.40
-822,ALA,A,-1.55,-1.20,0.05,-0.30,-0.10
-962,VAL,B,-2.87,-1.80,0.08,-0.65,-0.50

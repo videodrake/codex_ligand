@@ -64,7 +64,7 @@ AMBIGUOUS_BAND = 0.15  # |dot product| < this → ambiguous (edge-on)
 
 # Phase 1 output structure
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Output schema
 ORIENTATION_LOG_COLUMNS = [
@@ -498,14 +498,27 @@ def merge_orientation_into_models(
         print(f"  [SKIP] merge for {state_name}: missing files")
         return False
 
-    # Load orientation results keyed by model_id
-    orient_by_model = {}
+    # Load orientation results keyed by (model_id, seed_index), with legacy
+    # fallback indexes for globally unique model ids.
+    orient_by_model_seed = {}
+    orient_by_model_only = {}
+    orient_by_basename_only = {}
     with open(log_path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            orient_by_model[row["model_id"]] = {
+            payload = {
                 "orientation_score": row.get("orientation_score", ""),
                 "orientation_class": row.get("orientation_class", ""),
             }
+            model_id = row.get("model_id", "")
+            seed_index = _normalize_seed_index(row.get("seed_index", ""))
+            basename = Path(model_id).name if model_id else ""
+
+            orient_by_model_seed[(model_id, seed_index)] = payload
+            if basename and basename != model_id:
+                orient_by_model_seed[(basename, seed_index)] = payload
+
+            _mark_unique_orientation(orient_by_model_only, model_id, payload)
+            _mark_unique_orientation(orient_by_basename_only, basename, payload)
 
     # Read existing models table
     with open(models_path, encoding="utf-8") as f:
@@ -523,7 +536,14 @@ def merge_orientation_into_models(
     n_matched = 0
     for row in model_rows:
         mid = row.get("model_id", "")
-        orient = orient_by_model.get(mid, {})
+        seed_index = _normalize_seed_index(row.get("seed_index", ""))
+        orient = _lookup_orientation_payload(
+            mid,
+            seed_index,
+            orient_by_model_seed,
+            orient_by_model_only,
+            orient_by_basename_only,
+        )
         row["orientation_score"] = orient.get("orientation_score", "")
         row["orientation_class"] = orient.get("orientation_class", "")
         if orient:
@@ -623,6 +643,44 @@ def _write_csv(path: Path, rows: List[dict], columns: List[str]) -> None:
         writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _normalize_seed_index(seed_index: object) -> str:
+    """Normalize seed index for stable cross-table joins."""
+    return str(seed_index).strip() if seed_index is not None else ""
+
+
+def _mark_unique_orientation(index: Dict[str, Optional[dict]], key: str, payload: dict) -> None:
+    """Track a payload only when the key is globally unique."""
+    if not key:
+        return
+    if key in index:
+        index[key] = None
+        return
+    index[key] = payload
+
+
+def _lookup_orientation_payload(
+    model_id: str,
+    seed_index: str,
+    orient_by_model_seed: Dict[tuple, dict],
+    orient_by_model_only: Dict[str, Optional[dict]],
+    orient_by_basename_only: Dict[str, Optional[dict]],
+) -> dict:
+    """Resolve orientation payload with seed-aware and legacy-compatible fallbacks."""
+    basename = Path(model_id).name if model_id else ""
+
+    for candidate in ((model_id, seed_index), (basename, seed_index)):
+        payload = orient_by_model_seed.get(candidate)
+        if payload:
+            return payload
+
+    for index, key in ((orient_by_model_only, model_id), (orient_by_basename_only, basename)):
+        payload = index.get(key)
+        if payload:
+            return payload
+
+    return {}
 
 
 # ---------------------------------------------------------------------------

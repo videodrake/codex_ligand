@@ -1,0 +1,63 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N pre_qsub_checks
+#PBS -l nodes=node05:ppn=4
+#PBS -l walltime=01:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/pre_qsub_checks.o
+#PBS -e ${PBS_O_WORKDIR}/pre_qsub_checks.e
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+set +u
+source ~/.bashrc
+set -u
+
+PRECHECK_STATUS_DIR="${PBS_O_WORKDIR}/output/pre_qsub_status"
+PRECHECK_STATUS_FILE="${PRECHECK_STATUS_DIR}/last_pass.json"
+
+mkdir -p "${PRECHECK_STATUS_DIR}"
+rm -f "${PRECHECK_STATUS_FILE}"
+
+write_failed_status() {
+cat > "${PRECHECK_STATUS_FILE}" <<EOF
+{
+  "status": "failed",
+  "timestamp": "$(date -Iseconds)",
+  "host": "$(hostname)",
+  "pbs_job_id": "${PBS_JOBID}"
+}
+EOF
+}
+
+trap 'write_failed_status' ERR
+
+echo "============================================"
+echo "  Pre-Qsub Validation Lane"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "  CONDA_ENV: pyrosetta"
+echo "============================================"
+
+bash scripts/setup_test_env.sh
+bash scripts/run_pre_qsub_checks.sh
+
+cat > "${PRECHECK_STATUS_FILE}" <<EOF
+{
+  "status": "passed",
+  "timestamp": "$(date -Iseconds)",
+  "host": "$(hostname)",
+  "pbs_job_id": "${PBS_JOBID}"
+}
+EOF
+
+trap - ERR
+
+echo "  Wrote precheck status: ${PRECHECK_STATUS_FILE}"
+
+echo ""
+echo "============================================"
+echo "  Pre-Qsub Checks Finished: $(date)"
+echo "============================================"

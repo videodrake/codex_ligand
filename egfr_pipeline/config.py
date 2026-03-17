@@ -1,4 +1,5 @@
 """Shared configuration loading and project root resolution."""
+import copy
 import json
 from pathlib import Path
 
@@ -37,3 +38,69 @@ def project_root_from_config(config: dict) -> Path:
     output_root = Path(config.get("output_root", "./output"))
     project_name = config.get("project_name")
     return output_root / project_name if project_name else output_root
+
+
+RESOURCE_DEFAULTS = {
+    "scheduler": "pbs",
+    "detect_from_env": True,
+    "vina": {
+        "cpu_per_job": 8,
+        "parallel_receptors": 3,
+    },
+    "ppi": {
+        "cpu_per_job": 16,
+    },
+    "lightdock": {
+        "cpu_per_job": 16,
+    },
+    "phase3": {
+        "cpu_per_job": 4,
+    },
+    "gpu": {
+        "enabled": False,
+        "engine": "gnina",
+        "cpu_per_job": 4,
+        "devices": "auto",
+    },
+}
+
+
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    merged = copy.deepcopy(base)
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dicts(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
+def resolve_resource_config(config: dict) -> tuple[dict, list[str]]:
+    """Return canonical runtime resources plus compatibility warnings."""
+    merged = _deep_merge_dicts(RESOURCE_DEFAULTS, config.get("resources") or {})
+    warnings: list[str] = []
+
+    legacy_max_workers = config.get("max_workers")
+    legacy_vina = config.get("vina") if isinstance(config.get("vina"), dict) else {}
+
+    legacy_vina_cpu = legacy_vina.get("cpu")
+    if legacy_vina_cpu not in (None, ""):
+        canonical = merged["vina"].get("cpu_per_job")
+        if canonical != int(legacy_vina_cpu):
+            warnings.append(
+                "Legacy config vina.cpu overrides resources.vina.cpu_per_job; "
+                "prefer resources.vina.cpu_per_job going forward."
+            )
+        merged["vina"]["cpu_per_job"] = int(legacy_vina_cpu)
+
+    legacy_parallel = legacy_vina.get("parallel_receptors", legacy_max_workers)
+    if legacy_parallel not in (None, ""):
+        canonical = merged["vina"].get("parallel_receptors")
+        if canonical != int(legacy_parallel):
+            warnings.append(
+                "Legacy config vina.parallel_receptors/max_workers overrides "
+                "resources.vina.parallel_receptors; prefer resources.vina.parallel_receptors."
+            )
+        merged["vina"]["parallel_receptors"] = int(legacy_parallel)
+
+    return merged, warnings

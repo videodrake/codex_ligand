@@ -1,4 +1,0 @@
-receptor_id,pocket_id,fpocket_support,fpocket_score,fpocket_druggability,p2rank_support,p2rank_score,p2rank_probability,n_tools_supporting,consensus_pocket,ftmap_support,ftmap_hotspot_count
-3GT8_raw,3GT8_raw_PKT01,True,0.8234,0.712,False,,,1,False,False,
-3GT8_raw,3GT8_raw_PKT02,True,0.5612,0.445,False,,,1,False,False,
-3GT8_raw,3GT8_raw_PKT03,True,0.3201,0.198,False,,,1,False,False,

@@ -40,6 +40,8 @@ MENU = """
 ║  [7] Site Verdict            (유효 사이트 자동 판정)     ║
 ║  [8] PPI Postprocess         (PPI 후처리 자동화)         ║
 ║  [9] Full Pipeline           (1→2→7→5→6 자동 실행)       ║
+║ [10] LightDock Validation    (Secondary PPI 검증)         ║
+║ [11] Phase 2 Cascade         (Pocket 분석 재실행)         ║
 ║                                                          ║
 ║  [q] Quit                                                ║
 ║                                                          ║
@@ -230,9 +232,10 @@ def _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
     elif step == "summarize":
         from egfr_pipeline.vina.summarize import summarize_from_config
         print("  Summarizing pockets...")
-        pocket_csv, drug_csv = summarize_from_config(config_path)
+        pocket_csv, drug_csv, occupancy_csv = summarize_from_config(config_path)
         print(f"  → {pocket_csv}")
         print(f"  → {drug_csv}")
+        print(f"  → {occupancy_csv}")
 
     elif step == "compare":
         from egfr_pipeline.vina.compare import compare_from_config
@@ -317,7 +320,7 @@ def _ppi_run_docking(config_ini: str = None):
     print("\n--- PPI 도킹 실행 ---")
 
     if not config_ini:
-        inis = sorted(REPO_ROOT.glob("config/ppi_*.ini"))
+        inis = sorted(REPO_ROOT.glob("config/ppi_*.ini")) + sorted(REPO_ROOT.glob("config/phase1/*.ini"))
         if not inis:
             inis = sorted(REPO_ROOT.glob("config/*.ini"))
         if inis:
@@ -438,22 +441,23 @@ def _ppi_show_pbs():
     """Show PBS script usage."""
     print("\n--- PBS 스크립트 사용법 ---")
     print()
-    print("  [테스트] 1K 모델, ~3-4시간")
-    print("  qsub config/run_ppi_test.pbs                                         # beta-meander")
-    print("  qsub -v CONFIG_FILE=config/ppi_test_TH1.ini config/run_ppi_test.pbs  # TH1")
-    print("  qsub -v RUN_MODE=both config/run_ppi_test.pbs                        # 둘 다")
+    print("  [Phase 1 LightDock 검증]")
+    print("  qsub config/run_lightdock.pbs                          # 전체 state")
+    print("  qsub -v STATE=3GT8_raw config/run_lightdock.pbs        # 단일 state")
     print()
-    print("  [프로덕션] 20K 모델, ~24-36시간")
-    print("  qsub config/run_ppi_prod.pbs                                         # beta-meander")
-    print("  qsub -v CONFIG_FILE=config/ppi_prod_TH1.ini config/run_ppi_prod.pbs  # TH1")
-    print("  qsub -v RUN_MODE=both config/run_ppi_prod.pbs                        # 둘 다")
+    print("  [Phase 1 LightDock 테스트]")
+    print("  qsub config/run_lightdock_test.pbs                     # 3GT8_raw")
     print()
+    print("  [프로덕션 전체 파이프라인]")
+    print("  PRECHECK_JOB=$(qsub config/run_pre_qsub_checks.pbs)")
+    print("  qsub -W depend=afterok:${PRECHECK_JOB} config/run_production.pbs")
+    print()
+    print("  # Phase 1 PyRosetta 설정: config/phase1/*.ini")
     print("  # 로그 확인")
-    print("  tail -f ppi_test.o   # 테스트")
-    print("  tail -f ppi_prod.o   # 프로덕션")
+    print("  tail -f lightdock.o")
 
 
-def run_md():
+def run_md(config_path: str = None):
     """Run MD (GROMACS) analysis."""
     print("\n" + "=" * 50)
     print("  [4] MD GROMACS Analysis")
@@ -584,6 +588,115 @@ def run_ppi_postprocess(config_path: str = None):
     )
 
 
+def run_lightdock():
+    """Run LightDock secondary validation (sub-menu)."""
+    print("\n" + "=" * 50)
+    print("  [10] LightDock Secondary Validation")
+    print("=" * 50)
+
+    print("\n  [a] Setup — 실행 스크립트 생성 (전체 state)")
+    print("  [b] Run — LightDock 실행 (LightDock 설치 필요)")
+    print("  [c] Extract — 인터페이스 추출 + orientation filter")
+    print("  [d] Convergence — PyRosetta 교차 검증")
+    print("  [e] Full — a + c + d (setup + extract + convergence)")
+    print("  [f] 가용성 확인 (LightDock 설치 상태)")
+    print("  [g] PBS 스크립트 안내")
+
+    sel = input("\n선택 [a-g]: ").strip().lower()
+
+    from egfr_pipeline.phase1 import lightdock_validation as ldv
+
+    if sel == "a":
+        for state in ldv.RECEPTOR_STATES:
+            print(f"\n{state}:")
+            ldv.generate_lightdock_setup(state, ldv.PHASE1_OUTPUT_DIR)
+    elif sel == "b":
+        state = input("  State [all/3GT8_raw/EGFR_160-185/EGFR_170-200]: ").strip()
+        states = ldv.RECEPTOR_STATES if state in ("", "all") else [state]
+        for s in states:
+            ldv.run_lightdock_scripts(s, ldv.PHASE1_OUTPUT_DIR)
+    elif sel == "c":
+        for state in ldv.RECEPTOR_STATES:
+            print(f"\n{state}:")
+            ldv.extract_lightdock_interfaces(state, ldv.PHASE1_OUTPUT_DIR)
+    elif sel == "d":
+        for state in ldv.RECEPTOR_STATES:
+            print(f"\n{state}:")
+            ldv.compute_cross_method_convergence(state, ldv.PHASE1_OUTPUT_DIR)
+    elif sel == "e":
+        sys.argv = ["lightdock_validation", "--all"]
+        ldv.main()
+    elif sel == "f":
+        available, msg = ldv.check_lightdock_available()
+        print(f"\n  {msg}")
+    elif sel == "g":
+        print("\n--- PBS 스크립트 사용법 ---")
+        print()
+        print("  [프로덕션] 400 swarms, ~12-24시간/state")
+        print("  qsub config/run_lightdock.pbs                          # 전체 state")
+        print("  qsub -v STATE=3GT8_raw config/run_lightdock.pbs        # 단일 state")
+        print()
+        print("  [테스트] 50 swarms, ~1-2시간")
+        print("  qsub config/run_lightdock_test.pbs                     # 3GT8_raw")
+        print("  qsub -v STATE=EGFR_160-185 config/run_lightdock_test.pbs")
+        print()
+        print("  # 로그 확인")
+        print("  tail -f lightdock.o")
+    else:
+        print("잘못된 입력입니다.")
+
+
+def _run_phase2_cmd(args):
+    """Dispatch for `python main.py phase2` CLI subcommand."""
+    from egfr_pipeline.phase2.rerun_cascade import run_phase2_cascade
+    run_phase2_cascade(
+        parse_only=args.parse_only,
+        from_tg=args.from_tg,
+        ftmap_dir=args.ftmap_dir,
+    )
+
+
+def run_phase2_cascade_menu():
+    """Run Phase 2 cascade (TG 2.0 -> 2.7)."""
+    print("\n" + "=" * 50)
+    print("  [11] Phase 2 Cascade (Pocket Analysis)")
+    print("=" * 50)
+
+    print("\n  [a] 전체 실행 (setup + parse + 분석)")
+    print("  [b] Parse-only (fpocket 완료 후 분석만)")
+    print("  [c] 특정 TG부터 재실행")
+    print("  [d] PBS 스크립트 안내")
+
+    sel = input("\n선택 [a-d]: ").strip().lower()
+
+    if sel == "d":
+        print("\n--- PBS 스크립트 사용법 ---")
+        print()
+        print("  qsub config/run_phase2_cascade.pbs                       # 전체")
+        print("  qsub -v SKIP_TOOLS=1 config/run_phase2_cascade.pbs       # fpocket 건너뛰기")
+        print("  qsub -v FROM_TG=2.5 config/run_phase2_cascade.pbs        # 특정 TG부터")
+        return
+
+    from egfr_pipeline.phase2.rerun_cascade import run_phase2_cascade
+
+    parse_only = sel in ("b", "c")
+    from_tg = "2.0"
+    ftmap_dir = None
+
+    if sel == "c":
+        from_tg = ask_input("시작 TG (예: 2.3)", "2.0")
+
+    ftmap_raw = ask_input("FTMap 디렉토리 (없으면 Enter)", "")
+    if ftmap_raw:
+        ftmap_dir = Path(ftmap_raw)
+
+    run_phase2_cascade(
+        parse_only=parse_only,
+        from_tg=from_tg,
+        ftmap_dir=ftmap_dir,
+    )
+
+
 def run_full(config_path: str = None):
     """Run full pipeline: Vina → Postprocess → Verdict → Report → Validate."""
     print("\n" + "=" * 50)
@@ -676,7 +789,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("validate", help="Validate pipeline outputs")
     sub.add_parser("verdict", help="Run site verdict (automated pocket validation)")
     sub.add_parser("ppi-postprocess", help="Run PPI post-processing automation")
+    sub.add_parser("lightdock", help="LightDock secondary validation")
     sub.add_parser("full", help="Run full pipeline (vina→postprocess→verdict→report→validate)")
+    p2 = sub.add_parser("phase2", help="Run Phase 2 cascade (pocket analysis TG 2.0→2.7)")
+    p2.add_argument("--parse-only", action="store_true",
+                     help="Skip fpocket/P2Rank setup (already executed)")
+    p2.add_argument("--from-tg", default="2.0",
+                     help="Start from this TG (e.g. '2.5')")
+    p2.add_argument("--ftmap-dir", type=Path, default=None,
+                     help="FTMap output directory")
 
     return parser
 
@@ -690,7 +811,7 @@ def interactive_menu():
     print(MENU)
 
     while True:
-        sel = input("선택 [1-9, 3a/3b/3c, q]: ").strip().lower()
+        sel = input("선택 [1-11, 3a/3b/3c, q]: ").strip().lower()
 
         if sel == "q":
             print("종료합니다.")
@@ -719,8 +840,12 @@ def interactive_menu():
             run_ppi_postprocess()
         elif sel == "9":
             run_full()
+        elif sel == "10":
+            run_lightdock()
+        elif sel == "11":
+            run_phase2_cascade_menu()
         else:
-            print("잘못된 입력입니다. 1-9 또는 q를 선택하세요.\n")
+            print("잘못된 입력입니다. 1-11 또는 q를 선택하세요.\n")
             continue
 
         # After task, show menu again
@@ -744,13 +869,15 @@ def main():
     dispatch = {
         "vina": lambda: run_vina(config),
         "postprocess": lambda: run_postprocess(config),
-        "pyrosetta": lambda: run_pyrosetta(),
-        "md": lambda: run_md(),
+        "pyrosetta": lambda: run_pyrosetta(config),
+        "md": lambda: run_md(config),
         "report": lambda: run_report(config),
         "validate": lambda: run_validate(config),
         "verdict": lambda: run_verdict(config),
         "ppi-postprocess": lambda: run_ppi_postprocess(config),
+        "lightdock": lambda: run_lightdock(),
         "full": lambda: run_full(config),
+        "phase2": lambda: _run_phase2_cmd(args),
     }
 
     if args.command in dispatch:

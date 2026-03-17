@@ -50,7 +50,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Classification thresholds
 ORTHOSTERIC_HOTSPOT_FRACTION = 0.25   # ≥25% of patch hotspots in pocket → orthosteric
@@ -269,6 +269,31 @@ def _assign_class(
     return ("rim_candidate", f"overlap={n_overlap}, no_centroid_available")
 
 
+def _patch_row_applies_to_state(row: dict, state: str) -> bool:
+    """Return whether a normalized patch-reference row applies to a receptor state."""
+    states_str = (row.get("states", "") or "").strip()
+    if not states_str:
+        return True
+
+    normalized_tokens = {
+        token.strip().lower()
+        for token in states_str.replace(",", ";").split(";")
+        if token.strip()
+    }
+    if not normalized_tokens:
+        return True
+
+    if normalized_tokens & {"all", "any", "global", "all_states"}:
+        return True
+
+    known_states = {known.lower() for known in RECEPTOR_STATES}
+    recognized_states = normalized_tokens & known_states
+    if not recognized_states:
+        return True
+
+    return state.lower() in recognized_states
+
+
 # ---------------------------------------------------------------------------
 # Report generation
 # ---------------------------------------------------------------------------
@@ -369,19 +394,31 @@ def run_patch_relationship(
 
     print(f"  Loaded {len(pockets)} merged pockets, {len(patch_ref)} patch residues")
 
-    # Build patch hotspot set (residue IDs that are hotspots)
-    patch_hotspot_ids = set()
+    # Build patch hotspot/residue scope per receptor state.
+    patch_hotspot_ids_by_state: Dict[str, Set[str]] = {
+        state: set() for state in RECEPTOR_STATES
+    }
+    patch_residue_nums_by_state: Dict[str, Set[int]] = {
+        state: set() for state in RECEPTOR_STATES
+    }
     patch_all_ids = set()
-    patch_residue_nums = set()
+    patch_hotspot_ids = set()
     for r in patch_ref:
         rid = r.get("patch_residue_id", "")
         rnum = _safe_int(r.get("residue_num", ""))
         if rid:
             patch_all_ids.add(rid)
-            if _parse_bool(r.get("is_hotspot", "")):
-                patch_hotspot_ids.add(rid)
+        if _parse_bool(r.get("is_hotspot", "")) and rid:
+            patch_hotspot_ids.add(rid)
+
+        for state in RECEPTOR_STATES:
+            if not _patch_row_applies_to_state(r, state):
+                continue
+            if rid:
+                if _parse_bool(r.get("is_hotspot", "")):
+                    patch_hotspot_ids_by_state[state].add(rid)
             if rnum is not None:
-                patch_residue_nums.add(rnum)
+                patch_residue_nums_by_state[state].add(rnum)
 
     print(f"  Patch: {len(patch_all_ids)} residues, {len(patch_hotspot_ids)} hotspots")
 
@@ -389,7 +426,7 @@ def run_patch_relationship(
     patch_centroids: Dict[str, Optional[Tuple[float, float, float]]] = {}
     for state in RECEPTOR_STATES:
         pdb_path = receptor_dir / f"receptor_{state}.pdb"
-        centroid = compute_patch_centroid(pdb_path, patch_residue_nums)
+        centroid = compute_patch_centroid(pdb_path, patch_residue_nums_by_state[state])
         patch_centroids[state] = centroid
         if centroid:
             print(f"  Patch centroid ({state}): ({centroid[0]:.1f}, {centroid[1]:.1f}, {centroid[2]:.1f})")
@@ -401,8 +438,9 @@ def run_patch_relationship(
     for pocket in pockets:
         state = pocket.get("receptor_id", "")
         centroid = patch_centroids.get(state)
+        state_hotspot_ids = patch_hotspot_ids_by_state.get(state, patch_hotspot_ids)
         result = classify_pocket_patch_relationship(
-            pocket, patch_hotspot_ids, centroid
+            pocket, state_hotspot_ids, centroid
         )
         relationships.append(result)
 

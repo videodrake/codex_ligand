@@ -1,12 +1,8 @@
 __pycache__/
+.venv/
 *.e
 *.o
 worker_debug.log
 *.pdb
 *.pdbqt
-EGFR_dimer_TH1_wt/filter_passed/
-EGFR_dimer_TH1_wt/cluster_results/*.pdb
-EGFR_dimer_TH1_wt/final_result/*.pdb
-EGFR_dimer_beta_meander_wt/filter_passed/
-EGFR_dimer_beta_meander_wt/cluster_results/*.pdb
-EGFR_dimer_beta_meander_wt/final_result/*.pdb
+output/

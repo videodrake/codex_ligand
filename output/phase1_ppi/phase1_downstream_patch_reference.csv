@@ -1,8 +1,0 @@
-residue_id,residue_num,residue_name,chain,lobe_label,evidence_source,construct_type,orientation_validation_status,robustness_class,n_states_present,states_present,global_max_occupancy,is_hotspot_any_state,pyrosetta_evidence,lightdock_evidence,method_agreement,confidence,notes
-ASP855,855,ASP,A,C-lobe,primary,full_kinase_domain,orientation_validated,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,True,both,medium,
-GLU866,866,GLU,A,C-lobe,primary,full_kinase_domain,orientation_validated,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,True,both,medium,
-LEU819,819,LEU,A,N-lobe,primary,full_kinase_domain,orientation_validated,moderate,2,3GT8_cl38_48;3GT8_raw,1.0,True,True,False,single,low,N-lobe (newly detectable in Phase 1)
-ALA822,822,ALA,A,N-lobe,primary,full_kinase_domain,orientation_validated,state_specific,1,3GT8_raw,1.0,True,True,False,single,low,N-lobe (newly detectable in Phase 1)
-LEU838,838,LEU,A,C-lobe,primary,full_kinase_domain,orientation_validated,state_specific,1,3GT8_raw,1.0,True,True,False,single,low,
-VAL834,834,VAL,A,N-lobe,primary,full_kinase_domain,orientation_validated,state_specific,1,3GT8_raw,1.0,True,True,False,single,low,N-lobe (newly detectable in Phase 1)
-ILE857,857,ILE,A,C-lobe,primary,full_kinase_domain,orientation_validated,state_specific,1,3GT8_cl38_48,0.6,True,True,False,pyrosetta_only,low,

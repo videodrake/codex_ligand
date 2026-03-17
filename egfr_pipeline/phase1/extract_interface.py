@@ -39,7 +39,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # N-lobe / C-lobe boundary (PDB numbering)
 # The hinge region connecting N-lobe and C-lobe is at ~residue 838
@@ -148,16 +148,28 @@ def parse_binding_residues_column(raw: str) -> List[Tuple[str, str, Optional[int
     return results
 
 
-def get_lobe_label(chain: str, resnum: Optional[int]) -> str:
-    """Assign lobe label based on chain and residue number."""
-    if chain == "B" or chain == "partner":
-        return "partner"
+def get_lobe_label(resnum: Optional[int]) -> str:
+    """Assign receptor lobe label based on residue number only.
+
+    Receptor-side residues are sourced from ``Binding_Residues_A`` and may
+    retain restored chain IDs such as ``B`` after dimer reconstruction. Their
+    receptor-vs-partner identity is therefore determined by the source column,
+    not by the chain label itself.
+    """
     if resnum is None:
         return "unknown"
     if resnum < NLOBE_CLOBE_BOUNDARY:
         return "N-lobe"
     else:
         return "C-lobe"
+
+
+def _display_source_file(path: Path) -> str:
+    """Return a stable, readable source path for extracted artifacts."""
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
 
 
 # ---------------------------------------------------------------------------
@@ -178,9 +190,11 @@ def load_interface_energies(csv_path: Path) -> Dict[str, dict]:
         reader = csv.DictReader(f)
         for row in reader:
             resid = row.get("Residue_ID", "")
-            resname = row.get("Residue_Name", "")
+            resname = normalize_resname(row.get("Residue_Name", ""))
             chain = row.get("Chain", "")
-            key = f"{chain}:{normalize_resname(resname)}{resid}"
+            match = re.search(r"(-?\d+)", resid)
+            resid_num = match.group(1) if match else resid
+            key = f"{chain}:{resname}{resid_num}"
             energies[key] = {
                 "delta_e_total": row.get("DeltaE_total", ""),
                 "delta_e_fa_atr": row.get("DeltaE_fa_atr", ""),
@@ -190,6 +204,34 @@ def load_interface_energies(csv_path: Path) -> Dict[str, dict]:
             }
 
     return energies
+
+
+def resolve_interface_energies_path(result_dir: Path, file_csv: str) -> Optional[Path]:
+    """Resolve an InterfaceEnergies CSV from a File_CSV entry."""
+    if not file_csv:
+        return None
+
+    raw = Path(file_csv)
+    iface_name = raw.name.replace("_Energies.csv", "_InterfaceEnergies.csv")
+    candidates = []
+    if raw.is_absolute():
+        candidates.append(raw.with_name(iface_name))
+    else:
+        candidates.append(result_dir / raw.with_name(iface_name))
+        candidates.append(result_dir / raw)
+
+    candidates.append(result_dir / iface_name)
+    candidates.append(result_dir / "final_result" / iface_name)
+
+    seen = set()
+    for candidate in candidates:
+        normalized = str(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if candidate.exists():
+            return candidate
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -241,16 +283,16 @@ def extract_run(
             iface_energies = {}
             file_csv = row.get("File_CSV", "")
             if file_csv:
-                iface_csv_name = Path(file_csv).name.replace("_Energies.csv", "_InterfaceEnergies.csv")
-                iface_csv_path = result_dir / iface_csv_name
-                iface_energies = load_interface_energies(iface_csv_path)
+                iface_csv_path = resolve_interface_energies_path(result_dir, file_csv)
+                if iface_csv_path is not None:
+                    iface_energies = load_interface_energies(iface_csv_path)
 
             # --- Build long-form residue rows ---
             # Receptor-side
             for chain, res_id, resnum in receptor_residues:
                 if not chain:
                     chain = "A"
-                lobe = get_lobe_label(chain, resnum)
+                lobe = get_lobe_label(resnum)
                 resname_match = re.match(r"([A-Z]+)", res_id)
                 resname = resname_match.group(1) if resname_match else ""
 
@@ -275,7 +317,7 @@ def extract_run(
                     "delta_e_fa_rep": energy.get("delta_e_fa_rep", ""),
                     "delta_e_fa_sol": energy.get("delta_e_fa_sol", ""),
                     "delta_e_fa_elec": energy.get("delta_e_fa_elec", ""),
-                    "source_file": str(final_csv.relative_to(PROJECT_ROOT)),
+                    "source_file": _display_source_file(final_csv),
                 })
 
             # Partner-side
@@ -306,7 +348,7 @@ def extract_run(
                     "delta_e_fa_rep": energy.get("delta_e_fa_rep", ""),
                     "delta_e_fa_sol": energy.get("delta_e_fa_sol", ""),
                     "delta_e_fa_elec": energy.get("delta_e_fa_elec", ""),
-                    "source_file": str(final_csv.relative_to(PROJECT_ROOT)),
+                    "source_file": _display_source_file(final_csv),
                 })
 
             # --- Build per-model summary row ---
@@ -339,7 +381,7 @@ def extract_run(
                 "n_clobe_interface_residues": n_clobe,
                 "receptor_interface_residues": receptor_res_str,
                 "partner_interface_residues": partner_res_str,
-                "source_file": str(final_csv.relative_to(PROJECT_ROOT)),
+                "source_file": _display_source_file(final_csv),
             })
 
     return residue_rows, model_rows

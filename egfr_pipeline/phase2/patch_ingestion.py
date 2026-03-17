@@ -22,6 +22,7 @@ Usage:
 
 import argparse
 import csv
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -36,7 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
 
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Expected columns from Phase 1 patch reference (review_report.py PATCH_REFERENCE_COLUMNS)
 PHASE1_REQUIRED_COLUMNS = [
@@ -89,6 +90,11 @@ VALID_CONFIDENCE = {"high", "medium", "low"}
 VALID_CONSTRUCT_TYPES = {"full_kinase_domain"}
 VALID_METHOD_AGREEMENT = {"both", "pyrosetta_only", "lightdock_only", "single", "none"}
 RESIDUE_NUM_RANGE = (699, 1007)  # Full kinase domain PDB numbering
+MD_GATE_ARTIFACTS = (
+    "md_gate_decision.md",
+    "phase1_md_validation_report.md",
+    "md_stability_metrics.csv",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +120,109 @@ def load_patch_reference(phase1_dir: Path) -> Tuple[List[dict], Path]:
     return rows, ref_path
 
 
+def inspect_md_gate_artifacts(phase1_dir: Path) -> Dict[str, object]:
+    """Collect Phase 1 MD gate artifact presence and decision status."""
+    artifacts = [_resolve_md_gate_artifact(phase1_dir, name) for name in MD_GATE_ARTIFACTS]
+    decision_artifact = next(
+        (artifact for artifact in artifacts if artifact["name"] == "md_gate_decision.md"),
+        None,
+    )
+    decision_status = "missing"
+    decision_excerpt = ""
+    if decision_artifact and decision_artifact["status"] == "found":
+        decision_text = decision_artifact["path"].read_text(encoding="utf-8", errors="replace")
+        decision_status = _classify_md_gate_decision(decision_text)
+        decision_excerpt = _extract_md_gate_excerpt(decision_text)
+
+    return {
+        "artifacts": artifacts,
+        "decision_status": decision_status,
+        "decision_excerpt": decision_excerpt,
+    }
+
+
+def _resolve_md_gate_artifact(phase1_dir: Path, artifact_name: str) -> Dict[str, object]:
+    exact_match = phase1_dir / artifact_name
+    if exact_match.is_file():
+        return {
+            "name": artifact_name,
+            "status": "found",
+            "location": str(exact_match.relative_to(phase1_dir)),
+            "path": exact_match,
+        }
+
+    recursive_matches = sorted(path for path in phase1_dir.rglob(artifact_name) if path.is_file())
+    if len(recursive_matches) == 1:
+        match = recursive_matches[0]
+        return {
+            "name": artifact_name,
+            "status": "found",
+            "location": str(match.relative_to(phase1_dir)),
+            "path": match,
+        }
+
+    if recursive_matches:
+        return {
+            "name": artifact_name,
+            "status": "ambiguous",
+            "location": f"{len(recursive_matches)} recursive matches",
+            "path": None,
+        }
+
+    return {
+        "name": artifact_name,
+        "status": "missing",
+        "location": "not found",
+        "path": None,
+    }
+
+
+def _classify_md_gate_decision(text: str) -> str:
+    normalized = " ".join(text.lower().split())
+    if not normalized:
+        return "unknown"
+
+    blocked_patterns = (
+        r"\bphase 2\b.{0,40}\bblocked\b",
+        r"\bblocked\b.{0,40}\bphase 2\b",
+        r"\bdo not use this patch\b",
+        r"\breturn to phase 1\b",
+        r"\bunstable interface\b",
+        r"\b(?:overall|final|gate|decision|classification|verdict)\b.{0,40}\bunstable\b",
+        r"\bunstable\b.{0,40}\b(?:overall|final|gate|decision|classification|verdict)\b",
+    )
+    caution_patterns = (
+        r"\bmetastable\b",
+        r"\bproceed with caution\b",
+        r"\breduced confidence\b",
+    )
+    pass_patterns = (
+        r"\bphase 2\b.{0,40}\bcan proceed\b",
+        r"\bproceed to phase 2\b",
+        r"\bphase 2\b.{0,40}\bproceed\b",
+        r"\bstable\b",
+    )
+
+    if any(re.search(pattern, normalized) for pattern in blocked_patterns):
+        return "blocked"
+    if any(re.search(pattern, normalized) for pattern in caution_patterns):
+        return "caution"
+    if any(re.search(pattern, normalized) for pattern in pass_patterns):
+        return "pass"
+    return "unknown"
+
+
+def _extract_md_gate_excerpt(text: str) -> str:
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split())
+        if not line:
+            continue
+        lowered = line.lower()
+        if any(token in lowered for token in ("phase 2", "blocked", "stable", "metastable", "unstable")):
+            return line[:160]
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # Validation (Task 2.0.2)
 # ---------------------------------------------------------------------------
@@ -121,6 +230,7 @@ def load_patch_reference(phase1_dir: Path) -> Tuple[List[dict], Path]:
 def validate_patch_reference(
     rows: List[dict],
     file_path: Path,
+    md_gate_trace: Optional[Dict[str, object]] = None,
 ) -> Dict[str, list]:
     """Validate Phase 1 patch reference content.
 
@@ -265,6 +375,41 @@ def validate_patch_reference(
             "Full kinase domain should detect N-lobe contacts."
         )
 
+    if md_gate_trace:
+        decision_artifact_found = False
+        for artifact in md_gate_trace["artifacts"]:
+            status = artifact["status"]
+            if artifact["name"] == "md_gate_decision.md" and status == "found":
+                decision_artifact_found = True
+            if status == "found":
+                messages["info"].append(
+                    f"MD gate artifact found: {artifact['name']} ({artifact['location']})"
+                )
+            elif status == "ambiguous":
+                messages["warnings"].append(
+                    f"MD gate artifact ambiguous: {artifact['name']} ({artifact['location']})"
+                )
+            else:
+                messages["warnings"].append(f"MD gate artifact missing: {artifact['name']}")
+
+        decision_status = md_gate_trace["decision_status"]
+        decision_excerpt = md_gate_trace.get("decision_excerpt", "")
+        if decision_status == "blocked":
+            detail = "MD gate decision blocks Phase 2 progression"
+            if decision_excerpt:
+                detail = f"{detail}: {decision_excerpt}"
+            messages["errors"].append(detail)
+        elif decision_status == "caution":
+            messages["warnings"].append(
+                "MD gate decision is METASTABLE/caution; carry reduced confidence into Phase 2."
+            )
+        elif decision_status == "pass":
+            messages["info"].append("MD gate decision indicates Phase 2 may proceed.")
+        elif decision_artifact_found:
+            messages["warnings"].append(
+                "MD gate decision artifact is present but its status could not be classified."
+            )
+
     return messages
 
 
@@ -315,6 +460,7 @@ def build_validation_report(
     normalized: List[dict],
     messages: Dict[str, list],
     file_path: Path,
+    md_gate_trace: Optional[Dict[str, object]] = None,
 ) -> List[str]:
     """Build Phase 2 patch reference validation markdown report."""
     lines = [
@@ -418,6 +564,9 @@ def build_validation_report(
         lines.append(f"| {st} | {covered} |")
     lines.append("")
 
+    if md_gate_trace:
+        lines.extend(_build_md_gate_traceability_section(md_gate_trace))
+
     # Phase 2 readiness
     lines.extend([
         "## Phase 2 Readiness",
@@ -432,6 +581,30 @@ def build_validation_report(
         "",
         "Generated by `egfr_pipeline.phase2.patch_ingestion`",
     ])
+
+    return lines
+
+
+def _build_md_gate_traceability_section(md_gate_trace: Dict[str, object]) -> List[str]:
+    decision_status = md_gate_trace.get("decision_status", "missing")
+    lines = [
+        "## MD Gate Traceability",
+        "",
+        f"- Decision status: `{decision_status}`",
+        "",
+        "| Artifact | Status | Location |",
+        "|----------|--------|----------|",
+    ]
+    for artifact in md_gate_trace["artifacts"]:
+        lines.append(
+            f"| {artifact['name']} | {artifact['status']} | {artifact['location']} |"
+        )
+    lines.append("")
+
+    decision_excerpt = md_gate_trace.get("decision_excerpt", "")
+    if decision_excerpt:
+        lines.append(f"- Decision snippet: `{decision_excerpt}`")
+        lines.append("")
 
     return lines
 
@@ -452,14 +625,21 @@ def run_patch_ingestion(
 
     # 2.0.1 — Ingestion
     rows, ref_path = load_patch_reference(phase1_dir)
+    md_gate_trace = inspect_md_gate_artifacts(phase1_dir)
     print(f"  Loaded {len(rows)} residues from {ref_path.name}")
 
     # 2.0.2 — Validation
-    messages = validate_patch_reference(rows, ref_path)
+    messages = validate_patch_reference(rows, ref_path, md_gate_trace)
 
     n_err = len(messages["errors"])
     n_warn = len(messages["warnings"])
+    n_md_found = sum(1 for artifact in md_gate_trace["artifacts"] if artifact["status"] == "found")
     print(f"  Validation: {n_err} errors, {n_warn} warnings")
+    print(
+        "  MD gate: "
+        f"{md_gate_trace['decision_status']} "
+        f"({n_md_found}/{len(md_gate_trace['artifacts'])} artifacts found)"
+    )
 
     if n_err > 0:
         print("\n  VALIDATION ERRORS:")
@@ -478,7 +658,13 @@ def run_patch_ingestion(
         w.writerows(normalized)
 
     # Write validation report
-    report_lines = build_validation_report(rows, normalized, messages, ref_path)
+    report_lines = build_validation_report(
+        rows,
+        normalized,
+        messages,
+        ref_path,
+        md_gate_trace,
+    )
     report_path = output_dir / "phase2_patch_reference_validation.md"
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(report_lines))

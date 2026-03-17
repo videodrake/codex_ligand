@@ -9,11 +9,10 @@ Usage:
 
 전체 흐름:
   Phase 1: Vina blind docking (3 receptor × 3 ligand, exhaustiveness=128)  ~15분
-           결과물: output/{project}//{receptor_id}/{ligand}_blind.pdbqt
-  Phase 2: PPI docking (PyRosetta 20K models × 2 targets)                  ~24-36시간
-           결과물: {pdb_stem}/final_result/final_ranking.csv
-  Phase 3: PPI postprocess (chain restoration + residue extraction)
-           결과물: output/{project}/ppi_pyrosetta_residues.csv
+           결과물: output/{project}/{receptor_id}/{ligand}_blind.pdbqt
+  Phase 2: PPI docking — Phase 1 monomer-based (3 state × seed0 = 60K models)
+           결과물: {docking_dir}/final_result/final_ranking.csv
+  Phase 3: PPI postprocess — monomer 타겟은 chain restoration 불필요 (자동 스킵)
   Phase 4: Vina postprocess (parse → contacts → cluster → summarize → compare → bootstrap)
            결과물: output/{project}/vina_pocket_table.csv
   Phase 5: Verdict (3축 통합 scoring)
@@ -24,34 +23,121 @@ Usage:
 """
 
 import argparse
+import configparser
 import csv
+import os
 import sys
 import time
+import traceback
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
+from egfr_pipeline.config import load_config as load_pipeline_config
+from egfr_pipeline.config import resolve_resource_config
+from egfr_pipeline.output_steps import (
+    build_current_run_manifest,
+    record_step1_outputs,
+    record_step2_outputs,
+    record_step3_outputs,
+    record_step4_outputs,
+    record_step5_outputs,
+    record_step6_outputs,
+    record_step7_outputs,
+    refresh_root_step_views,
+    step_output_view_enabled,
+    update_run_overview,
+    utc_now_iso,
+    write_run_status,
+)
+from egfr_pipeline.runtime_support import (
+    cap_worker_count,
+    lane_is_complete,
+    lane_runtime_dir,
+    prepare_scratch_workspace,
+    reset_lane_completion,
+    resolve_runtime_resources,
+    sync_tree,
+    write_lane_completion,
+    write_lane_manifest,
+)
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
 
-# PPI 설정
+# PPI 설정 — Phase 1 monomer-based (seed0 테스트)
 PPI_TARGETS = [
     {
-        "name": "TH1",
-        "config_ini": "config/ppi_prod_TH1.ini",
-        "input_pdb": "input/PPI/prepared/EGFR_dimer_TH1_wt.pdb",
-        "mapping_csv": "input/PPI/prepared/EGFR_dimer_TH1_mapping.csv",
+        "name": "3GT8_raw_seed0",
+        "config_ini": "config/phase1/phase1_prod_3GT8_raw_seed0.ini",
+        "docking_dir": "output/phase1_ppi/3GT8_raw/prod_seed0",
+        "mapping_csv": "",
         "receptor_id": "3GT8_raw",
-        "partner_name": "MYO1D_TH1",
+        "partner_name": "ext_beta_meander",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
+        "seed_index": 0,
+        "is_production": True,
     },
     {
-        "name": "beta-meander",
-        "config_ini": "config/ppi_prod_beta_meander.ini",
-        "input_pdb": "input/PPI/prepared/EGFR_dimer_beta_meander_wt.pdb",
-        "mapping_csv": "input/PPI/prepared/EGFR_dimer_beta_meander_mapping.csv",
-        "receptor_id": "3GT8_raw",
-        "partner_name": "MYO1D_beta",
+        "name": "EGFR_160-185_seed0",
+        "config_ini": "config/phase1/phase1_prod_EGFR_160-185_seed0.ini",
+        "docking_dir": "output/phase1_ppi/EGFR_160-185/prod_seed0",
+        "mapping_csv": "",
+        "receptor_id": "EGFR_160-185",
+        "partner_name": "ext_beta_meander",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
+        "seed_index": 0,
+        "is_production": True,
+    },
+    {
+        "name": "EGFR_170-200_seed0",
+        "config_ini": "config/phase1/phase1_prod_EGFR_170-200_seed0.ini",
+        "docking_dir": "output/phase1_ppi/EGFR_170-200/prod_seed0",
+        "mapping_csv": "",
+        "receptor_id": "EGFR_170-200",
+        "partner_name": "ext_beta_meander",
+        "construct_type": "full_kinase_domain",
+        "orientation_validation_status": "not_available",
+        "seed_index": 0,
+        "is_production": True,
     },
 ]
+
+
+_FORCE_MODE = False
+
+
+def _record_step2_outputs_with_targets(config_path, repo_root=None):
+    return record_step2_outputs(
+        config_path,
+        repo_root=repo_root,
+        ppi_targets=PPI_TARGETS,
+    )
+
+
+def _record_step7_outputs_with_result(
+    config_path,
+    repo_root=None,
+    validation_result=None,
+    error_message=None,
+):
+    return record_step7_outputs(
+        config_path,
+        repo_root=repo_root,
+        validation_result=validation_result,
+        error_message=error_message,
+    )
+
+
+STEP_VIEW_COLLECTORS = {
+    1: ("step1_vina_raw", record_step1_outputs),
+    2: ("step2_ppi_raw", _record_step2_outputs_with_targets),
+    3: ("step3_ppi_postprocess", record_step3_outputs),
+    4: ("step4_vina_postprocess", record_step4_outputs),
+    5: ("step5_verdict", record_step5_outputs),
+    6: ("step6_report", record_step6_outputs),
+    7: ("step7_validate", _record_step7_outputs_with_result),
+}
 
 
 def banner(msg: str):
@@ -71,7 +157,7 @@ def run_step(name: str, func, *args, **kwargs):
         minutes = int(elapsed // 60)
         seconds = int(elapsed % 60)
         print(f"\n  [OK] {name} 완료 ({minutes}분 {seconds}초)")
-        return result
+        return True, result, None
     except Exception as e:
         elapsed = time.time() - t0
         minutes = int(elapsed // 60)
@@ -80,13 +166,38 @@ def run_step(name: str, func, *args, **kwargs):
         print(f"  Error: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        return False, None, e
 
 
 def _load_config():
-    import yaml
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    config = load_pipeline_config(str(CONFIG_PATH))
+    resources, warnings = resolve_resource_config(config)
+    config = dict(config)
+    config["resources"] = resources
+    if warnings:
+        config["_resource_warnings"] = warnings
+    return config
+
+
+def _emit_resource_warnings(config: dict) -> None:
+    for warning in config.get("_resource_warnings", []):
+        print(f"  [WARN] {warning}")
+
+
+def _select_ppi_targets(
+    *,
+    state: Optional[str] = None,
+    seed: Optional[int] = None,
+) -> List[dict]:
+    selected: List[dict] = []
+    for target in PPI_TARGETS:
+        if state and target.get("receptor_id") != state:
+            continue
+        target_seed = int(target.get("seed_index", 0))
+        if seed is not None and target_seed != int(seed):
+            continue
+        selected.append(target)
+    return selected
 
 
 def _project_root() -> Path:
@@ -111,10 +222,210 @@ def _csv_has_rows(path: Path) -> bool:
 
 def _ppi_docking_dir(target: dict) -> Optional[Path]:
     """PPI 도킹 결과 디렉토리 경로 반환."""
-    input_pdb = Path(target["input_pdb"])
+    direct_dir = target.get("docking_dir")
+    if direct_dir:
+        path = Path(str(direct_dir))
+        return path if path.is_absolute() else REPO_ROOT / path
+
+    config_path = REPO_ROOT / target["config_ini"]
+    if not config_path.exists():
+        return None
+
+    config = configparser.ConfigParser()
+    config.read(config_path, encoding="utf-8")
+
+    input_pdb_rel = config.get("Path", "input_pdb_name", fallback="")
+    input_pdb = REPO_ROOT / input_pdb_rel
     if not input_pdb.exists():
-        input_pdb = Path(target["input_pdb"].replace("_wt.pdb", ".pdb"))
-    return REPO_ROOT / input_pdb.stem
+        return None
+
+    return input_pdb.parent
+
+
+def _execution_mode_label(args: argparse.Namespace) -> str:
+    if getattr(args, "lane", ""):
+        return f"lane:{args.lane}"
+    if args.only:
+        return f"only:{args.only}"
+    if args.from_phase:
+        return f"from:{args.from_phase}"
+    if args.force:
+        return "force"
+    return "full"
+
+
+def _selected_step_numbers(
+    args: argparse.Namespace,
+    only_phases: set[int],
+) -> List[int]:
+    if only_phases:
+        return sorted(step_num for step_num in only_phases if step_num in STEP_VIEW_COLLECTORS)
+    if args.from_phase:
+        return sorted(step_num for step_num in STEP_VIEW_COLLECTORS if step_num >= args.from_phase)
+    if args.force:
+        return sorted(STEP_VIEW_COLLECTORS)
+    return []
+
+
+def _empty_phase_states() -> List[dict]:
+    phase_states: List[dict] = []
+    for phase_num, name, _ in PHASES:
+        phase_states.append(
+            {
+                "phase_number": phase_num,
+                "phase_name": name,
+                "status": "pending",
+                "started_at": "",
+                "completed_at": "",
+                "duration_seconds": None,
+                "skip_reason": "",
+                "last_error": "",
+            }
+        )
+    return phase_states
+
+
+def _phase_state_entry(phase_states: List[dict], phase_num: int) -> dict:
+    for entry in phase_states:
+        if int(entry.get("phase_number", -1)) == phase_num:
+            return entry
+    raise KeyError(f"Unknown phase number: {phase_num}")
+
+
+def _build_run_status_payload(
+    config: dict,
+    *,
+    execution_mode: str,
+    run_id: str,
+    started_at: str,
+    phase_states: List[dict],
+    overall_status: str,
+    current_phase_number: Optional[int] = None,
+    current_phase_name: str = "",
+    completed_at: Optional[str] = None,
+    last_error: str = "",
+) -> dict:
+    project_root = _project_root()
+    resolved = sum(
+        1
+        for entry in phase_states
+        if str(entry.get("status", "")) in {"completed", "skipped", "failed"}
+    )
+    total = len(phase_states)
+    return {
+        "run_id": run_id,
+        "project_name": config.get("project_name", project_root.name),
+        "project_root": project_root.as_posix(),
+        "source_config": str(CONFIG_PATH.relative_to(REPO_ROOT).as_posix()),
+        "execution_mode": execution_mode,
+        "overall_status": overall_status,
+        "started_at": started_at,
+        "completed_at": completed_at or "",
+        "updated_at": utc_now_iso(),
+        "current_phase_number": current_phase_number,
+        "current_phase_name": current_phase_name,
+        "last_error": last_error,
+        "phase_states": phase_states,
+        "summary": {
+            "resolved_phases": resolved,
+            "total_phases": total,
+            "progress_percent": int((resolved / total) * 100) if total else 0,
+        },
+    }
+
+
+def _persist_run_status(
+    config: dict,
+    *,
+    execution_mode: str,
+    run_id: str,
+    started_at: str,
+    phase_states: List[dict],
+    overall_status: str,
+    current_phase_number: Optional[int] = None,
+    current_phase_name: str = "",
+    completed_at: Optional[str] = None,
+    last_error: str = "",
+) -> dict:
+    payload = _build_run_status_payload(
+        config,
+        execution_mode=execution_mode,
+        run_id=run_id,
+        started_at=started_at,
+        phase_states=phase_states,
+        overall_status=overall_status,
+        current_phase_number=current_phase_number,
+        current_phase_name=current_phase_name,
+        completed_at=completed_at,
+        last_error=last_error,
+    )
+    project_root = _project_root()
+    write_run_status(project_root, payload)
+    update_run_overview(project_root, run_status=payload)
+    return payload
+
+
+def _pyrosetta_raw_run_paths(config: dict) -> List[str]:
+    paths: List[str] = []
+
+    result_dirs = (config.get("ppi") or {}).get("pyrosetta_result_dirs") or {}
+    for entries in result_dirs.values():
+        if not entries:
+            continue
+        for entry in entries:
+            path = entry.get("path")
+            if path and path not in paths:
+                paths.append(str(path))
+
+    for target in PPI_TARGETS:
+        docking_dir = _ppi_docking_dir(target)
+        if docking_dir and str(docking_dir) not in paths:
+            paths.append(str(docking_dir))
+
+    return paths
+
+
+def _refresh_step_view_outputs(
+    phase_num: int,
+    args: argparse.Namespace,
+    config: dict,
+    phase_result=None,
+    phase_error: Optional[Exception] = None,
+    fresh_run: bool = False,
+    stale_steps: Optional[List[int]] = None,
+) -> None:
+    collector_entry = STEP_VIEW_COLLECTORS.get(phase_num)
+    if not collector_entry:
+        return
+
+    step_label, collector = collector_entry
+    try:
+        if phase_num == 7:
+            step_dir = collector(
+                CONFIG_PATH,
+                repo_root=REPO_ROOT,
+                validation_result=phase_result,
+                error_message=str(phase_error) if phase_error else None,
+            )
+        else:
+            if phase_error is not None:
+                return
+            step_dir = collector(CONFIG_PATH, repo_root=REPO_ROOT)
+        manifest_path, index_path = refresh_root_step_views(
+            CONFIG_PATH,
+            repo_root=REPO_ROOT,
+            execution_mode=_execution_mode_label(args),
+            fresh_run=fresh_run,
+            stale_steps=stale_steps,
+            ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
+            pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
+        )
+        print(f"  [STEP] Derived view refreshed: {step_dir}")
+        print(f"  [STEP] Run manifest updated: {manifest_path}")
+        print(f"  [STEP] Step index updated: {index_path}")
+    except Exception as exc:
+        print(f"  [WARN] Derived {step_label} refresh failed: {exc}")
+        traceback.print_exc()
 
 
 # ---------------------------------------------------------------------------
@@ -154,13 +465,18 @@ def check_phase2() -> List[str]:
 
 
 def check_phase3() -> List[str]:
-    """Phase 3 (PPI Postprocess): ppi_pyrosetta_residues.csv 존재+비어있지 않음.
-    결과물: output/{project}/ppi_pyrosetta_residues.csv
-    """
-    path = _project_root() / "ppi_pyrosetta_residues.csv"
-    if _csv_has_rows(path):
+    """Phase 3 (PPI postprocess): residue + summary tables exist and are non-empty."""
+    project_root = _project_root()
+    residue_path = project_root / "ppi_pyrosetta_residues.csv"
+    summary_path = project_root / "ppi_pyrosetta_summary.csv"
+    if _csv_has_rows(residue_path) and _csv_has_rows(summary_path):
         return []
-    return ["ppi_pyrosetta_residues.csv 없음 또는 비어있음"]
+    missing = []
+    if not _csv_has_rows(residue_path):
+        missing.append("ppi_pyrosetta_residues.csv 없음 또는 비어있음")
+    if not _csv_has_rows(summary_path):
+        missing.append("ppi_pyrosetta_summary.csv 없음 또는 비어있음")
+    return missing
 
 
 def check_phase4() -> List[str]:
@@ -168,6 +484,7 @@ def check_phase4() -> List[str]:
     결과물: vina_pose_table.csv, vina_pocket_table.csv, vina_drug_pocket_map.csv,
            vina_pocket_comparison.csv, vina_pocket_bootstrap.csv
     """
+    config = _load_config()
     project_root = _project_root()
     required = [
         "vina_pose_table.csv",
@@ -175,11 +492,24 @@ def check_phase4() -> List[str]:
         "vina_drug_pocket_map.csv",
         "vina_pocket_comparison.csv",
         "vina_pocket_bootstrap.csv",
+        "vina_postprocess_coverage.csv",
     ]
     missing = []
     for name in required:
         if not _csv_has_rows(project_root / name):
             missing.append(name)
+    coverage_path = project_root / "vina_postprocess_coverage.csv"
+    if coverage_path.exists():
+        with open(coverage_path, newline="", encoding="utf-8") as handle:
+            coverage_rows = list(csv.DictReader(handle))
+        expected_pairs = len(config.get("receptors", [])) * len(config.get("ligands", []))
+        if coverage_rows and len(coverage_rows) != expected_pairs:
+            missing.append(f"coverage rows mismatch ({len(coverage_rows)}/{expected_pairs})")
+        for row in coverage_rows:
+            if str(row.get("status", "")).strip().lower() != "parsed":
+                missing.append(
+                    f"{row.get('receptor_id', '?')}/{row.get('ligand_id', '?')}={row.get('status', 'unknown')}"
+                )
     return missing
 
 
@@ -217,14 +547,21 @@ PHASE_CHECKS = {
 }
 
 
-def print_status():
-    """각 Phase별 완료 상태 출력."""
+def print_status(
+    *,
+    config: Optional[dict] = None,
+    step_view_enabled_flag: bool = True,
+):
+    """각 Phase별 완료 상태와 step view 상태를 읽기 전용으로 출력한다."""
+    config = config or _load_config()
     print("\n  Phase 상태 점검:")
     print(f"  {'Phase':<8} {'상태':<8} {'결과물':<50} {'상세'}")
     print(f"  {'─'*8} {'─'*8} {'─'*50} {'─'*20}")
 
+    canonical_done = {}
     for phase_num, (desc, check_fn) in PHASE_CHECKS.items():
         missing = check_fn()
+        canonical_done[phase_num] = not missing
         if not missing:
             status = "[DONE]"
             detail = ""
@@ -235,7 +572,30 @@ def print_status():
                 detail += f" ...+{len(missing)-3}"
         print(f"  Phase {phase_num:<3} {status:<8} {desc:<50} {detail}")
 
-    print(f"  Phase 7   [항상]   Validate (매 실행마다 검증)")
+    print("  Phase 7   [항상]   Validate (매 실행마다 검증)")
+    print()
+
+    if not step_view_enabled_flag:
+        print("  Derived step view 상태:")
+        print("  [DISABLED] Step output view generation is disabled by config or CLI.")
+        print()
+        return
+
+    manifest = build_current_run_manifest(
+        CONFIG_PATH,
+        repo_root=REPO_ROOT,
+        execution_mode="status",
+        ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
+        pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
+    )
+    print("  Derived step view 상태:")
+    print(f"  {'Step':<8} {'상태':<12} {'폴더':<24}")
+    print(f"  {'─'*8} {'─'*12} {'─'*24}")
+    for phase_num, (folder_name, _) in STEP_VIEW_COLLECTORS.items():
+        status = manifest["step_status"].get(f"step{phase_num}", "not_generated")
+        if phase_num in canonical_done and canonical_done[phase_num] and status in {"not_generated", "incomplete"}:
+            status = "stale"
+        print(f"  Step {phase_num:<4} {status:<12} {folder_name:<24}")
     print()
 
 
@@ -243,21 +603,79 @@ def print_status():
 # Phase 실행 함수 (기존과 동일)
 # ---------------------------------------------------------------------------
 
-def phase1_vina():
+def phase1_vina(
+    *,
+    allocated_cpus: Optional[int] = None,
+    engine: str = "cpu-vina",
+):
     """Vina blind docking — receptor별 병렬 실행."""
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
+    if engine != "cpu-vina":
+        raise RuntimeError(f"Unsupported Vina engine for baseline lane: {engine}")
+
     config = _load_config()
+    _emit_resource_warnings(config)
+    from egfr_pipeline.vina.dock import ensure_project_config_inputs_ready
+
+    ensure_project_config_inputs_ready(config)
     receptors = config.get("receptors", [])
     ligands = config.get("ligands", [])
+    resources_cfg = config.get("resources")
+    if not resources_cfg:
+        resources_cfg, _warnings = resolve_resource_config(config)
+    vina_cfg = config.get("vina", {}) if isinstance(config.get("vina"), dict) else {}
+    runtime_allocated = allocated_cpus
+    if runtime_allocated is None:
+        has_scheduler_env = bool(os.environ.get("PBS_NP")) or any(
+            os.environ.get(name)
+            for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+        )
+        if not has_scheduler_env:
+            runtime_allocated = os.cpu_count() or 1
+    runtime = resolve_runtime_resources(allocated_cpus=runtime_allocated)
+    cpu_per_job = int(resources_cfg.get("vina", {}).get("cpu_per_job", vina_cfg.get("cpu", 0)))
+    configured_parallel = int(
+        resources_cfg.get("vina", {}).get("parallel_receptors", len(receptors) or 1)
+    )
+    max_workers = max(1, min(len(receptors) or 1, configured_parallel))
+    if cpu_per_job <= 0 and max_workers > 1:
+        print(
+            "  [WARN] vina.cpu=0 allows each docking job to use all visible cores; "
+            "forcing receptor-level parallelism to 1."
+        )
+        max_workers = 1
+
+    capped_workers = cap_worker_count(
+        requested_workers=max_workers,
+        n_jobs=len(receptors) or 1,
+        cpu_per_job=cpu_per_job,
+        available_cpus=runtime.effective_cpus,
+    )
+    if capped_workers < max_workers:
+        print(
+            f"  [WARN] Requested Vina CPU budget exceeds allocated CPUs: "
+            f"{max_workers * max(cpu_per_job, 1)} > {runtime.effective_cpus}. "
+            f"Capping receptor parallelism {max_workers} -> {capped_workers}."
+        )
+        max_workers = capped_workers
 
     print(f"  Receptor {len(receptors)}개 × Ligand {len(ligands)}개 = {len(receptors) * len(ligands)} 도킹 잡")
-    print(f"  exhaustiveness={config['vina']['exhaustiveness']}, n_poses={config['vina']['n_poses']}")
-    print(f"  병렬 실행: {len(receptors)}개 프로세스")
+    print(
+        f"  exhaustiveness={vina_cfg.get('exhaustiveness', '?')}, "
+        f"n_poses={vina_cfg.get('n_poses', '?')}, "
+        f"energy_range={vina_cfg.get('energy_range', '?')}, "
+        f"cpu/job={cpu_per_job}, seed={vina_cfg.get('seed', 'auto')}, "
+        f"engine={engine}"
+    )
+    print(
+        f"  병렬 실행: {max_workers}개 프로세스 "
+        f"(allocated={runtime.allocated_cpus}, effective={runtime.effective_cpus})"
+    )
 
-    from run_full_test import _dock_one_receptor
+    from egfr_pipeline.vina.dock import dock_one_receptor as _dock_one_receptor
 
-    with ProcessPoolExecutor(max_workers=len(receptors)) as executor:
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(_dock_one_receptor, rec, ligands, config): rec["id"]
             for rec in receptors
@@ -271,7 +689,7 @@ def phase1_vina():
                 print(f"\n  [FAIL] {rec_id} 도킹 실패: {e}")
 
 
-def phase2_ppi():
+def _legacy_phase2_ppi():
     """PyRosetta PPI global blind docking — 순차 실행 (CPU 집약적)."""
     for target in PPI_TARGETS:
         name = target["name"]
@@ -288,12 +706,13 @@ def phase2_ppi():
                 print(f"  [ERROR] {name}: 입력 PDB 없음: {input_pdb}")
                 continue
 
-        # 이미 완료된 target은 스킵
-        docking_dir = _ppi_docking_dir(target)
-        ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
-        if ranking and ranking.exists():
-            print(f"  [SKIP] {name}: 이미 완료 ({ranking})")
-            continue
+        # 이미 완료된 target은 스킵 (--force 시 무시)
+        if not _FORCE_MODE:
+            docking_dir = _ppi_docking_dir(target)
+            ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
+            if ranking and ranking.exists():
+                print(f"  [SKIP] {name}: 이미 완료 ({ranking})")
+                continue
 
         print(f"\n  --- {name} (20K models) ---")
         print(f"  Config: {config_ini}")
@@ -303,15 +722,23 @@ def phase2_ppi():
         PipelineManager(config_ini, str(pdb_path)).execute()
 
 
-def phase3_ppi_postprocess():
+def _legacy_phase3_ppi_postprocess():
     """PPI 결과 chain restoration + residue extraction."""
     config_str = str(CONFIG_PATH)
 
     for target in PPI_TARGETS:
         name = target["name"]
         mapping_csv = target["mapping_csv"]
+        if not mapping_csv:
+            print(f"  [SKIP] {name}: monomer 타겟 — chain restoration 불필요")
+            continue
         receptor_id = target["receptor_id"]
         partner_name = target["partner_name"]
+        construct_type = target.get("construct_type", "full_kinase_domain")
+        orientation_validation_status = target.get(
+            "orientation_validation_status",
+            "not_available",
+        )
 
         input_pdb = Path(target["input_pdb"])
         if not input_pdb.exists():
@@ -333,6 +760,8 @@ def phase3_ppi_postprocess():
             mapping_csv=mapping_csv,
             receptor_id=receptor_id,
             partner_name=partner_name,
+            construct_type=construct_type,
+            orientation_validation_status=orientation_validation_status,
         )
 
 
@@ -341,44 +770,71 @@ def phase4_vina_postprocess():
     from egfr_pipeline.config import load_config
     config_str = str(CONFIG_PATH)
     config = load_config(config_str)
+    pp = config.get("postprocess") or {}
+    project_root = _project_root()
+
+    def _stage_enabled(flag_name: str) -> bool:
+        return bool(pp.get(flag_name, True))
 
     print("\n  --- parse ---")
-    from egfr_pipeline.vina.parse_poses import build_pose_table_from_config
-    out = build_pose_table_from_config(config_str)
-    print(f"  → {out}")
+    if _stage_enabled("parse_results"):
+        from egfr_pipeline.vina.parse_poses import build_pose_table_from_config
+        out = build_pose_table_from_config(config_str)
+        print(f"  → {out}")
+        print(f"  → {project_root / 'vina_postprocess_coverage.csv'}")
+    else:
+        print("  [SKIP] parse_results=false")
 
     print("\n  --- contacts ---")
-    from egfr_pipeline.vina.contacts import enrich_pose_table_with_contacts
-    cutoff = (config.get("postprocess") or {}).get("contact_cutoff", 4.0)
-    out = enrich_pose_table_with_contacts(config_str, cutoff=cutoff)
-    print(f"  → {out}")
+    if _stage_enabled("extract_contacts"):
+        from egfr_pipeline.vina.contacts import enrich_pose_table_with_contacts
+        cutoff = pp.get("contact_cutoff", 4.0)
+        out = enrich_pose_table_with_contacts(config_str, cutoff=cutoff)
+        print(f"  → {out}")
+        print(f"  → {project_root / 'vina_contact_distances.csv'}")
+    else:
+        print("  [SKIP] extract_contacts=false")
 
     print("\n  --- cluster ---")
-    from egfr_pipeline.vina.cluster import cluster_pose_table
-    pp = config.get("postprocess") or {}
-    out = cluster_pose_table(
-        config_str,
-        cutoff=pp.get("pocket_cutoff", 8.0),
-        merge_by_residue=pp.get("merge_by_residue", True),
-        merge_jaccard=pp.get("merge_jaccard", 0.3),
-        merge_overlap=pp.get("merge_overlap", 0.5),
-        merge_centroid_fallback=pp.get("merge_centroid_fallback", 6.0),
-    )
-    print(f"  → {out}")
+    if _stage_enabled("cluster_pockets"):
+        from egfr_pipeline.vina.cluster import cluster_pose_table
+        out = cluster_pose_table(
+            config_str,
+            cutoff=pp.get("pocket_cutoff", 8.0),
+            max_iterations=pp.get("cluster_max_iterations", 10),
+            min_pocket_size=pp.get("min_pocket_size", 2),
+            merge_by_residue=pp.get("merge_by_residue", True),
+            merge_jaccard=pp.get("merge_jaccard", 0.3),
+            merge_overlap=pp.get("merge_overlap", 0.5),
+            merge_centroid_fallback=pp.get("merge_centroid_fallback", 6.0),
+        )
+        print(f"  → {out}")
+        print(f"  → {project_root / 'vina_clustering_merge_log.csv'}")
+        print(f"  → {project_root / 'vina_clustering_parameters.json'}")
+    else:
+        print("  [SKIP] cluster_pockets=false")
 
     print("\n  --- summarize ---")
-    from egfr_pipeline.vina.summarize import summarize_from_config
-    pocket_csv, drug_csv = summarize_from_config(config_str)
-    print(f"  → {pocket_csv}")
-    print(f"  → {drug_csv}")
+    if _stage_enabled("summarize_pockets"):
+        from egfr_pipeline.vina.summarize import summarize_from_config
+        pocket_csv, drug_csv, occupancy_csv = summarize_from_config(config_str)
+        print(f"  → {pocket_csv}")
+        print(f"  → {drug_csv}")
+        print(f"  → {occupancy_csv}")
+    else:
+        print("  [SKIP] summarize_pockets=false")
 
     print("\n  --- compare ---")
-    from egfr_pipeline.vina.compare import compare_from_config
-    out = compare_from_config(config_str)
-    print(f"  → {out}")
+    if _stage_enabled("compare_pockets"):
+        from egfr_pipeline.vina.compare import compare_from_config
+        out = compare_from_config(config_str)
+        print(f"  → {out}")
+    else:
+        print("  [SKIP] compare_pockets=false")
 
     print("\n  --- bootstrap ---")
     from egfr_pipeline.vina.bootstrap import bootstrap_from_config
+    print("  [INFO] Bootstrap here measures pose-resampling clustering stability, not fresh docking reproducibility.")
     out = bootstrap_from_config(config_str)
     print(f"  → {out}")
 
@@ -410,6 +866,290 @@ def phase7_validate():
     return result
 
 
+def _phase3_override_dirs() -> dict:
+    overrides = {}
+    for target in PPI_TARGETS:
+        docking_dir = _ppi_docking_dir(target)
+        if not docking_dir or not docking_dir.exists():
+            continue
+        overrides.setdefault(target["receptor_id"], []).append(
+            {
+                "path": str(docking_dir),
+                "partner": target.get("partner_name", ""),
+                "construct_type": target.get("construct_type", "full_kinase_domain"),
+                "orientation_validation_status": target.get(
+                    "orientation_validation_status",
+                    "not_available",
+                ),
+            }
+        )
+    return overrides
+
+
+def phase2_ppi(
+    *,
+    state: Optional[str] = None,
+    seed: Optional[int] = None,
+    allocated_cpus: Optional[int] = None,
+    scratch_dir: Optional[Path] = None,
+):
+    """PyRosetta PPI docking using runtime-prepared Phase 1 inputs."""
+    from egfr_pipeline.phase1.launch_docking import run_single
+    from egfr_pipeline.phase1.prepare_inputs import prepare_phase1_inputs
+
+    prepare_phase1_inputs()
+    failures: List[str] = []
+    targets = _select_ppi_targets(state=state, seed=seed)
+    if not targets:
+        selector = f"state={state or '*'}, seed={seed if seed is not None else '*'}"
+        raise RuntimeError(f"No PPI targets match selector: {selector}")
+
+    for target in targets:
+        name = target["name"]
+        config_ini = target["config_ini"]
+        config_path = REPO_ROOT / config_ini
+        if not config_path.exists():
+            print(f"  [ERROR] {name}: config not found: {config_ini}")
+            continue
+
+        if not _FORCE_MODE:
+            docking_dir = _ppi_docking_dir(target)
+            ranking = docking_dir / "final_result" / "final_ranking.csv" if docking_dir else None
+            if ranking and ranking.exists():
+                print(f"  [SKIP] {name}: already completed ({ranking})")
+                continue
+
+        print(f"\n  --- {name} (20K models) ---")
+        print(f"  Config: {config_ini}")
+        print(f"  Output: {_ppi_docking_dir(target)}")
+
+        run_kwargs = {
+            "seed_index": int(target.get("seed_index", 0)),
+            "is_production": bool(target.get("is_production", True)),
+            "dry_run": False,
+        }
+        if allocated_cpus is not None:
+            run_kwargs["allocated_cpus"] = allocated_cpus
+        if scratch_dir is not None:
+            run_kwargs["scratch_dir"] = scratch_dir
+        meta = run_single(
+            config_path,
+            target["receptor_id"],
+            **run_kwargs,
+        )
+        if meta.get("status") == "failed":
+            failures.append(f"{name}: {meta.get('error', 'unknown error')}")
+
+    if failures:
+        raise RuntimeError("; ".join(failures))
+
+
+def phase3_ppi_postprocess():
+    """Extract project-level PPI evidence tables from current Phase 2 run dirs."""
+    from egfr_pipeline.ppi.pyrosetta_extract import extract_pyrosetta_batch
+
+    override_dirs = _phase3_override_dirs()
+    if not override_dirs:
+        print("  [WARN] No Phase 2 PyRosetta run directories are available for extraction.")
+        return
+
+    residue_csv, summary_csv = extract_pyrosetta_batch(
+        str(CONFIG_PATH),
+        pyrosetta_result_dirs=override_dirs,
+    )
+    print(f"  Residues: {residue_csv}")
+    print(f"  Summary:  {summary_csv}")
+    print(f"  Long-form residues: {residue_csv.parent / 'ppi_pyrosetta_residue_long.csv'}")
+    print(f"  Model table:       {residue_csv.parent / 'ppi_pyrosetta_model_table.csv'}")
+
+
+def _finalize_lane() -> object:
+    phase5_verdict()
+    phase6_report()
+    return phase7_validate()
+
+
+def _lane_requested_cpus(config: dict, lane: str) -> int:
+    resources_cfg = config.get("resources", {})
+    vina_resources = resources_cfg.get("vina", {})
+    gpu_resources = resources_cfg.get("gpu", {})
+    if lane == "vina-cpu":
+        return max(
+            1,
+            int(vina_resources.get("cpu_per_job", 1))
+            * int(vina_resources.get("parallel_receptors", 1)),
+        )
+    if lane == "vina-gpu":
+        return max(1, int(gpu_resources.get("cpu_per_job", 1)))
+    if lane == "ppi":
+        return max(1, int(resources_cfg.get("ppi", {}).get("cpu_per_job", 1)))
+    if lane in {"ppi-post", "vina-post"}:
+        return 4
+    if lane == "finalize":
+        return 2
+    return 1
+
+
+def _phase_numbers_for_lane(lane: str) -> List[int]:
+    mapping = {
+        "vina-cpu": [1],
+        "ppi": [2],
+        "ppi-post": [3],
+        "vina-post": [4],
+        "finalize": [5, 6, 7],
+    }
+    return mapping.get(lane, [])
+
+
+def _refresh_lane_step_views(lane: str, config: dict) -> None:
+    dummy_args = argparse.Namespace(
+        lane=lane,
+        only="",
+        from_phase=0,
+        force=_FORCE_MODE,
+    )
+    for phase_num in _phase_numbers_for_lane(lane):
+        _refresh_step_view_outputs(
+            phase_num,
+            dummy_args,
+            config,
+            phase_result=None,
+            phase_error=None,
+            fresh_run=not _project_root().exists(),
+            stale_steps=[],
+        )
+
+
+def _run_lane(
+    lane: str,
+    *,
+    state: Optional[str] = None,
+    seed: Optional[int] = None,
+    allocated_cpus: Optional[int] = None,
+    engine: str = "cpu-vina",
+    gpu_required: bool = False,
+    scratch_dir: Optional[Path] = None,
+) -> object:
+    config = _load_config()
+    _emit_resource_warnings(config)
+    requested_cpus = _lane_requested_cpus(config, lane)
+    runtime = resolve_runtime_resources(
+        requested_cpus=requested_cpus,
+        allocated_cpus=allocated_cpus,
+    )
+    project_root = _project_root()
+    scratch_workspace = prepare_scratch_workspace(
+        project_root,
+        lane,
+        state=state,
+        seed=seed,
+        engine=engine,
+        scratch_dir=scratch_dir,
+    )
+
+    if lane in {"vina-gpu", "phase3-gpu"}:
+        gpu_cfg = config.get("resources", {}).get("gpu", {})
+        if not bool(gpu_cfg.get("enabled", False)):
+            raise RuntimeError(
+                f"{lane} lane is disabled. Set resources.gpu.enabled=true to opt in."
+            )
+        if gpu_required and not runtime.visible_gpu_ids:
+            raise RuntimeError("GPU required but CUDA_VISIBLE_DEVICES is empty.")
+        raise RuntimeError(
+            "GPU lanes are intentionally explicit but still require a site-local engine wrapper."
+        )
+
+    if not _FORCE_MODE and lane_is_complete(
+        project_root,
+        lane,
+        state=state,
+        seed=seed,
+        engine=engine,
+    ):
+        print(f"  [SKIP] lane {lane} already completed via marker.")
+        return {"status": "skipped", "lane": lane}
+
+    reset_lane_completion(
+        project_root,
+        lane,
+        state=state,
+        seed=seed,
+        engine=engine,
+    )
+    write_lane_manifest(
+        project_root,
+        lane,
+        resources=runtime,
+        state=state,
+        seed=seed,
+        engine=engine,
+        config_path=CONFIG_PATH,
+        extra={
+            "status": "running",
+            "requested_cpus": requested_cpus,
+            "gpu_required": gpu_required,
+            "scratch_workspace": str(scratch_workspace) if scratch_workspace else "",
+        },
+    )
+
+    started = time.time()
+    try:
+        if lane == "vina-cpu":
+            result = phase1_vina(
+                allocated_cpus=runtime.effective_cpus,
+                engine=engine,
+            )
+        elif lane == "ppi":
+            result = phase2_ppi(
+                state=state,
+                seed=seed,
+                allocated_cpus=runtime.effective_cpus,
+                scratch_dir=scratch_workspace,
+            )
+        elif lane == "ppi-post":
+            result = phase3_ppi_postprocess()
+        elif lane == "vina-post":
+            result = phase4_vina_postprocess()
+        elif lane == "finalize":
+            result = _finalize_lane()
+        elif lane == "status":
+            print_status(config=config, step_view_enabled_flag=step_output_view_enabled(config))
+            result = None
+        else:
+            raise ValueError(f"Unsupported lane: {lane}")
+
+        if lane != "status":
+            _refresh_lane_step_views(lane, config)
+        write_lane_completion(
+            project_root,
+            lane,
+            status="completed",
+            state=state,
+            seed=seed,
+            engine=engine,
+            extra={
+                "duration_seconds": max(0, int(time.time() - started)),
+                "scratch_workspace": str(scratch_workspace) if scratch_workspace else "",
+            },
+        )
+        return result
+    except Exception as exc:
+        write_lane_completion(
+            project_root,
+            lane,
+            status="failed",
+            state=state,
+            seed=seed,
+            engine=engine,
+            extra={
+                "duration_seconds": max(0, int(time.time() - started)),
+                "error": str(exc),
+                "scratch_workspace": str(scratch_workspace) if scratch_workspace else "",
+            },
+        )
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -417,7 +1157,7 @@ def phase7_validate():
 PHASES = [
     (1, "Phase 1: Vina Blind Docking (production)", phase1_vina),
     (2, "Phase 2: PPI Global Blind Docking (50K models)", phase2_ppi),
-    (3, "Phase 3: PPI Postprocess (chain restore + extract)", phase3_ppi_postprocess),
+    (3, "Phase 3: PPI Postprocess (evidence extraction + aggregation)", phase3_ppi_postprocess),
     (4, "Phase 4: Vina Postprocess (전체)", phase4_vina_postprocess),
     (5, "Phase 5: Site Verdict (3축 통합)", phase5_verdict),
     (6, "Phase 6: Report 생성", phase6_report),
@@ -427,6 +1167,33 @@ PHASES = [
 
 def main():
     parser = argparse.ArgumentParser(description="EGFR-MYO1D Production Pipeline")
+    parser.add_argument(
+        "--lane",
+        choices=[
+            "vina-cpu",
+            "ppi",
+            "ppi-post",
+            "vina-post",
+            "finalize",
+            "status",
+            "vina-gpu",
+            "phase3-gpu",
+        ],
+        default="",
+        help="Scheduler lane entry point (recommended PBS interface)",
+    )
+    parser.add_argument("--state", type=str, default="",
+                        help="Single receptor state selector for lane runs")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Single seed selector for lane runs")
+    parser.add_argument("--allocated-cpus", type=int, default=None,
+                        help="Scheduler-allocated CPUs used for safe worker caps")
+    parser.add_argument("--engine", choices=["cpu-vina", "gnina"], default="cpu-vina",
+                        help="Explicit docking engine for lane runs")
+    parser.add_argument("--gpu-required", action="store_true",
+                        help="Fail fast when a GPU lane has no visible devices")
+    parser.add_argument("--scratch-dir", type=Path, default=None,
+                        help="Optional scratch base directory for heavy lanes")
     parser.add_argument("--force", action="store_true",
                         help="전체 재실행 (기존 결과 무시)")
     parser.add_argument("--from", type=int, default=0, dest="from_phase",
@@ -435,13 +1202,37 @@ def main():
                         help="지정 Phase만 실행 (예: --only 1,4,5,6,7)")
     parser.add_argument("--status", action="store_true",
                         help="각 Phase 완료 상태만 출력")
+    parser.add_argument(
+        "--disable-step-view",
+        action="store_true",
+        help="Derived step output view generation을 비활성화",
+    )
     args = parser.parse_args()
+
+    global _FORCE_MODE
+    _FORCE_MODE = args.force
+
+    if args.lane:
+        _run_lane(
+            args.lane,
+            state=args.state or None,
+            seed=args.seed,
+            allocated_cpus=args.allocated_cpus,
+            engine=args.engine,
+            gpu_required=args.gpu_required,
+            scratch_dir=args.scratch_dir,
+        )
+        return
 
     only_phases = set()
     if args.only:
         only_phases = {int(x.strip()) for x in args.only.split(",")}
 
     config = _load_config()
+    step_view_enabled_flag = step_output_view_enabled(
+        config,
+        cli_disabled=args.disable_step_view,
+    )
     vina_cfg = config.get("vina", {})
     ppi_models = "50K"  # from ini files
 
@@ -453,22 +1244,74 @@ def main():
           f"PPI ({ppi_models}) ║")
     print("╚══════════════════════════════════════════════════════╝")
 
-    print_status()
+    fresh_run = not _project_root().exists()
+    execution_mode = _execution_mode_label(args)
+    print_status(config=config, step_view_enabled_flag=step_view_enabled_flag)
 
     if args.status:
         return
 
+    run_started_at = utc_now_iso()
+    run_id = f"{config.get('project_name', 'project')}-{run_started_at.replace(':', '').replace('-', '')}"
+    phase_states = _empty_phase_states()
+    if step_view_enabled_flag:
+        _persist_run_status(
+            config,
+            execution_mode=execution_mode,
+            run_id=run_id,
+            started_at=run_started_at,
+            phase_states=phase_states,
+            overall_status="running",
+        )
+
+    pending_stale_steps = set(_selected_step_numbers(args, only_phases)) if step_view_enabled_flag else set()
+    if step_view_enabled_flag and pending_stale_steps:
+        refresh_root_step_views(
+            CONFIG_PATH,
+            repo_root=REPO_ROOT,
+            execution_mode=execution_mode,
+            fresh_run=fresh_run,
+            stale_steps=sorted(pending_stale_steps),
+            ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
+            pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
+        )
+
     t_start = time.time()
 
     for phase_num, name, func in PHASES:
+        phase_state = _phase_state_entry(phase_states, phase_num)
         # --only: 지정된 Phase만 실행
         if only_phases and phase_num not in only_phases:
             print(f"\n  [SKIP] {name} (--only {args.only})")
+            phase_state["status"] = "skipped"
+            phase_state["skip_reason"] = f"Excluded by --only {args.only}"
+            phase_state["completed_at"] = utc_now_iso()
+            if step_view_enabled_flag:
+                _persist_run_status(
+                    config,
+                    execution_mode=execution_mode,
+                    run_id=run_id,
+                    started_at=run_started_at,
+                    phase_states=phase_states,
+                    overall_status="running",
+                )
             continue
 
         # --from: 지정 Phase 이전은 스킵
         if phase_num < args.from_phase:
             print(f"\n  [SKIP] {name} (--from {args.from_phase})")
+            phase_state["status"] = "skipped"
+            phase_state["skip_reason"] = f"Excluded by --from {args.from_phase}"
+            phase_state["completed_at"] = utc_now_iso()
+            if step_view_enabled_flag:
+                _persist_run_status(
+                    config,
+                    execution_mode=execution_mode,
+                    run_id=run_id,
+                    started_at=run_started_at,
+                    phase_states=phase_states,
+                    overall_status="running",
+                )
             continue
 
         # Phase 7 (Validate)은 항상 실행
@@ -478,15 +1321,90 @@ def main():
                 if check_fn:
                     missing = check_fn()
                     if not missing:
+                        phase_state["status"] = "skipped"
+                        phase_state["skip_reason"] = "Canonical outputs already exist"
+                        phase_state["completed_at"] = utc_now_iso()
+                        if step_view_enabled_flag:
+                            _persist_run_status(
+                                config,
+                                execution_mode=execution_mode,
+                                run_id=run_id,
+                                started_at=run_started_at,
+                                phase_states=phase_states,
+                                overall_status="running",
+                            )
                         print(f"\n  [SKIP] {name} — 결과물 이미 존재")
                         continue
 
-        run_step(name, func)
+        phase_state["status"] = "running"
+        phase_state["started_at"] = utc_now_iso()
+        phase_state["completed_at"] = ""
+        phase_state["duration_seconds"] = None
+        phase_state["skip_reason"] = ""
+        phase_state["last_error"] = ""
+        if step_view_enabled_flag:
+            _persist_run_status(
+                config,
+                execution_mode=execution_mode,
+                run_id=run_id,
+                started_at=run_started_at,
+                phase_states=phase_states,
+                overall_status="running",
+                current_phase_number=phase_num,
+                current_phase_name=name,
+            )
+
+        phase_start_time = time.time()
+        phase_success, phase_result, phase_error = run_step(name, func)
+        phase_state["completed_at"] = utc_now_iso()
+        phase_state["duration_seconds"] = max(0, int(time.time() - phase_start_time))
+        phase_state["status"] = "completed" if phase_success else "failed"
+        if phase_error is not None:
+            phase_state["last_error"] = str(phase_error)
+        if step_view_enabled_flag and (phase_success or phase_num == 7):
+            pending_stale_steps.discard(phase_num)
+            _refresh_step_view_outputs(
+                phase_num,
+                args,
+                config,
+                phase_result=phase_result,
+                phase_error=phase_error,
+                fresh_run=fresh_run,
+                stale_steps=sorted(pending_stale_steps),
+            )
+        if step_view_enabled_flag:
+            _persist_run_status(
+                config,
+                execution_mode=execution_mode,
+                run_id=run_id,
+                started_at=run_started_at,
+                phase_states=phase_states,
+                overall_status="running",
+                last_error=phase_state["last_error"],
+            )
 
     # 요약
     elapsed = time.time() - t_start
     hours = int(elapsed // 3600)
     minutes = int((elapsed % 3600) // 60)
+
+    if step_view_enabled_flag:
+        for entry in phase_states:
+            if entry.get("status") == "pending":
+                entry["status"] = "skipped"
+                entry["skip_reason"] = "Phase was not executed in this run"
+                entry["completed_at"] = utc_now_iso()
+        failed_errors = [entry.get("last_error", "") for entry in phase_states if entry.get("status") == "failed"]
+        _persist_run_status(
+            config,
+            execution_mode=execution_mode,
+            run_id=run_id,
+            started_at=run_started_at,
+            phase_states=phase_states,
+            overall_status="failed" if failed_errors else "completed",
+            completed_at=utc_now_iso(),
+            last_error=next((error for error in failed_errors if error), ""),
+        )
 
     banner("프로덕션 완료")
     print(f"  총 소요 시간: {hours}시간 {minutes}분")
@@ -499,6 +1417,10 @@ def main():
     print(f"    {project}/vina_pocket_table.csv")
     print(f"    {project}/valid_sites.csv")
     print(f"    {project}/project_report.txt")
+    if step_view_enabled_flag:
+        print(f"    {project}/run_overview.md")
+        print(f"    {project}/run_overview.html")
+        print(f"    {project}/run_status.json")
     print()
 
 

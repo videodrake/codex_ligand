@@ -36,7 +36,7 @@ from typing import Dict, List, Optional
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
 
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Standardized output columns (Task 1.1.5)
 SCORE_COLUMNS = [

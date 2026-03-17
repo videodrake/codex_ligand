@@ -1,0 +1,16 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N vina_gpu
+# SITE-LOCAL GPU RESOURCE CLAUSE REQUIRED:
+#PBS -l nodes=node05:ppn=4
+# Example only; fill in the scheduler-specific GPU line above before use.
+#PBS -l walltime=06:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/vina_gpu.o
+#PBS -e ${PBS_O_WORKDIR}/vina_gpu.e
+
+set -eo pipefail
+
+echo "GPU wrapper is shipped disabled by default."
+echo "Fill in the site-local PBS GPU resource clause before submitting this job."
+exit 1

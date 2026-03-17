@@ -1,4 +1,0 @@
-receptor_id,pocket_id,relationship_class,hotspot_overlap_count,hotspot_overlap_fraction,centroid_distance_A,overlapping_residues,n_pocket_residues,n_patch_hotspots,classification_basis
-3GT8_raw,3GT8_raw_PKT01,orthosteric_candidate,4,0.571,132.57,LEU838;ASP855;ILE857;GLU866,4,7,hotspot_overlap=4 (frac=0.57 >= 0.25)
-3GT8_raw,3GT8_raw_PKT02,orthosteric_candidate,3,0.429,124.38,LEU819;ALA822;VAL834,3,7,hotspot_overlap=3 (frac=0.43 >= 0.25)
-3GT8_raw,3GT8_raw_PKT03,low_relevance_candidate,0,0.000,149.96,,2,7,"centroid_distant=150.0A > 20.0A, no_overlap"

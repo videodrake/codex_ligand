@@ -120,6 +120,8 @@ def _update_config_ppi_dir(
     receptor_id: str,
     restored_dir: Path,
     partner_name: str = "",
+    construct_type: str = "full_kinase_domain",
+    orientation_validation_status: str = "not_available",
 ) -> None:
     """Append a PPI result entry to config's pyrosetta_result_dirs list.
 
@@ -129,9 +131,11 @@ def _update_config_ppi_dir(
           3GT8_raw:
             - path: .../restored
               partner: beta_meander
+              construct_type: full_kinase_domain
+              orientation_validation_status: not_available
 
     Migrates legacy string values to list format automatically.
-    Skips if the same path+partner entry already exists.
+    Upserts if the same path+partner entry already exists.
     """
     from egfr_pipeline.config import load_config, save_config
 
@@ -144,18 +148,35 @@ def _update_config_ppi_dir(
     existing = dirs.get(receptor_id, [])
     # Migrate legacy string format to list
     if isinstance(existing, str):
-        existing = [{"path": existing, "partner": "legacy"}] if existing else []
+        existing = [{
+            "path": existing,
+            "partner": "legacy",
+            "construct_type": "unknown_construct_type",
+            "orientation_validation_status": "not_available",
+        }] if existing else []
 
-    new_entry = {"path": str(restored_dir), "partner": partner_name}
-    # Skip duplicate
-    if not any(e.get("path") == new_entry["path"] and e.get("partner") == new_entry["partner"]
-               for e in existing):
+    new_entry = {
+        "path": str(restored_dir),
+        "partner": partner_name,
+        "construct_type": construct_type,
+        "orientation_validation_status": orientation_validation_status,
+    }
+    updated = False
+    for entry in existing:
+        if entry.get("path") == new_entry["path"] and entry.get("partner") == new_entry["partner"]:
+            entry.update(new_entry)
+            updated = True
+            break
+    if not updated:
         existing.append(new_entry)
 
     dirs[receptor_id] = existing
     save_config(config, config_path)
     label = f" ({partner_name})" if partner_name else ""
-    print(f"[postprocess] Updated config ppi.pyrosetta_result_dirs[{receptor_id}]{label} = {restored_dir}")
+    print(
+        f"[postprocess] Updated config ppi.pyrosetta_result_dirs[{receptor_id}]"
+        f"{label} = {restored_dir}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +189,8 @@ def postprocess_ppi_results(
     mapping_csv: str,
     receptor_id: str,
     partner_name: str = "",
+    construct_type: str = "full_kinase_domain",
+    orientation_validation_status: str = "not_available",
     skip_extract: bool = False,
     skip_report: bool = False,
 ) -> Path:
@@ -179,6 +202,8 @@ def postprocess_ppi_results(
         mapping_csv: Chain mapping CSV from prepare_dimer_pdb.
         receptor_id: Receptor ID to register results under.
         partner_name: Partner name for labeling.
+        construct_type: Receptor/partner system label for downstream handoff.
+        orientation_validation_status: Current orientation filter status.
         skip_extract: If True, skip PPI residue extraction.
         skip_report: If True, skip report regeneration.
 
@@ -206,7 +231,14 @@ def postprocess_ppi_results(
 
     # Step 2: Update config with restored dir
     print("\n--- Step 2: Register in config ---")
-    _update_config_ppi_dir(config_path, receptor_id, restored_dir, partner_name)
+    _update_config_ppi_dir(
+        config_path,
+        receptor_id,
+        restored_dir,
+        partner_name,
+        construct_type=construct_type,
+        orientation_validation_status=orientation_validation_status,
+    )
 
     # Step 3: PPI residue extraction
     if not skip_extract:
@@ -255,6 +287,16 @@ def main():
     parser.add_argument("--mapping", required=True, help="Chain mapping CSV")
     parser.add_argument("--receptor-id", required=True, help="Receptor ID for this result")
     parser.add_argument("--partner-name", default="", help="Partner name label")
+    parser.add_argument(
+        "--construct-type",
+        default="full_kinase_domain",
+        help="Construct type label to persist in config",
+    )
+    parser.add_argument(
+        "--orientation-validation-status",
+        default="not_available",
+        help="Orientation validation status to persist in config",
+    )
     parser.add_argument("--skip-extract", action="store_true", help="Skip residue extraction")
     parser.add_argument("--skip-report", action="store_true", help="Skip report regeneration")
 
@@ -265,6 +307,8 @@ def main():
         mapping_csv=args.mapping,
         receptor_id=args.receptor_id,
         partner_name=args.partner_name,
+        construct_type=args.construct_type,
+        orientation_validation_status=args.orientation_validation_status,
         skip_extract=args.skip_extract,
         skip_report=args.skip_report,
     )

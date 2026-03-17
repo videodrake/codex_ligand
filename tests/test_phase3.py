@@ -86,8 +86,8 @@ def tmp_phase3(tmp_path):
         "low_relevance_candidate,0,0.000,150.0,low,tier_3,0.35,0.20,0.10,"
         "1,fpocket,False,state_specific_pocket,1,2,"
         "ARG748;GLY750,300.0,skip,tier_3 + low_relevance (not recommended)",
-        # 3GT8_cl38_48 PKT01: tier_2 rim → secondary
-        "3GT8_cl38_48,3GT8_cl38_48_PKT01,45.0,33.0,19.0,13.0,12.5,12.0,"
+        # EGFR_160-185 PKT01: tier_2 rim → secondary
+        "EGFR_160-185,EGFR_160-185_PKT01,45.0,33.0,19.0,13.0,12.5,12.0,"
         "rim_candidate,1,0.143,135.0,medium,tier_2,0.75,0.62,0.55,"
         "1,fpocket,False,state_specific_pocket,1,3,"
         "LEU838;ASP855;GLU866,850.0,secondary,tier_2 + rim_candidate",
@@ -98,7 +98,7 @@ def tmp_phase3(tmp_path):
         (ligands / f"{lig}_ligand.sdf").write_text("mock SDF\n")
 
     # Receptor files
-    for rec in ["3GT8_raw", "3GT8_cl38_48"]:
+    for rec in ["3GT8_raw", "EGFR_160-185"]:
         (receptors / f"{rec}.pdb").write_text("mock PDB\n")
 
     return {
@@ -238,7 +238,7 @@ class TestPocketReferenceIngestion:
     def test_validation_report_content(self, tmp_phase3):
         from egfr_pipeline.phase3.pocket_reference_ingestion import run_pocket_reference_ingestion
         _, val = run_pocket_reference_ingestion(tmp_phase3["phase2"], tmp_phase3["phase3"])
-        text = val.read_text()
+        text = val.read_text(encoding="utf-8")
         assert "PASS" in text
         assert "V1_NON_EMPTY" in text
 
@@ -420,7 +420,7 @@ class TestBudgetPolicyIntegration:
 
         policy_md = out / "phase3_budget_policy.md"
         assert policy_md.exists()
-        text = policy_md.read_text()
+        text = policy_md.read_text(encoding="utf-8")
         assert "Saturation Rules" in text
         assert "Reallocation" in text
 
@@ -457,7 +457,7 @@ class TestExecutionLayer:
         run_budget_policy(out)
         run_setup(out)
 
-        meta = json.loads((out / "phase3_run_metadata.json").read_text())
+        meta = json.loads((out / "phase3_run_metadata.json").read_text(encoding="utf-8"))
         assert meta["pipeline"] == "phase3_diverse_docking"
         assert meta["total_jobs"] == 14
         assert "3GT8_raw" in meta["receptors"]
@@ -518,7 +518,7 @@ class TestPoseAttribution:
         out = _run_phase3_pipeline(tmp_phase3)
         note = out / "phase3_pose_provenance_note.md"
         assert note.exists()
-        assert "candidate_pocket_id" in note.read_text()
+        assert "candidate_pocket_id" in note.read_text(encoding="utf-8")
 
 
 # ===========================================================================
@@ -655,6 +655,7 @@ class TestPhase4ExportIntegration:
 # TG 3.7: Review Report
 # ===========================================================================
 
+@pytest.mark.reporting
 class TestReviewReport:
     """Tests for TG 3.7."""
 
@@ -665,7 +666,7 @@ class TestReviewReport:
 
     def test_report_sections(self, tmp_phase3):
         out = _run_phase3_pipeline(tmp_phase3)
-        text = (out / "phase3_diverse_docking_report.md").read_text()
+        text = (out / "phase3_diverse_docking_report.md").read_text(encoding="utf-8")
         for section in ["Executive Summary", "Pocket Catalog",
                         "Search Budget Summary", "Ligand Support Summary",
                         "Diversity Outcome", "Phase 4 Handoff",
@@ -674,10 +675,10 @@ class TestReviewReport:
 
     def test_report_lists_all_pockets(self, tmp_phase3):
         out = _run_phase3_pipeline(tmp_phase3)
-        text = (out / "phase3_diverse_docking_report.md").read_text()
+        text = (out / "phase3_diverse_docking_report.md").read_text(encoding="utf-8")
         assert "3GT8_raw_PKT01" in text
         assert "3GT8_raw_PKT02" in text
-        assert "3GT8_cl38_48_PKT01" in text
+        assert "EGFR_160-185_PKT01" in text
 
 
 # ===========================================================================
@@ -780,6 +781,6 @@ class TestEndToEnd:
         from egfr_pipeline.phase3.pocket_reference_ingestion import run_pocket_reference_ingestion
         env = tmp_phase3_no_dockable
         _, val = run_pocket_reference_ingestion(env["phase2"], env["phase3"])
-        text = val.read_text()
+        text = val.read_text(encoding="utf-8")
         # Should have validation error about no dockable pockets
         assert "V9_NO_DOCKABLE" in text or "FAIL" in text

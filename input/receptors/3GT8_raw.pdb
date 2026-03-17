@@ -46,40 +46,34 @@ SEQRES  21 B  307  PHE ARG GLU LEU ILE ILE GLU PHE SER LYS MET ALA ARG
 SEQRES  22 B  307  ASP PRO GLN ARG TYR LEU VAL ILE GLN GLY ASP GLU ARG
 SEQRES  23 B  307  MET HIS LEU PRO SER PRO THR ASP SER ASN PHE TYR ARG
 SEQRES  24 B  307  ALA LEU MET ASP GLU GLU ASP MET
-HELIX    1   1 PRO B  753  VAL B  765  1                                  13
-HELIX    2   2 MET B  766  SER B  768  1                                   3
-HELIX    3   3 LEU B  798  ARG B  803  1                                   6
-HELIX    4   4 SER B  811  ASP B  830  1                                  20
-HELIX    5   5 ALA B  840  ASN B  842  1                                   3
-HELIX    6   6 LEU B  858  LEU B  862  1                                   5
-HELIX    7   7 ILE B  878  TRP B  880  1                                   3
-HELIX    8   8 LEU B  883  HIS B  888  1                                   6
-HELIX    9   9 HIS B  893  MET B  908  1                                  16
-HELIX   10  10 ALA B  920  GLU B  922  1                                   3
-HELIX   11  11 ILE B  923  GLU B  928  1                                   6
-HELIX   12  12 ILE B  941  ARG B  948  1                                   8
-HELIX   13  13 LYS B  949  TRP B  951  1                                   3
-HELIX   14  14 ALA B  955  SER B  957  1                                   3
-HELIX   15  15 PHE B  961  ALA B  972  1                                  12
-HELIX   16  16 PRO B  975  TYR B  978  1                                   4
-HELIX   17  17 PRO B  992  LEU B 1001  1                                  10
-HELIX   18  18 ASN A  756  MET A  766  1                                  11
-HELIX   19  19 LEU A  798  GLU A  804  1                                   7
-HELIX   20  20 SER A  811  ASP A  830  1                                  20
-HELIX   21  21 ALA A  840  ASN A  842  1                                   3
-HELIX   22  22 ILE A  878  TRP A  880  1                                   3
-HELIX   23  23 LEU A  883  HIS A  888  1                                   6
-HELIX   24  24 HIS A  893  MET A  908  1                                  16
-HELIX   25  25 ALA A  920  GLU A  922  1                                   3
-HELIX   26  26 ILE A  923  ILE A  926  1                                   4
-HELIX   27  27 LEU A  927  LYS A  929  1                                   3
-HELIX   28  28 ILE A  941  ILE A  946  1                                   6
-HELIX   29  29 MET A  947  LYS A  949  1                                   3
-HELIX   30  30 ALA A  955  SER A  957  1                                   3
-HELIX   31  31 PHE A  961  ARG A  973  1                                  13
-HELIX   32  32 PRO A  975  TYR A  978  1                                   4
-HELIX   33  33 ASP A  984  ARG A  986  1                                   3
-HELIX   34  34 PRO A  992  ASP A 1003  1                                  12
+HELIX    1   1 PRO B  753  SER B  768  1                                  16
+HELIX    2   2 LEU B  798  ARG B  803  1                                   6
+HELIX    3   3 SER B  811  ASP B  830  1                                  20
+HELIX    4   4 ALA B  840  ASN B  842  1                                   3
+HELIX    5   5 LEU B  858  LEU B  862  1                                   5
+HELIX    6   6 ILE B  878  TRP B  880  1                                   3
+HELIX    7   7 LEU B  883  HIS B  888  1                                   6
+HELIX    8   8 HIS B  893  MET B  908  1                                  16
+HELIX    9   9 ALA B  920  GLU B  928  1                                   9
+HELIX   10  10 ILE B  941  TRP B  951  1                                  11
+HELIX   11  11 ALA B  955  SER B  957  1                                   3
+HELIX   12  12 PHE B  961  ALA B  972  1                                  12
+HELIX   13  13 PRO B  975  TYR B  978  1                                   4
+HELIX   14  14 PRO B  992  LEU B 1001  1                                  10
+HELIX   15  15 ASN A  756  MET A  766  1                                  11
+HELIX   16  16 LEU A  798  GLU A  804  1                                   7
+HELIX   17  17 SER A  811  ASP A  830  1                                  20
+HELIX   18  18 ALA A  840  ASN A  842  1                                   3
+HELIX   19  19 ILE A  878  TRP A  880  1                                   3
+HELIX   20  20 LEU A  883  HIS A  888  1                                   6
+HELIX   21  21 HIS A  893  MET A  908  1                                  16
+HELIX   22  22 ALA A  920  LYS A  929  1                                  10
+HELIX   23  23 ILE A  941  CYS A  950  1                                  10
+HELIX   24  24 ALA A  955  SER A  957  1                                   3
+HELIX   25  25 PHE A  961  ARG A  973  1                                  13
+HELIX   26  26 PRO A  975  TYR A  978  1                                   4
+HELIX   27  27 ASP A  984  ARG A  986  1                                   3
+HELIX   28  28 PRO A  992  ASP A 1003  1                                  12
 SHEET    1   1 1 LYS B 716  SER B 720  0
 SHEET    2   2 1 GLY B 724  TRP B 731  0
 SHEET    3   3 1 ILE B 740  LEU B 747  0
@@ -5051,128 +5045,4 @@ ATOM   4954  C   MET A1007     -21.182  10.952 -74.798  1.00  0.00           C
 ATOM   4955  O   MET A1007     -20.893  12.090 -75.176  1.00  0.00           O
 ATOM   4956  OXT MET A1007     -22.028  11.176 -75.704  1.00  0.00           O
 TER    4957      MET A1007
-HETATM 4958  PG  ANP C   1     -11.836  -7.068 -45.224  1.00 52.62           P
-HETATM 4959  O1G ANP C   1     -11.961  -8.471 -44.757  1.00 53.16           O
-HETATM 4960  O2G ANP C   1     -10.882  -6.190 -44.254  1.00 11.32           O
-HETATM 4961  O3G ANP C   1     -13.262  -6.300 -45.219  1.00 64.33           O
-HETATM 4962  PB  ANP C   1     -11.219  -8.389 -47.442  1.00 88.57           P
-HETATM 4963  O1B ANP C   1     -10.801  -8.302 -48.864  1.00 88.15           O
-HETATM 4964  O2B ANP C   1     -10.190  -9.278 -46.563  1.00 48.73           O
-HETATM 4965  N3B ANP C   1     -11.234  -6.928 -46.724  1.00 25.58           N
-HETATM 4966  PA  ANP C   1     -13.585  -9.423 -48.515  1.00 68.18           P
-HETATM 4967  O1A ANP C   1     -14.598 -10.456 -48.183  1.00 67.16           O
-HETATM 4968  O2A ANP C   1     -14.270  -8.036 -48.993  1.00 42.60           O
-HETATM 4969  O3A ANP C   1     -12.682  -9.026 -47.231  1.00 18.43           O
-HETATM 4970  O5' ANP C   1     -12.565  -9.864 -49.681  1.00 26.14           O
-HETATM 4971  C5' ANP C   1     -12.569 -11.210 -50.163  1.00 26.48           C
-HETATM 4972  C4' ANP C   1     -12.199 -11.262 -51.647  1.00 48.94           C
-HETATM 4973  O4' ANP C   1     -13.174 -10.537 -52.410  1.00 49.62           O
-HETATM 4974  C3' ANP C   1     -10.899 -10.489 -51.875  1.00 49.50           C
-HETATM 4975  O3' ANP C   1      -9.807 -11.407 -51.971  1.00 52.21           O
-HETATM 4976  C2' ANP C   1     -11.111  -9.804 -53.226  1.00 48.66           C
-HETATM 4977  O2' ANP C   1     -10.147 -10.289 -54.164  1.00 48.41           O
-HETATM 4978  C1' ANP C   1     -12.509 -10.255 -53.650  1.00 49.00           C
-HETATM 4979  N9  ANP C   1     -13.200  -9.143 -54.340  1.00 48.75           N
-HETATM 4980  C8  ANP C   1     -13.898  -8.170 -53.752  1.00 48.75           C
-HETATM 4981  N7  ANP C   1     -14.376  -7.346 -54.685  1.00 48.05           N
-HETATM 4982  C5  ANP C   1     -13.981  -7.797 -55.870  1.00 47.33           C
-HETATM 4983  C6  ANP C   1     -14.169  -7.363 -57.173  1.00 47.65           C
-HETATM 4984  N6  ANP C   1     -14.882  -6.269 -57.424  1.00 48.21           N
-HETATM 4985  N1  ANP C   1     -13.621  -8.063 -58.176  1.00 47.56           N
-HETATM 4986  C2  ANP C   1     -12.910  -9.153 -57.931  1.00 47.79           C
-HETATM 4987  N3  ANP C   1     -12.712  -9.594 -56.698  1.00 48.48           N
-HETATM 4988  C4  ANP C   1     -13.233  -8.939 -55.652  1.00 47.96           C
-HETATM 4989  PG  ANP D   3     -20.757  -8.667 -93.229  1.00 47.80           P
-HETATM 4990  O1G ANP D   3     -19.731  -8.140 -92.294  1.00 46.92           O
-HETATM 4991  O2G ANP D   3     -20.092  -9.302 -94.562  1.00 61.91           O
-HETATM 4992  O3G ANP D   3     -21.743  -7.500 -93.765  1.00 62.19           O
-HETATM 4993  PB  ANP D   3     -21.603  -9.755 -90.960  1.00 54.90           P
-HETATM 4994  O1B ANP D   3     -21.120  -8.434 -90.485  1.00 55.48           O
-HETATM 4995  O2B ANP D   3     -23.101 -10.075 -90.435  1.00 35.94           O
-HETATM 4996  N3B ANP D   3     -21.701  -9.818 -92.584  1.00 58.97           N
-HETATM 4997  PA  ANP D   3     -19.459 -10.747 -89.463  1.00 47.67           P
-HETATM 4998  O1A ANP D   3     -18.137 -10.807 -90.136  1.00 47.60           O
-HETATM 4999  O2A ANP D   3     -19.742  -9.291 -88.815  1.00 76.35           O
-HETATM 5000  O3A ANP D   3     -20.677 -10.990 -90.502  1.00 57.90           O
-HETATM 5001  O5' ANP D   3     -19.636 -11.824 -88.280  1.00 42.32           O
-HETATM 5002  C5' ANP D   3     -20.929 -12.359 -87.986  1.00 43.00           C
-HETATM 5003  C4' ANP D   3     -21.327 -12.066 -86.538  1.00 46.00           C
-HETATM 5004  O4' ANP D   3     -20.210 -11.496 -85.841  1.00 44.41           O
-HETATM 5005  C3' ANP D   3     -22.384 -10.960 -86.513  1.00 47.82           C
-HETATM 5006  O3' ANP D   3     -23.679 -11.541 -86.344  1.00 50.66           O
-HETATM 5007  C2' ANP D   3     -22.027 -10.140 -85.272  1.00 46.33           C
-HETATM 5008  O2' ANP D   3     -23.100 -10.206 -84.330  1.00 47.09           O
-HETATM 5009  C1' ANP D   3     -20.800 -10.853 -84.701  1.00 45.39           C
-HETATM 5010  N9  ANP D   3     -19.856  -9.853 -84.155  1.00 44.94           N
-HETATM 5011  C8  ANP D   3     -19.006  -9.110 -84.864  1.00 43.90           C
-HETATM 5012  N7  ANP D   3     -18.315  -8.322 -84.039  1.00 43.13           N
-HETATM 5013  C5  ANP D   3     -18.728  -8.566 -82.800  1.00 43.93           C
-HETATM 5014  C6  ANP D   3     -18.380  -8.062 -81.557  1.00 44.66           C
-HETATM 5015  N6  ANP D   3     -17.443  -7.125 -81.446  1.00 44.82           N
-HETATM 5016  N1  ANP D   3     -19.004  -8.533 -80.468  1.00 45.30           N
-HETATM 5017  C2  ANP D   3     -19.939  -9.466 -80.573  1.00 45.27           C
-HETATM 5018  N3  ANP D   3     -20.293  -9.968 -81.746  1.00 44.32           N
-HETATM 5019  C4  ANP D   3     -19.707  -9.539 -82.872  1.00 44.33           C
-CONECT 4958 4959 4960 4961 4965
-CONECT 4959 4958
-CONECT 4960 4958
-CONECT 4961 4958
-CONECT 4962 4963 4964 4965 4969
-CONECT 4963 4962
-CONECT 4964 4962
-CONECT 4965 4958 4962
-CONECT 4966 4967 4968 4969 4970
-CONECT 4967 4966
-CONECT 4968 4966
-CONECT 4969 4962 4966
-CONECT 4970 4966 4971
-CONECT 4971 4970 4972
-CONECT 4972 4971 4973 4974
-CONECT 4973 4972 4978
-CONECT 4974 4972 4975 4976
-CONECT 4975 4974
-CONECT 4976 4974 4977 4978
-CONECT 4977 4976
-CONECT 4978 4973 4976 4979
-CONECT 4979 4978 4980 4988
-CONECT 4980 4979 4981
-CONECT 4981 4980 4982
-CONECT 4982 4981 4983 4988
-CONECT 4983 4982 4984 4985
-CONECT 4984 4983
-CONECT 4985 4983 4986
-CONECT 4986 4985 4987
-CONECT 4987 4986 4988
-CONECT 4988 4979 4982 4987
-CONECT 4989 4990 4991 4992 4996
-CONECT 4990 4989
-CONECT 4991 4989
-CONECT 4992 4989
-CONECT 4993 4994 4995 4996 5000
-CONECT 4994 4993
-CONECT 4995 4993
-CONECT 4996 4989 4993
-CONECT 4997 4998 4999 5000 5001
-CONECT 4998 4997
-CONECT 4999 4997
-CONECT 5000 4993 4997
-CONECT 5001 4997 5002
-CONECT 5002 5001 5003
-CONECT 5003 5002 5004 5005
-CONECT 5004 5003 5009
-CONECT 5005 5003 5006 5007
-CONECT 5006 5005
-CONECT 5007 5005 5008 5009
-CONECT 5008 5007
-CONECT 5009 5004 5007 5010
-CONECT 5010 5009 5011 5019
-CONECT 5011 5010 5012
-CONECT 5012 5011 5013
-CONECT 5013 5012 5014 5019
-CONECT 5014 5013 5015 5016
-CONECT 5015 5014
-CONECT 5016 5014 5017
-CONECT 5017 5016 5018
-CONECT 5018 5017 5019
-CONECT 5019 5010 5013 5018
 END

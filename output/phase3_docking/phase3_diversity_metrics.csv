@@ -1,4 +1,0 @@
-receptor_id,ligand_id,n_pockets_total,n_pockets_sampled,n_pockets_unsampled,n_pockets_saturated,coverage_fraction,top1_concentration,top2_concentration,shannon_entropy,max_possible_entropy,normalized_entropy,budget_top1_fraction,diversity_verdict
-3GT8_raw,173940,2,2,0,0,1.000,0.500,1.000,1.000,1.000,1.000,0.500,well_distributed
-3GT8_raw,97806,2,2,0,0,1.000,0.500,1.000,1.000,1.000,1.000,0.500,well_distributed
-3GT8_raw,VAX-C12_0,2,2,0,0,1.000,0.500,1.000,1.000,1.000,1.000,0.500,well_distributed

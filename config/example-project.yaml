@@ -13,16 +13,33 @@ ligands:
 - id: VAX-C12_0
   pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
   sdf: input/ligands/VAX-C12_0_ligand.sdf
-max_workers: 32
+max_workers: 16
 mode: blind
 output_root: ./output
+resources:
+  scheduler: pbs
+  detect_from_env: true
+  vina:
+    cpu_per_job: 8
+    parallel_receptors: 3
+  ppi:
+    cpu_per_job: 16
+  lightdock:
+    cpu_per_job: 16
+  phase3:
+    cpu_per_job: 4
+  gpu:
+    enabled: false
+    engine: gnina
+    cpu_per_job: 4
+    devices: auto
 postprocess:
   cluster_max_iterations: 15
-  cluster_pockets: false
-  compare_pockets: false
+  cluster_pockets: true
+  compare_pockets: true
   comparison_centroid_cutoff: 12.0
   contact_cutoff: 4.0
-  extract_contacts: false
+  extract_contacts: true
   extract_ppi_residues: false
   generate_report: false
   keep_chain: false
@@ -31,10 +48,15 @@ postprocess:
   merge_jaccard: 0.25
   merge_overlap: 0.4
   min_pocket_size: 3
-  parse_results: false
+  parse_results: true
   pocket_cutoff: 7.0
-  summarize_pockets: false
+  same_patch_centroid_cutoff: 8.0
+  same_patch_jaccard: 0.3
+  same_patch_overlap: 0.5
+  summarize_pockets: true
 ppi:
+  # AFM fields remain for legacy compatibility only.
+  # Current active Phase 1 secondary validation uses LightDock.
   afm_models: null
   afm_settings:
     contact_cutoff: 8.0
@@ -54,18 +76,23 @@ receptors:
   pdbqt: input/receptors/3GT8_raw_receptor.pdbqt
   source_type: raw_3GT8
 - chain: A
-  id: 3GT8_cl38_48
-  pdb: input/receptors/3GT8_cl38_48.pdb
-  pdbqt: input/receptors/3GT8_cl38_48_receptor.pdbqt
+  id: EGFR_160-185
+  pdb: input/receptors/EGFR_160-185.pdb
+  pdbqt: input/receptors/EGFR_160-185_receptor.pdbqt
   source_type: md_cluster_38_48
 - chain: A
-  id: 3GT8_cl85_100
-  pdb: input/receptors/3GT8_cl85_100.pdb
-  pdbqt: input/receptors/3GT8_cl85_100_receptor.pdbqt
+  id: EGFR_170-200
+  pdb: input/receptors/EGFR_170-200.pdb
+  pdbqt: input/receptors/EGFR_170-200_receptor.pdbqt
   source_type: md_cluster_85_100
 vina:
+  # Legacy aliases retained for compatibility; canonical runtime policy lives in resources.*
+  cpu: 8
+  energy_range: 5.0
   exhaustiveness: 384
   min_box: 70.0
   mode: blind
   n_poses: 100
+  parallel_receptors: 3
   padding: 5.0
+  seed: 20260316

@@ -29,6 +29,33 @@ def load_csv(path: Path) -> List[dict]:
         return list(csv.DictReader(f))
 
 
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        if value in ("", None):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _ppi_row_priority(row: dict) -> Tuple[float, float, float]:
+    return (
+        _safe_float(row.get("frac_runs_supporting"), 0.0),
+        _safe_float(row.get("occupancy"), 0.0),
+        _safe_float(row.get("n_runs_supporting"), 0.0),
+    )
+
+
+def _ppi_partner_label(row: dict) -> str:
+    partner = str(row.get("partner_id", "")).strip()
+    if partner:
+        return partner
+    source = str(row.get("source", "")).strip()
+    if source.startswith("pyrosetta_ppi:"):
+        return source.split(":", 1)[1]
+    return "default"
+
+
 # ---------------------------------------------------------------------------
 # Report sections
 # ---------------------------------------------------------------------------
@@ -63,14 +90,33 @@ def format_receptor_pocket_section(
 
         # Pocket table (with uncertainty columns when available)
         has_uncertainty = any(p.get("centroid_spread_A") for p in pockets)
+        has_ligand_diversity = any(p.get("dominant_ligand_fraction") for p in pockets)
         if has_uncertainty:
-            lines.append(f"  {'Pocket':<8} {'Poses':>6} {'Ligs':>5} {'Best aff':>9} {'Mean aff':>9} "
-                         f"{'Spread':>7} {'Aff SD':>7} {'Top residues'}")
-            lines.append(f"  {'------':<8} {'-----':>6} {'----':>5} {'--------':>9} {'--------':>9} "
-                         f"{'------':>7} {'------':>7} {'------------'}")
+            header = (
+                f"  {'Pocket':<8} {'Poses':>6} {'Ligs':>5} {'Best aff':>9} {'Mean aff':>9} "
+                f"{'Spread':>7} {'Aff SD':>7} "
+            )
+            divider = (
+                f"  {'------':<8} {'-----':>6} {'----':>5} {'--------':>9} {'--------':>9} "
+                f"{'------':>7} {'------':>7} "
+            )
+            if has_ligand_diversity:
+                header += f"{'LigFrac':>7} {'Entropy':>7} "
+                divider += f"{'-------':>7} {'-------':>7} "
+            header += "Top residues"
+            divider += "------------"
+            lines.append(header)
+            lines.append(divider)
         else:
-            lines.append(f"  {'Pocket':<8} {'Poses':>6} {'Ligs':>5} {'Best aff':>9} {'Mean aff':>9} {'Top residues'}")
-            lines.append(f"  {'------':<8} {'-----':>6} {'----':>5} {'--------':>9} {'--------':>9} {'------------'}")
+            header = f"  {'Pocket':<8} {'Poses':>6} {'Ligs':>5} {'Best aff':>9} {'Mean aff':>9} "
+            divider = f"  {'------':<8} {'-----':>6} {'----':>5} {'--------':>9} {'--------':>9} "
+            if has_ligand_diversity:
+                header += f"{'LigFrac':>7} {'Entropy':>7} "
+                divider += f"{'-------':>7} {'-------':>7} "
+            header += "Top residues"
+            divider += "------------"
+            lines.append(header)
+            lines.append(divider)
         for p in sorted(pockets, key=lambda r: float(r.get("best_affinity", 0) or 0)):
             base = (
                 f"  {p['pocket_id']:<8} {p.get('n_pose',''):>6} {p.get('n_ligand',''):>5} "
@@ -80,6 +126,10 @@ def format_receptor_pocket_section(
                 spread = p.get('centroid_spread_A', '')
                 aff_std = p.get('affinity_std', '')
                 base += f"{spread:>7} {aff_std:>7} "
+            if has_ligand_diversity:
+                lig_frac = p.get('dominant_ligand_fraction', '')
+                lig_entropy = p.get('ligand_pose_entropy', '')
+                base += f"{lig_frac:>7} {lig_entropy:>7} "
             base += f"{p.get('top_residues','')[:40]}"
             lines.append(base)
         lines.append("")
@@ -161,27 +211,42 @@ def format_ppi_section(
 
     if pyrosetta_summary:
         lines.append("  PyRosetta Global Docking Summary:")
-        for s in pyrosetta_summary:
-            lines.append(f"    Receptor: {s.get('receptor_id','')}")
-            lines.append(f"      Models: {s.get('n_final_models','')}, Clusters: {s.get('n_clusters','')}")
+        summary_rows = sorted(
+            pyrosetta_summary,
+            key=lambda row: (row.get("receptor_id", ""), _ppi_partner_label(row)),
+        )
+        for s in summary_rows:
+            partner = _ppi_partner_label(s)
+            run_count = s.get("n_runs_completed", "") or s.get("n_runs_total", "")
+            seed_text = s.get("seed_indices", "")
+            seed_suffix = f", Seeds: {seed_text}" if seed_text else ""
+            lines.append(f"    Receptor: {s.get('receptor_id','')} / Partner: {partner}")
+            lines.append(
+                f"      Runs: {run_count}{seed_suffix}, Models: {s.get('n_final_models','')}, "
+                f"Clusters: {s.get('n_clusters','')}"
+            )
             lines.append(f"      Interface residues: {s.get('n_interface_residues','')}")
             lines.append(f"      Best dG: {s.get('best_dg','')} REU, Mean dG: {s.get('mean_dg','')} REU")
             lines.append(f"      Top residues: {s.get('top_residues','')}")
             lines.append("")
 
     if pyrosetta_residues:
-        # Show top occupancy residues per receptor
-        by_receptor: Dict[str, List[dict]] = defaultdict(list)
+        # Show top residues per receptor/partner, prioritizing reproducibility first.
+        by_group: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
         for r in pyrosetta_residues:
-            by_receptor[r["receptor_id"]].append(r)
+            by_group[(r["receptor_id"], _ppi_partner_label(r))].append(r)
 
-        lines.append("  PyRosetta Top Interface Residues (by occupancy):")
-        for rec_id in sorted(by_receptor):
-            residues = sorted(by_receptor[rec_id], key=lambda r: -float(r.get("occupancy", 0)))[:10]
-            lines.append(f"    {rec_id}:")
+        lines.append("  PyRosetta Top Interface Residues (partner-aware):")
+        for rec_id, partner in sorted(by_group):
+            residues = sorted(by_group[(rec_id, partner)], key=_ppi_row_priority, reverse=True)[:10]
+            lines.append(f"    {rec_id} / {partner}:")
             for r in residues:
                 e_str = f", deltaE={r['mean_interface_delta_e']}" if r.get("mean_interface_delta_e") else ""
-                lines.append(f"      {r['residue_id']:<12} occupancy={r.get('occupancy','')}{e_str}")
+                run_support = r.get("frac_runs_supporting", "")
+                support_str = f", run_support={run_support}" if run_support not in ("", None) else ""
+                lines.append(
+                    f"      {r['residue_id']:<12} occupancy={r.get('occupancy','')}{support_str}{e_str}"
+                )
             lines.append("")
 
     if afm_residues:
@@ -209,6 +274,7 @@ def format_combined_residue_table(
     pocket_rows: List[dict],
     pyrosetta_residues: List[dict],
     afm_residues: Optional[List[dict]] = None,
+    verdict_rows: Optional[List[dict]] = None,
 ) -> List[dict]:
     """Build a combined residue evidence table: Vina pocket residues + PPI + AFM.
 
@@ -216,6 +282,11 @@ def format_combined_residue_table(
     Vina docking, PyRosetta PPI analysis, and AlphaFold-Multimer.
     """
     afm_residues = afm_residues or []
+    verdict_rows = verdict_rows or []
+    verdict_index = {
+        (row.get("receptor_id", ""), row.get("pocket_id", "")): row
+        for row in verdict_rows
+    }
 
     # Collect Vina pocket residues per receptor
     vina_residues: Dict[str, Dict[str, dict]] = defaultdict(dict)
@@ -239,13 +310,56 @@ def format_combined_residue_table(
                     "receptor_id": receptor_id,
                     "residue_id": norm,
                     "vina_pockets": [],
+                    "vina_best_affinity": "",
+                    "vina_best_pocket_stability": "",
+                    "vina_best_confidence_score": "",
+                    "vina_cross_receptor_support": "",
+                    "vina_evidence_profile": "",
                 }
-            vina_residues[receptor_id][norm]["vina_pockets"].append(pocket_id)
+            record = vina_residues[receptor_id][norm]
+            record["vina_pockets"].append(pocket_id)
+            best_aff = _safe_float(record.get("vina_best_affinity"), float("inf"))
+            pocket_aff = _safe_float(pocket.get("best_affinity"), float("inf"))
+            if pocket_aff < best_aff:
+                record["vina_best_affinity"] = round(pocket_aff, 4)
+
+            verdict = verdict_index.get((receptor_id, pocket_id), {})
+            current_conf = _safe_float(record.get("vina_best_confidence_score"), -1.0)
+            verdict_conf = _safe_float(verdict.get("confidence_score"), -1.0)
+            if verdict_conf > current_conf:
+                record["vina_best_confidence_score"] = (
+                    round(verdict_conf, 4) if verdict_conf >= 0 else ""
+                )
+                record["vina_cross_receptor_support"] = verdict.get(
+                    "cross_receptor_support", ""
+                )
+                record["vina_evidence_profile"] = verdict.get(
+                    "evidence_profile", ""
+                )
+
+            current_stability = _safe_float(
+                record.get("vina_best_pocket_stability"),
+                -1.0,
+            )
+            pocket_stability = _safe_float(
+                verdict.get("pocket_stability", pocket.get("pocket_exists_frac")),
+                -1.0,
+            )
+            if pocket_stability > current_stability:
+                record["vina_best_pocket_stability"] = (
+                    round(pocket_stability, 4) if pocket_stability >= 0 else ""
+                )
 
     # Merge PPI data
     ppi_by_receptor: Dict[str, Dict[str, dict]] = defaultdict(dict)
+    ppi_partner_labels: Dict[Tuple[str, str], set[str]] = defaultdict(set)
     for r in pyrosetta_residues:
-        ppi_by_receptor[r["receptor_id"]][r["residue_id"]] = r
+        rec_id = r["receptor_id"]
+        res_id = r["residue_id"]
+        ppi_partner_labels[(rec_id, res_id)].add(_ppi_partner_label(r))
+        existing = ppi_by_receptor[rec_id].get(res_id)
+        if existing is None or _ppi_row_priority(r) > _ppi_row_priority(existing):
+            ppi_by_receptor[rec_id][res_id] = r
 
     # Index AFM data
     afm_by_receptor: Dict[str, Dict[str, dict]] = defaultdict(dict)
@@ -274,9 +388,16 @@ def format_combined_residue_table(
                 "residue_id": res,
                 "vina_pockets": ";".join(v.get("vina_pockets", [])),
                 "n_vina_pockets": len(v.get("vina_pockets", [])),
+                "vina_best_affinity": v.get("vina_best_affinity", ""),
+                "vina_best_pocket_stability": v.get("vina_best_pocket_stability", ""),
+                "vina_best_confidence_score": v.get("vina_best_confidence_score", ""),
+                "vina_cross_receptor_support": v.get("vina_cross_receptor_support", ""),
+                "vina_evidence_profile": v.get("vina_evidence_profile", ""),
                 "ppi_occupancy": p.get("occupancy", ""),
                 "ppi_frequency": p.get("frequency_final_ranking", ""),
                 "ppi_delta_e": p.get("mean_interface_delta_e", ""),
+                "ppi_frac_runs_supporting": p.get("frac_runs_supporting", ""),
+                "ppi_partners": ";".join(sorted(ppi_partner_labels.get((rec, res), set()))),
                 "evidence_sources": "+".join(
                     s for s in [
                         "vina" if v else "",
@@ -294,9 +415,16 @@ COMBINED_FIELDS = [
     "residue_id",
     "vina_pockets",
     "n_vina_pockets",
+    "vina_best_affinity",
+    "vina_best_pocket_stability",
+    "vina_best_confidence_score",
+    "vina_cross_receptor_support",
+    "vina_evidence_profile",
     "ppi_occupancy",
     "ppi_frequency",
     "ppi_delta_e",
+    "ppi_frac_runs_supporting",
+    "ppi_partners",
     "evidence_sources",
 ]
 
@@ -330,14 +458,19 @@ def format_verdict_section(
     else:
         lines.append("  Scoring mode: VINA-ONLY (no PPI data — Vina + Cross-receptor)")
     lines.append("")
+    lines.append("  Axis notes:")
+    lines.append("    Vina = affinity + within-run convergence + pose-resampling stability + ligand diversity")
+    lines.append("    PPI  = spatial proximity + shared-residue overlap + multi-seed reproducibility")
+    lines.append("    Cross = recurrence across receptor states + match quality")
+    lines.append("")
 
     # Per-pocket detail
     lines.append(f"  {'Receptor':<20} {'Pocket':<7} {'Verdict':<11} "
-                 f"{'Score':>6} {'Vina':>5} {'PPI':>5} {'Cross':>5} {'PPI?':>4}  Reasons")
+                 f"{'Score':>6} {'Vina':>5} {'PPI':>5} {'Cross':>5} {'Profile':<28}  Reasons")
     lines.append(f"  {'--------':<20} {'------':<7} {'-------':<11} "
-                 f"{'-----':>6} {'----':>5} {'---':>5} {'-----':>5} {'----':>4}  -------")
+                 f"{'-----':>6} {'----':>5} {'---':>5} {'-----':>5} {'-------':<28}  -------")
     for r in verdict_rows:
-        ppi_flag = "Y" if r.get("ppi_data_available") == "yes" else "-"
+        profile = str(r.get("evidence_profile", "")).replace("+", ",")
         lines.append(
             f"  {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
             f"{r.get('verdict',''):<11} "
@@ -345,10 +478,24 @@ def format_verdict_section(
             f"{r.get('vina_quality_score',''):>5} "
             f"{r.get('ppi_proximity_score',''):>5} "
             f"{r.get('cross_receptor_score',''):>5} "
-            f"{ppi_flag:>4}  "
+            f"{profile[:28]:<28}  "
             f"{r.get('reasons','')}"
         )
     lines.append("")
+
+    strong_recurrent = [
+        r for r in verdict_rows
+        if "recurrent" in str(r.get("evidence_profile", ""))
+    ]
+    if strong_recurrent:
+        lines.append("  Recurrent pockets across receptor states:")
+        for r in strong_recurrent[:10]:
+            lines.append(
+                f"    {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
+                f"stability={r.get('pocket_stability','')} "
+                f"cross_support={r.get('cross_receptor_support','')}"
+            )
+        lines.append("")
 
     # Spatial proximity highlights
     if agreement_rows:
@@ -399,6 +546,8 @@ def generate_report(
     pyrosetta_summary = load_csv(project_root / "ppi_pyrosetta_summary.csv")
     pyrosetta_residues = load_csv(project_root / "ppi_pyrosetta_residues.csv")
     afm_residues = load_csv(project_root / "ppi_afm_residues.csv")
+    verdict_rows = load_csv(project_root / "valid_sites.csv")
+    agreement_rows = load_csv(project_root / "cross_method_agreement.csv")
 
     # --- Text report ---
     report_lines = []
@@ -433,8 +582,6 @@ def generate_report(
     report_lines.append(format_ppi_section(pyrosetta_summary, pyrosetta_residues, afm_residues))
 
     # Section 4: Site Verdict (if available)
-    verdict_rows = load_csv(project_root / "valid_sites.csv")
-    agreement_rows = load_csv(project_root / "cross_method_agreement.csv")
     report_lines.append(section_header("4. Automated Site Verdict"))
     report_lines.append(format_verdict_section(verdict_rows, agreement_rows))
 
@@ -468,6 +615,13 @@ def generate_report(
     report_lines.append(f"  Total receptor states analyzed: {n_receptors}")
     report_lines.append(f"  Total pockets identified: {n_total_pockets}")
     report_lines.append(f"  Cross-receptor same-patch candidates: {n_candidates}")
+    recurrent = [r for r in verdict_rows if "recurrent" in str(r.get("evidence_profile", ""))]
+    stable = [
+        r for r in verdict_rows
+        if _safe_float(r.get("pocket_stability"), 0.0) >= 0.6
+    ]
+    report_lines.append(f"  Recurrent verdict-supported pockets: {len(recurrent)}")
+    report_lines.append(f"  Stable Vina pockets (bootstrap >=0.6): {len(stable)}")
     if pyrosetta_residues:
         high_occ = [r for r in pyrosetta_residues if float(r.get("occupancy", 0)) >= 0.5]
         report_lines.append(f"  PPI high-occupancy residues (>=0.5): {len(high_occ)}")
@@ -482,7 +636,12 @@ def generate_report(
     report_path.write_text(report_text, encoding="utf-8")
 
     # --- Combined residue evidence table ---
-    combined = format_combined_residue_table(pocket_rows, pyrosetta_residues, afm_residues)
+    combined = format_combined_residue_table(
+        pocket_rows,
+        pyrosetta_residues,
+        afm_residues,
+        verdict_rows=verdict_rows,
+    )
     combined_csv = out_root / "combined_residue_evidence.csv"
     if combined:
         with open(combined_csv, "w", newline="", encoding="utf-8") as f:

@@ -1,0 +1,18 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N vina_post
+#PBS -l nodes=node05:ppn=4
+#PBS -l walltime=04:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/vina_postprocess.o
+#PBS -e ${PBS_O_WORKDIR}/vina_postprocess.e
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+python run_production.py \
+  --lane vina-post \
+  --allocated-cpus "${PBS_NP:-4}"

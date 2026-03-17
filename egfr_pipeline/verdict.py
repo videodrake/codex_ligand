@@ -57,6 +57,10 @@ AGREEMENT_FIELDS = [
     "spatial_proximity",
     "closest_ppi_partner",
     "n_ppi_partners_near",
+    "ppi_frac_runs_supporting",
+    "ppi_best_frac_runs_supporting",
+    "ppi_best_interface_delta_e",
+    "ppi_shared_partner_count",
     "vina_best_affinity_kcal",
     "ppi_best_dg_REU",
     "agreement_level",
@@ -70,21 +74,40 @@ VERDICT_FIELDS = [
     "vina_quality_score",
     "ppi_proximity_score",
     "cross_receptor_score",
+    "vina_affinity_pts",
+    "vina_convergence_pts",
+    "vina_stability_pts",
+    "vina_diversity_pts",
+    "vina_consensus_pts",
+    "ppi_spatial_pts",
+    "ppi_overlap_pts",
+    "ppi_reproducibility_pts",
+    "cross_receptor_pts",
+    "cross_receptor_support_pts",
+    "score_denominator",
     "ppi_data_available",
     "best_affinity",
     "n_pose",
     "n_ligand",
+    "dominant_ligand_fraction",
+    "ligand_pose_entropy",
     "spatial_dist_to_ppi",
     "closest_ppi_partner",
     "n_ppi_partners_near",
     "n_shared_with_ppi",
+    "ppi_frac_runs_supporting",
+    "ppi_best_interface_delta_e",
     "cross_receptor_matches",
+    "cross_receptor_support",
     "consensus_site_id",
     "exp_sensitivity",
     "exp_specificity",
     "exp_enrichment",
     "exp_rank_impact",
     "pocket_stability",
+    "evidence_profile",
+    "reason_tags",
+    "decision_trace",
     "reasons",
 ]
 
@@ -119,8 +142,15 @@ DEFAULT_THRESHOLDS = {
     "affinity_great": -8.0,      # strong surface binding (rare on C-lobe)
     "n_pose_good": 3,            # 30% convergence in blind docking
     "n_pose_great": 8,           # high convergence
+    "stability_min": 0.40,       # weakly recurring cluster
+    "stability_good": 0.60,      # bootstrap cluster recovery
+    "stability_great": 0.80,     # robust cluster recovery
     "n_ligand_good": 2,          # 2/3 ligands → cross-chemical consensus
     "n_ligand_all": 3,           # all 3 ligands
+    "dominant_ligand_good": 0.70,  # lower = less single-ligand domination
+    "dominant_ligand_warn": 0.85,
+    "ligand_entropy_good": 0.90,   # broader ligand distribution
+    "ligand_entropy_ok": 0.50,
 
     # --- Axis 2: PPI spatial proximity ---
     # Max 20 pts (only when PPI data available)
@@ -134,6 +164,8 @@ DEFAULT_THRESHOLDS = {
     "ppi_dist_near": 15.0,       # < 15 Å — same face, allosteric range
     "ppi_dist_moderate": 25.0,   # < 25 Å — same domain (~half of 40 Å width)
     "ppi_residue_bonus": True,   # extra credit for shared residues
+    "ppi_repro_good": 0.50,      # mean frac_runs_supporting of shared residues
+    "ppi_repro_great": 0.75,
 
     # --- Axis 3: Cross-receptor consistency ---
     # With PPI: max 30 pts; Without PPI: max 40 pts (adaptive)
@@ -142,6 +174,8 @@ DEFAULT_THRESHOLDS = {
     # MD clusters represent conformational sampling.
     # Same pocket in 2+ states = structurally stable site (not artifact).
     "cross_receptor_centroid_cutoff": 8.0,
+    "cross_support_good": 0.50,
+    "cross_support_great": 0.75,
 
     # --- Evidence level thresholds (always out of 100) ---
     # NOT a validity judgment — an evidence strength classification.
@@ -294,36 +328,144 @@ def _adapt_afm_to_ppi_format(afm_rows: List[dict]) -> List[dict]:
 # PPI interface centroid computation
 # ---------------------------------------------------------------------------
 
+
+def _ppi_partner_name(row: dict) -> str:
+    partner = str(row.get("partner_id", "")).strip()
+    if partner:
+        return partner
+    source = str(row.get("source", "pyrosetta_ppi")).strip()
+    if source.startswith("pyrosetta_ppi:"):
+        return source.split(":", 1)[1]
+    return "default"
+
+
+def _ppi_row_priority(row: dict) -> Tuple[float, float, float]:
+    return (
+        _safe_float(row.get("frac_runs_supporting"), 0.0),
+        _safe_float(row.get("occupancy"), 0.0),
+        _safe_float(row.get("n_runs_supporting"), 0.0),
+    )
+
+
+def _best_summary_by_receptor(ppi_summary: List[dict]) -> Dict[str, dict]:
+    best: Dict[str, dict] = {}
+    for row in ppi_summary:
+        rid = row.get("receptor_id", "")
+        if not rid:
+            continue
+        current = best.get(rid)
+        current_best = _safe_float(current.get("best_dg"), float("inf")) if current else float("inf")
+        candidate_best = _safe_float(row.get("best_dg"), float("inf"))
+        if current is None or candidate_best < current_best:
+            best[rid] = row
+    return best
+
+
+def _enrich_agreement_with_ppi_reproducibility(
+    agreement_rows: List[dict],
+    ppi_residues: List[dict],
+) -> None:
+    """Attach reproducibility summaries for shared PPI residues.
+
+    Step 3 now preserves run-level reproducibility in ``frac_runs_supporting``.
+    Step 5 should not throw that signal away. This helper projects the most
+    relevant residue-level reproducibility metrics onto each pocket-level
+    agreement row.
+    """
+    residue_index: Dict[Tuple[str, str], dict] = {}
+    partner_labels: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
+    for row in ppi_residues:
+        key = (row.get("receptor_id", ""), row.get("residue_id", ""))
+        if not key[0] or not key[1]:
+            continue
+        partner_labels[key].add(_ppi_partner_name(row))
+        existing = residue_index.get(key)
+        if existing is None or _ppi_row_priority(row) > _ppi_row_priority(existing):
+            residue_index[key] = row
+
+    for row in agreement_rows:
+        rid = row.get("receptor_id", "")
+        shared_ids = [
+            item.strip()
+            for item in str(row.get("shared_residue_list", "")).split(";")
+            if item.strip()
+        ]
+        matched = [
+            residue_index[(rid, res_id)]
+            for res_id in shared_ids
+            if (rid, res_id) in residue_index
+        ]
+        if not matched:
+            row["ppi_frac_runs_supporting"] = ""
+            row["ppi_best_frac_runs_supporting"] = ""
+            row["ppi_best_interface_delta_e"] = ""
+            row["ppi_shared_partner_count"] = ""
+            continue
+
+        mean_frac = sum(
+            _safe_float(item.get("frac_runs_supporting"), 0.0)
+            for item in matched
+        ) / len(matched)
+        best_frac = max(_safe_float(item.get("frac_runs_supporting"), 0.0) for item in matched)
+        delta_values = [
+            _safe_float(item.get("best_interface_delta_e"), 0.0)
+            for item in matched
+            if item.get("best_interface_delta_e") not in ("", None)
+        ]
+        partner_count = len(
+            {
+                partner
+                for item in matched
+                for partner in partner_labels.get(
+                    (item.get("receptor_id", ""), item.get("residue_id", "")),
+                    set(),
+                )
+            }
+        )
+        row["ppi_frac_runs_supporting"] = round(mean_frac, 4)
+        row["ppi_best_frac_runs_supporting"] = round(best_frac, 4)
+        row["ppi_best_interface_delta_e"] = (
+            round(min(delta_values), 4) if delta_values else ""
+        )
+        row["ppi_shared_partner_count"] = partner_count
+
 def _merge_multi_partner_residues(
     ppi_residues: List[dict],
 ) -> List[dict]:
     """Merge PPI residues from multiple partners into a unified set.
 
     When multiple partners (e.g., beta_meander + TH1) provide residue data
-    for the same receptor, keeps the entry with the highest occupancy per
+    for the same receptor, keeps the most reproducible entry per
     (receptor_id, residue_id) pair. Annotates merged source.
 
     Returns merged list (safe to use as drop-in replacement).
     """
-    # Group by (receptor_id, residue_id), keep best occupancy
+    # Group by (receptor_id, residue_id), keep best reproducibility/occupancy.
     best: Dict[Tuple[str, str], dict] = {}
     sources: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
+    partners: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
 
     for row in ppi_residues:
         key = (row["receptor_id"], row.get("residue_id", ""))
         source = row.get("source", "pyrosetta_ppi")
         sources[key].add(source)
-        occ = _safe_float(row.get("occupancy"), 0.0)
+        partners[key].add(_ppi_partner_name(row))
         existing = best.get(key)
-        if existing is None or occ > _safe_float(existing.get("occupancy"), 0.0):
+        if existing is None or _ppi_row_priority(row) > _ppi_row_priority(existing):
             best[key] = dict(row)
 
-    # Annotate merged source
+    # Annotate merged source/partner label
     for key, row in best.items():
         src_set = sources[key]
-        if len(src_set) > 1:
-            partners = sorted(s.replace("pyrosetta_ppi:", "") for s in src_set)
-            row["source"] = f"pyrosetta_ppi:merged({'+'.join(partners)})"
+        partner_names = sorted(partners[key])
+        if len(partner_names) > 1:
+            merged_partner = "+".join(partner_names)
+            row["source"] = f"pyrosetta_ppi:merged({merged_partner})"
+            row["partner_id"] = f"merged({merged_partner})"
+        elif partner_names:
+            row["partner_id"] = partner_names[0]
+            if len(src_set) > 1:
+                row["source"] = f"pyrosetta_ppi:{partner_names[0]}"
 
     return list(best.values())
 
@@ -341,11 +483,7 @@ def _build_ppi_partner_centroids(
     partner_resnums: Dict[Tuple[str, str], Set[int]] = defaultdict(set)
     for row in ppi_residues:
         rid = row["receptor_id"]
-        source = row.get("source", "pyrosetta_ppi")
-        # Extract partner name from source tag
-        partner = source.replace("pyrosetta_ppi:", "").replace("pyrosetta_ppi", "")
-        if not partner:
-            partner = "default"
+        partner = _ppi_partner_name(row)
         resnum = _safe_int(row.get("residue_num"), 0)
         if resnum > 0:
             partner_resnums[(rid, partner)].add(resnum)
@@ -425,7 +563,9 @@ def _build_ppi_residue_index(
     for row in ppi_residues:
         rid = row["receptor_id"]
         res_id = normalize_residue_id(row["residue_id"])
-        index[rid][res_id] = row
+        existing = index[rid].get(res_id)
+        if existing is None or _ppi_row_priority(row) > _ppi_row_priority(existing):
+            index[rid][res_id] = row
     return dict(index)
 
 
@@ -608,6 +748,90 @@ def compute_cross_receptor_consistency(
         matches[(rec_a, pkt_a)].add(rec_b)
         matches[(rec_b, pkt_b)].add(rec_a)
     return {k: sorted(v) for k, v in matches.items()}
+
+
+def compute_cross_receptor_support(
+    comparison_rows: List[dict],
+) -> Dict[Tuple[str, str], dict]:
+    """Summarize graded cross-state support for each pocket.
+
+    ``same_patch_candidate`` is still the hard gate for consensus, but the
+    downstream verdict should distinguish weak candidate matches from stronger
+    ones using centroid, residue, and ligand agreement signals.
+    """
+    raw: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
+    for row in comparison_rows:
+        is_candidate = str(row.get("same_patch_candidate", "")).lower()
+        if is_candidate not in ("true", "1", "yes"):
+            continue
+        rec_a, rec_b = row["receptor_a"], row["receptor_b"]
+        pkt_a, pkt_b = row["pocket_a"], row["pocket_b"]
+        centroid_dist = _safe_float(row.get("centroid_dist"), 999.0)
+        residue_jaccard = _safe_float(
+            row.get("residue_jaccard", row.get("jaccard")),
+            0.0,
+        )
+        overlap_coeff = _safe_float(
+            row.get("residue_overlap_coeff", row.get("overlap_coeff")),
+            0.0,
+        )
+        n_shared_ligands = _safe_int(row.get("n_shared_ligands"), 0)
+
+        pair_strength = 0.40
+        if centroid_dist <= 6.0:
+            pair_strength += 0.20
+        elif centroid_dist <= 8.0:
+            pair_strength += 0.10
+
+        if residue_jaccard >= 0.50:
+            pair_strength += 0.20
+        elif residue_jaccard >= 0.30:
+            pair_strength += 0.10
+
+        if overlap_coeff >= 0.60:
+            pair_strength += 0.10
+        elif overlap_coeff >= 0.40:
+            pair_strength += 0.05
+
+        if n_shared_ligands >= 2:
+            pair_strength += 0.10
+        elif n_shared_ligands >= 1:
+            pair_strength += 0.05
+
+        pair_strength = min(pair_strength, 1.0)
+        entry = {
+            "other_receptor": rec_b,
+            "centroid_dist": centroid_dist,
+            "residue_jaccard": residue_jaccard,
+            "overlap_coeff": overlap_coeff,
+            "n_shared_ligands": n_shared_ligands,
+            "pair_strength": round(pair_strength, 4),
+        }
+        raw[(rec_a, pkt_a)].append(entry)
+        raw[(rec_b, pkt_b)].append(
+            dict(entry, other_receptor=rec_a)
+        )
+
+    summary: Dict[Tuple[str, str], dict] = {}
+    for key, items in raw.items():
+        if not items:
+            continue
+        strength = sum(item["pair_strength"] for item in items)
+        support_frac = min(strength / 2.0, 1.0)
+        summary[key] = {
+            "match_count": len(items),
+            "support_frac": round(support_frac, 4),
+            "best_centroid_dist": round(min(item["centroid_dist"] for item in items), 4),
+            "mean_residue_jaccard": round(
+                sum(item["residue_jaccard"] for item in items) / len(items),
+                4,
+            ),
+            "max_shared_ligands": max(item["n_shared_ligands"] for item in items),
+            "matched_receptors": sorted(
+                {item["other_receptor"] for item in items if item["other_receptor"]}
+            ),
+        }
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -888,10 +1112,11 @@ def score_pocket(
     pocket: dict,
     ppi_agreement: Optional[dict],
     cross_receptor_matches: List[str],
+    cross_support: Optional[dict],
     thresholds: dict,
     has_ppi_data: bool,
     exp_correlation: Optional[dict] = None,
-) -> Tuple[float, str, List[str], float, float, float]:
+) -> Tuple[float, str, List[str], float, float, float, dict]:
     """Score a single pocket with adaptive weighting.
 
     Scoring adapts to available evidence:
@@ -902,49 +1127,121 @@ def score_pocket(
 
     exp_correlation: optional dict from compute_experimental_correlation().
       Does NOT change the 100-point total — adds informational reason tags only.
+
+    Returns:
+      (total, verdict, reasons, vina_score, ppi_score, cross_score, raw_components)
+      where raw_components is a dict of pre-normalization point values.
     """
     reasons: List[str] = []
+    reason_tags: List[str] = []
     T = thresholds
 
     # ---- Axis 1: Vina Quality ----
     affinity = _safe_float(pocket.get("best_affinity"), 0.0)
     n_pose = _safe_int(pocket.get("n_pose"), 0)
     n_ligand = _safe_int(pocket.get("n_ligand"), 0)
+    pocket_stability = _safe_float(pocket.get("pocket_exists_frac"), 0.0)
+    dominant_ligand_fraction = _safe_float(
+        pocket.get("dominant_ligand_fraction"),
+        1.0 if n_ligand <= 1 else 0.0,
+    )
+    ligand_pose_entropy = _safe_float(pocket.get("ligand_pose_entropy"), 0.0)
 
     vina_raw = 0.0
+    affinity_pts = 0.0
+    convergence_pts = 0.0
+    stability_pts = 0.0
+    diversity_pts = 0.0
 
     # Affinity: graduated scoring (0 / 10 / 20)
     if affinity <= T["affinity_great"]:
+        affinity_pts = 20.0
         vina_raw += 20
         reasons.append(f"affinity={affinity:.1f}")
+        reason_tags.append("affinity_strong")
     elif affinity <= T["affinity_good"]:
+        affinity_pts = 10.0
         vina_raw += 10
         reasons.append(f"affinity={affinity:.1f}")
+        reason_tags.append("affinity_good")
 
-    # Pose convergence: graduated (0 / 8 / 15)
+    # Pose convergence is informative, but must be discounted when the pocket
+    # is unstable under pose resampling or dominated by a single ligand.
+    base_convergence = 0.0
     if n_pose >= T["n_pose_great"]:
-        vina_raw += 15
-        reasons.append(f"n_pose={n_pose}")
+        base_convergence = 15.0
     elif n_pose >= T["n_pose_good"]:
-        vina_raw += 8
-        reasons.append(f"n_pose={n_pose}")
+        base_convergence = 8.0
 
-    # Multi-ligand consensus: graduated (0 / 10 / 20)
+    convergence_factor = 1.0
+    if pocket_stability > 0 and pocket_stability < T["stability_good"]:
+        convergence_factor *= 0.5
+    if n_ligand <= 1 and dominant_ligand_fraction >= T["dominant_ligand_warn"]:
+        convergence_factor *= 0.75
+    convergence_pts = round(base_convergence * convergence_factor, 2)
+    if convergence_pts > 0:
+        vina_raw += convergence_pts
+        reasons.append(f"n_pose={n_pose}")
+        reason_tags.append("pose_convergence")
+
+    # Stability from pose-resampling bootstrap remains distinct from raw pose
+    # abundance so that blind-docking sampling bias does not masquerade as
+    # reproducibility.
+    if pocket_stability >= T["stability_great"]:
+        stability_pts = 10.0
+        reasons.append(f"stability={pocket_stability:.2f}")
+        reason_tags.append("vina_stable")
+    elif pocket_stability >= T["stability_good"]:
+        stability_pts = 6.0
+        reasons.append(f"stability={pocket_stability:.2f}")
+        reason_tags.append("vina_stable")
+    elif pocket_stability >= T["stability_min"]:
+        stability_pts = 3.0
+        reasons.append(f"stability={pocket_stability:.2f}")
+        reason_tags.append("vina_borderline_stable")
+    elif pocket_stability > 0:
+        reasons.append(f"low_stability={pocket_stability:.2f}")
+        reason_tags.append("vina_low_stability")
+    vina_raw += stability_pts
+
+    # Multi-ligand support is scored separately from raw pose abundance.
     if n_ligand >= T["n_ligand_all"]:
-        vina_raw += 20
-        reasons.append(f"n_ligand={n_ligand}")
+        diversity_pts += 8.0
     elif n_ligand >= T["n_ligand_good"]:
-        vina_raw += 10
+        diversity_pts += 4.0
+
+    if n_ligand >= T["n_ligand_good"]:
+        if dominant_ligand_fraction <= T["dominant_ligand_good"]:
+            diversity_pts += 4.0
+        elif dominant_ligand_fraction <= T["dominant_ligand_warn"]:
+            diversity_pts += 2.0
+        else:
+            reasons.append(f"ligand_dominance={dominant_ligand_fraction:.2f}")
+            reason_tags.append("ligand_dominated")
+
+        if ligand_pose_entropy >= T["ligand_entropy_good"]:
+            diversity_pts += 3.0
+        elif ligand_pose_entropy >= T["ligand_entropy_ok"]:
+            diversity_pts += 1.5
+
+    diversity_pts = min(diversity_pts, 15.0)
+    if diversity_pts > 0:
+        vina_raw += diversity_pts
         reasons.append(f"n_ligand={n_ligand}")
+        reason_tags.append("multi_ligand")
 
     # Membrane-face tag (informational, not scored)
     membrane_tag = _check_membrane_overlap(pocket)
     if membrane_tag:
         reasons.append(membrane_tag)
+        reason_tags.append("membrane_face")
 
-    # Normalize to adaptive max
-    # Raw max = affinity(20) + convergence(15) + consensus(20) = 55
-    VINA_RAW_MAX = 20.0 + 15.0 + 20.0  # keep in sync with components above
+    # Normalize to adaptive max — computed from actual max component points
+    _AFFINITY_MAX = 20.0
+    _CONVERGENCE_MAX = 15.0
+    _STABILITY_MAX = 10.0
+    _DIVERSITY_MAX = 15.0
+    VINA_RAW_MAX = _AFFINITY_MAX + _CONVERGENCE_MAX + _STABILITY_MAX + _DIVERSITY_MAX
     vina_max = 50.0 if has_ppi_data else 60.0
     vina_score = min(vina_raw, VINA_RAW_MAX) / VINA_RAW_MAX * vina_max
 
@@ -955,61 +1252,108 @@ def score_pocket(
     # account for this systematic overestimate.
     ppi_score = 0.0
     ppi_max = 20.0 if has_ppi_data else 0.0
+    spatial_pts = 0.0
+    overlap_pts = 0.0
+    reproducibility_pts = 0.0
 
     if has_ppi_data and ppi_agreement:
         spatial = ppi_agreement.get("spatial_proximity", "no_data")
         n_shared = _safe_int(ppi_agreement.get("n_shared_residues"), 0)
         spatial_dist = ppi_agreement.get("spatial_dist_A", "")
+        ppi_frac_runs = _safe_float(ppi_agreement.get("ppi_frac_runs_supporting"), 0.0)
+        ppi_best_delta_e = _safe_float(
+            ppi_agreement.get("ppi_best_interface_delta_e"),
+            0.0,
+        )
 
         if spatial == "adjacent":
-            ppi_score += 15.0
+            spatial_pts = 10.0
             reasons.append(f"ppi_adjacent({spatial_dist}A)")
+            reason_tags.append("ppi_adjacent")
         elif spatial == "near":
-            ppi_score += 10.0
+            spatial_pts = 6.0
             reasons.append(f"ppi_near({spatial_dist}A)")
+            reason_tags.append("ppi_near")
         elif spatial == "moderate":
-            ppi_score += 4.0
+            spatial_pts = 2.0
             reasons.append(f"ppi_moderate({spatial_dist}A)")
         elif spatial == "no_data":
             # PPI residues exist but no PDB for centroid → use residue overlap
             if n_shared > 0:
-                ppi_score += 8.0
+                spatial_pts = 5.0
                 reasons.append(f"ppi_shared={n_shared}res")
+                reason_tags.append("ppi_shared_only")
         else:
             reasons.append(f"ppi_distant({spatial_dist}A)")
+            reason_tags.append("ppi_distant")
 
         # Residue overlap bonus (weak but informative)
         if T.get("ppi_residue_bonus") and n_shared > 0:
             occ = _safe_float(ppi_agreement.get("ppi_mean_occupancy_of_shared"), 0)
             if occ >= 0.5:
-                ppi_score += 5.0
+                overlap_pts = 4.0
                 reasons.append(f"shared_highocc={n_shared}")
+                reason_tags.append("ppi_shared_highocc")
             else:
-                ppi_score += 2.0
+                overlap_pts = 2.0
+                reason_tags.append("ppi_shared")
 
         # Multi-partner corroboration bonus: near both beta_meander AND TH1
         n_partners_near = _safe_int(ppi_agreement.get("n_ppi_partners_near"), 0)
         if n_partners_near >= 2:
-            ppi_score += 3.0
+            spatial_pts += 2.0
             reasons.append(f"multi_ppi={n_partners_near}partners")
+            reason_tags.append("ppi_multi_partner")
 
-        ppi_score = min(ppi_score, ppi_max)
+        if ppi_frac_runs >= T["ppi_repro_great"]:
+            reproducibility_pts = 4.0
+            reasons.append(f"ppi_repro={ppi_frac_runs:.2f}")
+            reason_tags.append("ppi_multi_seed_strong")
+        elif ppi_frac_runs >= T["ppi_repro_good"]:
+            reproducibility_pts = 2.0
+            reasons.append(f"ppi_repro={ppi_frac_runs:.2f}")
+            reason_tags.append("ppi_multi_seed")
+        elif ppi_frac_runs > 0:
+            reasons.append(f"ppi_repro={ppi_frac_runs:.2f}")
+
+        if ppi_best_delta_e < 0:
+            reasons.append(f"ppi_dE={ppi_best_delta_e:.1f}")
+
+        ppi_score = min(spatial_pts + overlap_pts + reproducibility_pts, ppi_max)
     elif not has_ppi_data:
         reasons.append("no_ppi_data")
+        reason_tags.append("no_ppi_data")
 
     # ---- Axis 3: Cross-Receptor Consistency ----
     cross_max = 30.0 if has_ppi_data else 40.0
     n_cross = len(cross_receptor_matches)
-    cross_raw = 0.0
+    cross_coverage_pts = 0.0
+    cross_support_pts = 0.0
+    support_frac = _safe_float(
+        (cross_support or {}).get("support_frac"),
+        0.0,
+    )
 
     if n_cross >= 2:
-        cross_raw = cross_max
+        cross_coverage_pts = 20.0
         reasons.append(f"cross={n_cross + 1}/3")
+        reason_tags.append("cross_state_recurrent")
     elif n_cross >= 1:
-        cross_raw = cross_max * 0.5
-        reasons.append(f"cross=2/3")
+        cross_coverage_pts = 10.0
+        reasons.append("cross=2/3")
+        reason_tags.append("cross_state_partial")
 
-    cross_score = min(cross_raw, cross_max)
+    if support_frac >= T["cross_support_great"]:
+        cross_support_pts = 10.0 if has_ppi_data else 20.0
+        reasons.append(f"cross_support={support_frac:.2f}")
+    elif support_frac >= T["cross_support_good"]:
+        cross_support_pts = 6.0 if has_ppi_data else 12.0
+        reasons.append(f"cross_support={support_frac:.2f}")
+    elif support_frac > 0:
+        cross_support_pts = 3.0 if has_ppi_data else 6.0
+        reasons.append(f"cross_support={support_frac:.2f}")
+
+    cross_score = min(cross_coverage_pts + cross_support_pts, cross_max)
 
     # ---- Experimental priors (informational only, no score impact) ----
     if exp_correlation:
@@ -1019,6 +1363,7 @@ def score_pocket(
         enrichment = exp_correlation.get("exp_enrichment", 0)
         if n_hits > 0:
             reasons.append(f"exp_hit={n_hits}res(sens={sens:.0%})")
+            reason_tags.append("experimental_hit")
         if enrichment > 2.0:
             reasons.append(f"exp_enriched({enrichment:.1f}x)")
         if n_fp > 0:
@@ -1034,7 +1379,65 @@ def score_pocket(
     else:
         verdict = "WEAK"
 
-    return total, verdict, reasons, vina_score, ppi_score, cross_score
+    evidence_profile: List[str] = ["exploratory"]
+    if pocket_stability >= T["stability_good"]:
+        evidence_profile.append("stable")
+    if n_ligand >= T["n_ligand_good"]:
+        evidence_profile.append("multi_ligand")
+    if spatial_pts >= 6.0 or overlap_pts > 0 or reproducibility_pts > 0:
+        evidence_profile.append("ppi_supported")
+    if n_cross > 0:
+        evidence_profile.append("cross_state")
+    if support_frac >= T["cross_support_good"]:
+        evidence_profile.append("recurrent")
+    evidence_profile = sorted(set(evidence_profile))
+    decision_trace = (
+        "VINA[aff={aff:.1f},conv={conv:.1f},stab={stab:.1f},div={div:.1f}] "
+        "PPI[spatial={spatial:.1f},overlap={overlap:.1f},repro={repro:.1f}] "
+        "CROSS[count={count},support={support:.1f}]"
+    ).format(
+        aff=affinity_pts,
+        conv=convergence_pts,
+        stab=stability_pts,
+        div=diversity_pts,
+        spatial=spatial_pts,
+        overlap=overlap_pts,
+        repro=reproducibility_pts,
+        count=cross_coverage_pts,
+        support=cross_support_pts,
+    )
+
+    # Raw component breakdown (pre-normalization points)
+    score_denominator = vina_max + ppi_max + cross_max
+    raw_components = {
+        "vina_affinity_pts": affinity_pts,
+        "vina_convergence_pts": convergence_pts,
+        "vina_stability_pts": stability_pts,
+        "vina_diversity_pts": diversity_pts,
+        "vina_consensus_pts": diversity_pts,
+        "ppi_spatial_pts": spatial_pts,
+        "ppi_overlap_pts": overlap_pts,
+        "ppi_reproducibility_pts": reproducibility_pts,
+        "cross_receptor_pts": cross_coverage_pts + cross_support_pts,
+        "cross_receptor_support_pts": cross_support_pts,
+        "score_denominator": score_denominator,
+        "dominant_ligand_fraction": dominant_ligand_fraction,
+        "ligand_pose_entropy": ligand_pose_entropy,
+        "ppi_frac_runs_supporting": (
+            _safe_float(ppi_agreement.get("ppi_frac_runs_supporting"), 0.0)
+            if ppi_agreement else 0.0
+        ),
+        "ppi_best_interface_delta_e": (
+            _safe_float(ppi_agreement.get("ppi_best_interface_delta_e"), 0.0)
+            if ppi_agreement else 0.0
+        ),
+        "cross_receptor_support": support_frac,
+        "evidence_profile": "+".join(evidence_profile),
+        "reason_tags": ";".join(sorted(set(reason_tags))),
+        "decision_trace": decision_trace,
+    }
+
+    return total, verdict, reasons, vina_score, ppi_score, cross_score, raw_components
 
 
 # ---------------------------------------------------------------------------
@@ -1112,10 +1515,11 @@ def generate_verdict(
     agreement_rows = compute_cross_method_agreement(
         pocket_rows, ppi_residues_merged, ppi_partner_centroids, thresholds,
     )
+    _enrich_agreement_with_ppi_reproducibility(agreement_rows, ppi_residues_merged)
 
     # Enrich with PPI summary best_dg (receptor-level, not pocket-specific;
     # same value for all pockets of a receptor — use for reference only)
-    ppi_summary_map = {s.get("receptor_id", ""): s for s in evidence["ppi_summary"]}
+    ppi_summary_map = _best_summary_by_receptor(evidence["ppi_summary"])
     for row in agreement_rows:
         summary = ppi_summary_map.get(row["receptor_id"])
         if summary:
@@ -1129,6 +1533,9 @@ def generate_verdict(
 
     # Step 2: Cross-receptor consistency
     cross_receptor = compute_cross_receptor_consistency(
+        evidence["pocket_comparison"]
+    )
+    cross_support = compute_cross_receptor_support(
         evidence["pocket_comparison"]
     )
 
@@ -1193,6 +1600,8 @@ def generate_verdict(
 
         if not pocket.get("n_ligand"):
             pocket["n_ligand"] = pocket_ligand_count.get(key, 0)
+        if key in bootstrap_index:
+            pocket["pocket_exists_frac"] = bootstrap_index[key].get("pocket_exists_frac", "")
 
         ppi_agr = agreement_index.get(key)
         cross_matches = cross_receptor.get(key, [])
@@ -1201,8 +1610,8 @@ def generate_verdict(
         pocket_has_ppi = rid in ppi_receptor_ids
 
         exp_corr = exp_correlations.get(key)
-        total, verdict, reasons, v_score, p_score, c_score = score_pocket(
-            pocket, ppi_agr, cross_matches, thresholds, pocket_has_ppi,
+        total, verdict, reasons, v_score, p_score, c_score, raw_comp = score_pocket(
+            pocket, ppi_agr, cross_matches, cross_support.get(key), thresholds, pocket_has_ppi,
             exp_correlation=exp_corr,
         )
 
@@ -1224,15 +1633,35 @@ def generate_verdict(
             "vina_quality_score": round(v_score, 1),
             "ppi_proximity_score": round(p_score, 1),
             "cross_receptor_score": round(c_score, 1),
+            "vina_affinity_pts": raw_comp["vina_affinity_pts"],
+            "vina_convergence_pts": raw_comp["vina_convergence_pts"],
+            "vina_stability_pts": raw_comp["vina_stability_pts"],
+            "vina_diversity_pts": raw_comp["vina_diversity_pts"],
+            "vina_consensus_pts": raw_comp["vina_consensus_pts"],
+            "ppi_spatial_pts": raw_comp["ppi_spatial_pts"],
+            "ppi_overlap_pts": raw_comp["ppi_overlap_pts"],
+            "ppi_reproducibility_pts": raw_comp["ppi_reproducibility_pts"],
+            "cross_receptor_pts": raw_comp["cross_receptor_pts"],
+            "cross_receptor_support_pts": raw_comp["cross_receptor_support_pts"],
+            "score_denominator": raw_comp["score_denominator"],
             "ppi_data_available": "yes" if pocket_has_ppi else "no",
             "best_affinity": pocket.get("best_affinity", ""),
             "n_pose": pocket.get("n_pose", ""),
             "n_ligand": pocket.get("n_ligand", ""),
+            "dominant_ligand_fraction": (
+                raw_comp["dominant_ligand_fraction"]
+                if raw_comp["dominant_ligand_fraction"] not in (0.0, 1.0) or _safe_int(pocket.get("n_ligand"), 0) > 1
+                else pocket.get("dominant_ligand_fraction", "")
+            ),
+            "ligand_pose_entropy": raw_comp["ligand_pose_entropy"],
             "spatial_dist_to_ppi": spatial_dist,
             "closest_ppi_partner": closest_partner,
             "n_ppi_partners_near": n_partners_near,
             "n_shared_with_ppi": ppi_agr.get("n_shared_residues", 0) if ppi_agr else 0,
+            "ppi_frac_runs_supporting": raw_comp["ppi_frac_runs_supporting"] or "",
+            "ppi_best_interface_delta_e": raw_comp["ppi_best_interface_delta_e"] or "",
             "cross_receptor_matches": ";".join(cross_matches),
+            "cross_receptor_support": raw_comp["cross_receptor_support"] or "",
             "consensus_site_id": cs_id,
             "exp_sensitivity": exp_corr["exp_sensitivity"] if exp_corr else "",
             "exp_specificity": exp_corr["exp_specificity"] if exp_corr else "",
@@ -1240,6 +1669,9 @@ def generate_verdict(
             "exp_rank_impact": _compute_exp_rank_impact(exp_corr) if exp_corr else "",
             "pocket_stability": bootstrap_index[key]["pocket_exists_frac"]
                 if key in bootstrap_index else "",
+            "evidence_profile": raw_comp["evidence_profile"],
+            "reason_tags": raw_comp["reason_tags"],
+            "decision_trace": raw_comp["decision_trace"],
             "reasons": "; ".join(reasons),
         })
 

@@ -42,6 +42,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from egfr_pipeline.runtime_support import cap_worker_count, resolve_runtime_resources
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -109,6 +111,7 @@ def generate_run_script(
         "",
         "SCRIPT_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"",
         "PROJECT_ROOT=\"$(cd \"$SCRIPT_DIR/../..\" && pwd)\"",
+        "ALLOCATED_CPUS=\"${PBS_NP:-0}\"",
         "",
         "# Activate environment",
         "# conda activate vina  # Uncomment if needed",
@@ -135,6 +138,7 @@ def generate_run_script(
             f"    --execute \\",
             f"    --round {round_id} \\",
             f"    --max_workers {max_workers} \\",
+            f"    --allocated-cpus \"$ALLOCATED_CPUS\" \\",
             f"    --output_dir \"$OUTPUT_DIR\"",
             "",
             "# Evaluate saturation after round",
@@ -190,7 +194,15 @@ def execute_single_job(job: dict) -> dict:
     ligand_pdbqt = output_dir / f"{ligand_path.stem}.pdbqt"
     if ligand_path.suffix.lower() != ".pdbqt":
         try:
-            prepare_ligand(str(ligand_path), str(ligand_pdbqt))
+            prepared = prepare_ligand(str(ligand_path), str(ligand_pdbqt))
+            if prepared is False or not ligand_pdbqt.exists():
+                return {
+                    "job_id": job["job_id"],
+                    "status": "error",
+                    "error_message": "Ligand preparation failed: no PDBQT produced",
+                    "n_poses": 0,
+                    "best_affinity_kcal": "",
+                }
         except Exception as e:
             return {
                 "job_id": job["job_id"],
@@ -224,6 +236,7 @@ def execute_single_job(job: dict) -> dict:
             box_size,
             int(job["exhaustiveness"]),
             int(job["n_poses"]),
+            cpu=int(job.get("cpu_per_job", 0) or 0),
         )
         n_poses = len(energies) if energies is not None else 0
         best = energies[0][0] if n_poses > 0 else ""
@@ -251,6 +264,8 @@ def execute_round(
     jobs: List[dict],
     round_id: int,
     max_workers: int = MAX_WORKERS_DEFAULT,
+    *,
+    allocated_cpus: Optional[int] = None,
 ) -> List[dict]:
     """Execute all jobs for a given round (seed_index).
 
@@ -261,6 +276,15 @@ def execute_round(
 
     if not round_jobs:
         return []
+
+    cpu_per_job = int(round_jobs[0].get("cpu_per_job", 0) or 0)
+    runtime = resolve_runtime_resources(allocated_cpus=allocated_cpus)
+    max_workers = cap_worker_count(
+        requested_workers=max_workers,
+        n_jobs=len(round_jobs),
+        cpu_per_job=cpu_per_job,
+        available_cpus=runtime.effective_cpus,
+    )
 
     results = []
     if max_workers <= 1:
@@ -400,6 +424,8 @@ def build_run_metadata(
     policy: dict,
     mode: str,
     max_workers: int,
+    *,
+    allocated_cpus: Optional[int] = None,
 ) -> dict:
     """Build run metadata JSON."""
     open_pockets = [ps for ps in pocket_statuses if ps["status"] == "open"]
@@ -412,6 +438,9 @@ def build_run_metadata(
     receptors = sorted(set(j["receptor_id"] for j in jobs))
     ligands = sorted(set(j["ligand_id"] for j in jobs))
     pockets = sorted(set(j["pocket_id"] for j in jobs))
+    cpu_values = sorted({int(j.get("cpu_per_job", 0) or 0) for j in jobs})
+    engines = sorted({str(j.get("engine", "cpu-vina") or "cpu-vina") for j in jobs})
+    gpu_required = any(str(j.get("gpu_required", "")).lower() == "true" for j in jobs)
 
     return {
         "pipeline": "phase3_diverse_docking",
@@ -419,6 +448,10 @@ def build_run_metadata(
         "mode": mode,
         "generated": datetime.now().isoformat(),
         "max_workers": max_workers,
+        "allocated_cpus": allocated_cpus,
+        "cpu_per_job_values": cpu_values,
+        "engines": engines,
+        "gpu_required": gpu_required,
         "total_jobs": len(jobs),
         "rounds": {str(k): v for k, v in sorted(by_round.items())},
         "receptors": receptors,
@@ -509,6 +542,8 @@ def dry_run(
 def run_setup(
     output_dir: Path = PHASE3_OUTPUT_DIR,
     max_workers: int = MAX_WORKERS_DEFAULT,
+    *,
+    allocated_cpus: Optional[int] = None,
 ) -> Tuple[Path, Path]:
     """Setup mode: generate run script + metadata without executing.
 
@@ -540,7 +575,14 @@ def run_setup(
     print(f"  Generated run script: {script_path}")
 
     # Generate metadata
-    metadata = build_run_metadata(jobs, pocket_statuses, policy, "setup", max_workers)
+    metadata = build_run_metadata(
+        jobs,
+        pocket_statuses,
+        policy,
+        "setup",
+        max_workers,
+        allocated_cpus=allocated_cpus,
+    )
     meta_path = output_dir / "phase3_run_metadata.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
@@ -587,6 +629,10 @@ def main():
         "--max_workers", type=int, default=MAX_WORKERS_DEFAULT,
         help=f"Max parallel workers (default: {MAX_WORKERS_DEFAULT})",
     )
+    parser.add_argument(
+        "--allocated-cpus", type=int, default=None,
+        help="Scheduler-allocated CPUs used to cap workers safely",
+    )
 
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument(
@@ -618,7 +664,11 @@ def main():
     print()
 
     if args.setup:
-        script_path, meta_path = run_setup(args.output_dir, args.max_workers)
+        script_path, meta_path = run_setup(
+            args.output_dir,
+            args.max_workers,
+            allocated_cpus=args.allocated_cpus,
+        )
         print(f"\n{'='*60}")
         print("TG 3.3 SETUP COMPLETE")
         print(f"{'='*60}")
@@ -640,7 +690,12 @@ def main():
         if args.round is None:
             parser.error("--execute requires --round")
         jobs = _load_csv(args.output_dir / "phase3_docking_job_table.csv")
-        results = execute_round(jobs, args.round, args.max_workers)
+        results = execute_round(
+            jobs,
+            args.round,
+            args.max_workers,
+            allocated_cpus=args.allocated_cpus,
+        )
         ok = sum(1 for r in results if r.get("status") == "ok")
         err = sum(1 for r in results if r.get("status") == "error")
         skip = sum(1 for r in results if r.get("status") == "skip_no_vina")

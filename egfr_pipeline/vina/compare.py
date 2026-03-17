@@ -136,6 +136,9 @@ def compare_all_pockets(
     centroid_cutoff: float = 15.0,
     keep_chain: bool = False,
     bootstrap_index: Optional[Dict[Tuple[str, str], dict]] = None,
+    same_patch_centroid_cutoff: float = 8.0,
+    same_patch_jaccard: float = 0.3,
+    same_patch_overlap: float = 0.5,
 ) -> List[dict]:
     """Compare every pocket pair across different receptor states.
 
@@ -178,11 +181,11 @@ def compare_all_pockets(
                 oc = overlap_coefficient(res_a, res_b)
 
                 # Auxiliary same-patch candidate flag:
-                # centroid < 8 A AND (residue jaccard >= 0.3 OR overlap_coeff >= 0.5)
+                # centroid within threshold AND residue overlap passes either criterion.
                 # This is a soft label for human review, not a definitive classification.
                 is_candidate = (
-                    dist < 8.0
-                    and (j >= 0.3 or oc >= 0.5)
+                    dist <= same_patch_centroid_cutoff
+                    and (j >= same_patch_jaccard or oc >= same_patch_overlap)
                 )
 
                 # Bootstrap CI for centroid distance (error propagation)
@@ -240,11 +243,12 @@ def compare_from_config(
     config_path: str,
     pocket_table_path: Optional[str] = None,
     drug_map_path: Optional[str] = None,
-    centroid_cutoff: float = 15.0,
+    centroid_cutoff: Optional[float] = None,
     output_path: Optional[str] = None,
 ) -> Path:
     config = load_config(config_path)
     project_root = project_root_from_config(config)
+    pp = config.get("postprocess", {})
 
     pocket_csv = Path(pocket_table_path) if pocket_table_path else project_root / "vina_pocket_table.csv"
     drug_csv = Path(drug_map_path) if drug_map_path else project_root / "vina_drug_pocket_map.csv"
@@ -261,9 +265,18 @@ def compare_from_config(
             brows = list(csv.DictReader(f))
         bootstrap_idx = {(r["receptor_id"], r["pocket_id"]): r for r in brows}
 
-    keep_chain = config.get("postprocess", {}).get("keep_chain", False)
+    keep_chain = pp.get("keep_chain", False)
+    effective_centroid_cutoff = (
+        centroid_cutoff if centroid_cutoff is not None else pp.get("comparison_centroid_cutoff", 15.0)
+    )
     comparison = compare_all_pockets(
-        pocket_rows, drug_map_rows, centroid_cutoff,
-        keep_chain=keep_chain, bootstrap_index=bootstrap_idx,
+        pocket_rows,
+        drug_map_rows,
+        effective_centroid_cutoff,
+        keep_chain=keep_chain,
+        bootstrap_index=bootstrap_idx,
+        same_patch_centroid_cutoff=pp.get("same_patch_centroid_cutoff", 8.0),
+        same_patch_jaccard=pp.get("same_patch_jaccard", 0.3),
+        same_patch_overlap=pp.get("same_patch_overlap", 0.5),
     )
     return write_csv(out_csv, comparison, COMPARISON_FIELDS)

@@ -25,8 +25,8 @@ def resolve_pbs_script(
     """
     if is_test is None:
         is_test = "test" in (config_ini or "")
-    pbs_name = "run_ppi_test.pbs" if is_test else "run_ppi_prod.pbs"
-    log_prefix = "ppi_test" if is_test else "ppi_prod"
+    pbs_name = "run_lightdock_test.pbs" if is_test else "run_lightdock.pbs"
+    log_prefix = "lightdock_test" if is_test else "lightdock"
     return repo_root / "config" / pbs_name, log_prefix
 
 

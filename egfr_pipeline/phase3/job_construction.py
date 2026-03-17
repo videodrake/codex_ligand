@@ -59,6 +59,9 @@ JOB_TABLE_COLUMNS = [
     "exhaustiveness",
     "n_poses",
     "docking_mode",
+    "cpu_per_job",
+    "engine",
+    "gpu_required",
     # Paths
     "receptor_pdb",
     "ligand_file",
@@ -153,6 +156,10 @@ def generate_jobs(
     ligands: List[Dict[str, str]],
     receptor_dir: Path,
     output_root: Path,
+    *,
+    cpu_per_job: int = 4,
+    engine: str = "cpu-vina",
+    gpu_required: bool = False,
 ) -> List[dict]:
     """Generate the full job table: receptor x pocket x ligand x seed.
 
@@ -202,6 +209,9 @@ def generate_jobs(
                     "exhaustiveness": exhaustiveness,
                     "n_poses": n_poses,
                     "docking_mode": "focused",
+                    "cpu_per_job": int(cpu_per_job),
+                    "engine": engine,
+                    "gpu_required": bool(gpu_required),
                     "receptor_pdb": receptor_pdb,
                     "ligand_file": ligand_file,
                     "output_dir": job_output_dir,

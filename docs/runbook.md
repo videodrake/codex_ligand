@@ -1,468 +1,173 @@
 # Runbook
-## EGFR–MYO1D Pipeline
 
----
+Last updated: 2026-03-13
 
-## 1. Purpose of this runbook
+This document is the operator-facing run procedure for the current repository. Use it to understand what order to run things in, which checkpoints matter, and when to stop or escalate. For exact commands, use [manual_execution.md](manual_execution.md). For the current baseline summary, use [current_pipeline_status.md](current_pipeline_status.md). For artifact meaning, use [output_artifact_map.md](output_artifact_map.md).
 
-This runbook explains how the EGFR–MYO1D pipeline is expected to be run, inspected, and debugged once the repository refactor is underway.
+## Operating Frame
 
-It is not a low-level implementation spec. Instead, it serves as an **operator-facing execution guide** for:
-- the project owner,
-- collaborators reviewing results,
-- and coding agents improving execution flow.
+Run this repository with the current baseline in mind:
 
-The runbook defines the intended execution sequence, input expectations, output locations, and practical operating rules.
+| Topic | Operational rule |
+|------|------|
+| Receptor states | Treat `3GT8_raw`, `EGFR_160-185`, and `EGFR_170-200` as the fixed comparison set |
+| Ligand workflow center | Routine ligand evidence is Vina-centered |
+| Phase 1 primary evidence | PyRosetta |
+| Phase 1 secondary validation | LightDock |
+| AFM | Legacy optional only; do not include it in routine execution unless explicitly re-enabled |
+| Runtime environment | Production and pre-qsub lanes reuse the shared `pyrosetta` conda environment |
+| Worker policy | Treat `max_workers = 16` as the routine safe operating bound |
 
----
+## Interpretation Start Point
 
-## 2. Project scope reminder
+When a production run has completed, start with `output/{project}/step_index.md`.
 
-This repository is a research pipeline for comparing structural-analysis outputs across three EGFR receptor states in the EGFR–MYO1D project.
+Recommended reading order:
 
-The current receptor ensemble is fixed to:
+1. `output/{project}/step_index.md`
+2. `output/{project}/step6_report/project_report.txt`
+3. `output/{project}/step5_verdict/valid_sites.csv`
+4. `output/{project}/step4_vina_postprocess/vina_pocket_table.csv`
+5. `output/{project}/step3_ppi_postprocess/ppi_pyrosetta_residues.csv`
 
-1. **3GT8 raw structure**
-2. **MD cluster representative from frames 38–48**
-3. **MD cluster representative from frames 85–100**
+Canonical runtime outputs remain under `output/{project}/` and remain the source of truth. The step folders are a derived interpretation view that can be regenerated from canonical outputs.
 
-The current implementation priority is Vina-centered:
-
-1. batch docking execution
-2. pose parsing
-3. contact residue extraction
-4. pocket clustering
-5. pocket summary generation
-6. cross-receptor pocket comparison
-7. supporting PyRosetta / AlphaFold-Multimer summaries
-
----
-
-## 3. Practical execution constraint
-
-The main server has **32 CPU cores**, but the practical safe assumption for this project is that only **16 cores are available for routine use**.
-
-Because of this:
-- parallel execution must be configurable,
-- 16 workers should be treated as the normal upper operating bound,
-- and execution speed must never come at the cost of traceability or result clarity.
-
-If there is uncertainty, use fewer workers rather than more.
-
----
-
-## 4. Recommended document reading order before running anything
-
-Before executing the pipeline, read the following documents in this order:
-
-1. `README.md`
-2. `docs/project-context.md`
-3. `docs/brief-egfr-myo1d-pipeline.md`
-4. `docs/prd-egfr-myo1d-pipeline.md`
-5. `docs/tasks-egfr-myo1d-pipeline.md`
-6. `CODEX_HANDOFF_EGFR_MYO1D_PIPELINE.md`
-
-This ensures that the operator understands:
-- the project goal,
-- the three receptor states,
-- the current implementation priority,
-- and the difference between primary Vina evidence and auxiliary PPI evidence.
-
----
-
-## 5. Expected repository structure
-
-The intended repository structure is:
+## Reference Output Layout
 
 ```text
-repo-root/
-├── README.md
-├── CLAUDE.md
-├── CODEX_HANDOFF_EGFR_MYO1D_PIPELINE.md
-├── docs/
-│   ├── brief-egfr-myo1d-pipeline.md
-│   ├── prd-outline-egfr-myo1d-pipeline.md
-│   ├── prd-egfr-myo1d-pipeline.md
-│   ├── tasks-outline-egfr-myo1d-pipeline.md
-│   ├── tasks-egfr-myo1d-pipeline.md
-│   ├── project-context.md
-│   ├── repository-map.md
-│   └── runbook.md
-├── config/
-│   └── example-project.yaml
-├── receptors/
-├── ligands/
-├── scripts/
-├── outputs/
-│   ├── raw/
-│   ├── parsed/
-│   ├── reports/
-│   └── logs/
-└── tests/
+output/egfr_myo1d_vina/
+  vina_pose_table.csv
+  vina_pocket_table.csv
+  vina_drug_pocket_map.csv
+  ppi_pyrosetta_residues.csv
+  ppi_pyrosetta_summary.csv
+  valid_sites.csv
+  cross_method_agreement.csv
+  combined_residue_evidence.csv
+  project_report.txt
+  step_index.md
+  current_run_manifest.json
+  step1_vina_raw/
+  step2_ppi_raw/
+  step3_ppi_postprocess/
+  step4_vina_postprocess/
+  step5_verdict/
+  step6_report/
+  step7_validate/
 ```
 
-This runbook assumes the repository gradually converges toward this structure.
-
----
-
-## 6. Input expectations
-
-The intended input model is project-level and file-based.
-
-### 6.1 Receptors
-The pipeline should accept exactly three named receptor states during the current phase:
-
-- `3GT8_raw`
-- `3GT8_cl38_48`
-- `3GT8_cl85_100`
-
-Each receptor definition should preserve:
-- receptor ID
-- source type
-- PDB path
-- PDBQT path
-- chain information if applicable
-- optional preparation notes
-
-### 6.2 Ligands
-The pipeline should accept a ligand list through config, with each ligand preserving at least:
-- ligand ID
-- file path
-- optional scientific annotation
-
-### 6.3 Shared run settings
-The pipeline should be runnable from a single project config file that stores:
-- receptor definitions
-- ligand definitions
-- docking settings
-- contact cutoff
-- pocket clustering cutoff
-- worker count
-- output root
-
----
-
-## 7. Example config skeleton
-
-The exact implementation may vary, but the intended config model looks like this:
-
-```yaml
-project_name: egfr_myo1d_pipeline
-output_root: ./outputs
-max_workers: 16
-receptors:
-  - id: 3GT8_raw
-    pdb: receptors/3GT8_raw/3GT8_raw.pdb
-    pdbqt: receptors/3GT8_raw/3GT8_raw.pdbqt
-    chain: A
-    source_type: raw_3GT8
-  - id: 3GT8_cl38_48
-    pdb: receptors/cluster_38_48/rep_38_48.pdb
-    pdbqt: receptors/cluster_38_48/rep_38_48.pdbqt
-    chain: A
-    source_type: md_cluster_38_48
-  - id: 3GT8_cl85_100
-    pdb: receptors/cluster_85_100/rep_85_100.pdb
-    pdbqt: receptors/cluster_85_100/rep_85_100.pdbqt
-    chain: A
-    source_type: md_cluster_85_100
-ligands:
-  - id: drugA
-    pdbqt: ligands/drugA.pdbqt
-    annotation_myo1d_inhibition: strong
-  - id: drugB
-    pdbqt: ligands/drugB.pdbqt
-    annotation_myo1d_inhibition: medium
-vina:
-  center: [0.0, 0.0, 0.0]
-  size: [30.0, 30.0, 30.0]
-  exhaustiveness: 32
-  num_modes: 20
-  energy_range: 6
-contacts:
-  cutoff: 4.0
-pocket_clustering:
-  centroid_cutoff: 4.0
-```
-
-The exact schema may evolve, but this is the intended operational model.
-
----
-
-## 8. Recommended execution order
-
-### Phase A: Repository and input sanity check
-Do this before running any heavy computation.
-
-1. Confirm that the repository contains the expected documents.
-2. Confirm that receptor file paths exist.
-3. Confirm that ligand file paths exist.
-4. Confirm that config syntax is valid.
-5. Confirm that receptor IDs are exactly what the pipeline expects.
-6. Confirm that worker count is appropriate for the current shared-server load.
+## Before You Run
 
-### Phase B: Run Vina batch execution
-This is the current highest-priority execution layer.
+Confirm these conditions before submitting heavier work:
 
-Intended command shape:
+1. The active config is the intended project config, normally `config/example-project.yaml` or a direct derivative.
+2. The three receptor states are present and still mapped explicitly.
+3. Required ligands and prepared inputs are available for the intended lane.
+4. AFM-dependent fields are not being treated as active requirements.
+5. Worker count does not exceed the routine safe bound without an explicit reason.
+6. You know whether you are running the routine Vina-centered baseline, a Phase 1-focused branch, or both.
 
-```bash
-python scripts/run_vina_batch.py --config config/example-project.yaml
-```
+If you need the exact shell or PBS commands for these checks, use [manual_execution.md](manual_execution.md).
 
-or, if a unified runner exists later:
+## Standard Operator Sequence
 
-```bash
-python scripts/run_pipeline.py --config config/example-project.yaml --steps vina
-```
+### 1. Run Pre-qsub Validation First
 
-### Phase C: Parse pose-level outputs
-After docking outputs are produced, parse them into a reusable table.
+Always run the lightweight precheck lane before the heavier production submission path.
 
-Intended command shape:
+Required checkpoint:
 
-```bash
-python scripts/parse_vina_results.py --config config/example-project.yaml
-```
+- `output/pre_qsub_status/last_pass.json`
 
-### Phase D: Extract contact residues
-After pose parsing, extract receptor contact residues.
+If the precheck does not pass, stop and fix the configuration, input registration, or environment issue before moving on.
 
-Intended command shape:
+### 2. Choose The Execution Lane
 
-```bash
-python scripts/extract_contacts.py --config config/example-project.yaml
-```
+Pick the run lane that matches the task instead of assuming every run should execute the full repository.
 
-### Phase E: Cluster pockets and summarize them
-After pose-level data exists, generate pocket-level summaries.
+| Lane | Use when | Primary outputs to review first |
+|------|------|------|
+| Routine baseline lane | You need the current default ligand-facing evidence flow | `output/egfr_myo1d_vina/results/valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` |
+| Phase 1 lane | You need receptor-side interface evidence or Phase 2 handoff material | `output/phase1_ppi/phase1_downstream_patch_reference.csv`, `phase1_interface_report.md` |
+| Combined review lane | You need routine baseline outputs plus current Phase 1 evidence for interpretation | Routine baseline result files plus the Phase 1 handoff and review artifacts |
 
-Intended command shape:
+For the exact command surface of each lane, use [manual_execution.md](manual_execution.md).
 
-```bash
-python scripts/cluster_pockets.py --config config/example-project.yaml
-python scripts/summarize_pockets.py --config config/example-project.yaml
-```
+### 3. Submit Heavy Work In A Safe Order
 
-### Phase F: Compare pockets across receptor states
-After pocket tables exist, generate cross-receptor comparison outputs.
+The default safe pattern is:
 
-Intended command shape:
+1. Run pre-qsub validation.
+2. Submit the production lane only after precheck success.
+3. Run or review the Phase 1 PyRosetta branch when receptor-side evidence is required.
+4. Run LightDock only as the secondary validation path for Phase 1, not as a replacement for PyRosetta.
+5. Run verdict, report, and validate after the routine baseline outputs are available.
 
-```bash
-python scripts/compare_pockets.py --config config/example-project.yaml
-```
+Important rule:
 
-### Phase G: Build reports
-Once core parsed outputs exist, generate readable summaries.
+- Do not treat the scientific Phase 1-4 documents as proof that the whole repository should always run in a single unified end-to-end chain.
 
-Intended command shape:
+## Required Checkpoints
 
-```bash
-python scripts/build_vina_report.py --config config/example-project.yaml
-```
+Review these checkpoints before moving to interpretation.
 
-### Phase H: Optional supporting PPI modules
-Run only after the Vina-centered layer is stable.
+| Stage | Required checkpoint | Stop condition |
+|------|------|------|
+| Precheck | `output/pre_qsub_status/last_pass.json` exists and reflects a pass | Missing or failed precheck |
+| Routine Vina postprocess | Core Vina tables are populated | Missing pose or pocket summary tables |
+| Routine integration | `valid_sites.csv`, `cross_method_agreement.csv`, `project_report.txt` exist | Final decision files missing or obviously stale |
+| Phase 1 PyRosetta | Phase 1 residue, patch, and review outputs exist | No structured Phase 1 exports for downstream use |
+| Phase 1 LightDock | Cross-method convergence outputs exist when LightDock was requested | LightDock run incomplete but being cited as supporting evidence |
 
-Possible later commands:
+For exact file names and which ones are handoff artifacts, use [output_artifact_map.md](output_artifact_map.md).
 
-```bash
-python scripts/run_pyrosetta_global_docking.py --config config/example-project.yaml
-python scripts/parse_pyrosetta_scores.py --config config/example-project.yaml
-python scripts/run_afm_batch.py --config config/example-project.yaml
-python scripts/parse_afm_outputs.py --config config/example-project.yaml
-```
+## Step Folder Mode Semantics
 
----
+`run_production.py` keeps step-folder behavior aligned with canonical phase semantics:
 
-## 9. Recommended first implementation scope
+- `--status`: read-only for the step layer. It reports canonical phase status and derived step status without regenerating step folders, `step_index.md`, or `current_run_manifest.json`.
+- `--from N`: reruns canonical phases `N` and above. Earlier step folders remain untouched, while steps `N` through `7` are treated as stale until rebuilt.
+- `--only N[,M]`: rebuilds only the explicitly selected phases and matching step folders. Unselected steps are left unchanged.
+- `--force`: reruns the selected scope even when canonical outputs already exist and refreshes the matching derived step views.
+- Fresh run: there is no dedicated fresh-run flag in `run_production.py`. Use `python scripts/reset_production_outputs.py --execute` to clear the old project output root before a clean production rerun. This removes the step folders and root step files together with the canonical project outputs.
 
-Until the repository is stabilized, the recommended first implementation scope is limited to:
+Operational cautions:
 
-- **Task Group 0: Project Setup and Repository Baseline**
-- **Task Group 1: Structured Input and Run Management**
-- **Task Group 2: Parallel Batch Docking Execution**
+- Step folders are additive derived views, not replacements for canonical files.
+- `step2_ppi_raw/` records PyRosetta raw run paths and metadata, but it does not duplicate large raw directories.
 
-This means the first real execution milestone is:
+## Interpretation Rules During Operation
 
-- config-driven Vina batch execution
-- configurable `max_workers`
-- safe 16-core operation
-- stable receptor/ligand-specific output placement
-- visible failure logging
+- Preserve receptor-state separation in every review step.
+- Treat PyRosetta as the primary Phase 1 structural evidence layer.
+- Treat LightDock as independent secondary validation, not as standalone primary truth.
+- Treat AFM as inactive unless the user explicitly asks to re-enable it.
+- Treat `verdict`, `report`, and `validate` as the routine final interpretation layer for the default baseline.
+- Do not promote advanced Phase 4 perturbation outputs as the default final layer unless the task is explicitly Phase 4-oriented.
 
-Do not expand into pocket comparison, integrated reporting, or PPI standardization until this layer is stable.
+## Common Operator Mistakes
 
----
+- Running with historical AFM expectations even though AFM is not in the routine baseline.
+- Assuming production stage numbers and scientific Phase 1-4 numbers mean the same thing.
+- Treating pointer stub files in `output/egfr_myo1d_vina/` as the actual payload files.
+- Running more than 16 workers by default because the machine exposes more cores.
+- Collapsing the three receptor states too early in summaries or handoff interpretation.
 
-## 10. Expected output locations
+## When To Stop And Escalate
 
-### 10.1 Raw outputs
-Raw execution outputs should go under:
+Stop and resolve the issue before continuing if any of these are true:
 
-```text
-outputs/raw/
-```
-
-This includes:
-- raw Vina output files
-- raw logs for individual jobs
-- optional intermediate outputs from supporting tools
-
-### 10.2 Parsed outputs
-Structured machine-readable outputs should go under:
-
-```text
-outputs/parsed/
-```
-
-Expected files include:
-- `vina_pose_table.csv`
-- `vina_pocket_table.csv`
-- `vina_drug_pocket_map.csv`
-- `vina_pocket_overlap_table.csv`
-- and later, standardized PyRosetta / AFM summary files
-
-### 10.3 Reports
-Human-readable markdown summaries should go under:
-
-```text
-outputs/reports/
-```
-
-Expected files include:
-- `vina_report.md`
-- later `pyrosetta_report.md`
-- later `afm_report.md`
-- later `integrated_report.md`
-
-### 10.4 Logs
-Execution logs should go under:
-
-```text
-outputs/logs/
-```
-
-This directory should preserve:
-- batch-level logs
-- per-job logs when applicable
-- failure visibility
-
----
-
-## 11. What to check after each run
-
-After any meaningful run, check the following.
-
-### 11.1 Basic completion checks
-- Did the script exit cleanly?
-- Are output directories present?
-- Are expected files created?
-- Are receptor IDs correct in outputs?
-- Are ligand IDs correct in outputs?
-
-### 11.2 Parallel run checks
-- Was `max_workers` honored?
-- Were outputs separated correctly by receptor and ligand?
-- Did any job fail silently?
-- Did logs clearly identify failures?
-
-### 11.3 Parsed output checks
-- Does every pose row include receptor and ligand identity?
-- Are centroid coordinates present?
-- Are contact residues present where expected?
-- Are pocket assignments reproducible when rerun?
-
-### 11.4 Comparison checks
-- Does the pocket comparison table exist?
-- Does it preserve raw metrics rather than only labels?
-- Can a human review same-patch vs distinct-pocket possibilities without reopening raw docking files?
-
----
-
-## 12. Failure handling expectations
-
-The pipeline should fail loudly and specifically, not silently.
-
-### Examples of failures that must be surfaced clearly
-- missing receptor file
-- missing ligand file
-- malformed config
-- malformed or empty docking output
-- residue numbering inconsistency warning
-- output path collision
-- failed docking subprocess
-
-When a failure happens, the operator should be able to answer:
-- what step failed,
-- which receptor/ligand pair failed,
-- where the relevant logs are,
-- and whether the rest of the run continued or stopped.
-
----
-
-## 13. Interpretation guardrails during operation
-
-While running and reviewing outputs, the operator should remember the following rules.
-
-### 13.1 New outputs are primary
-Newly generated structured outputs carry more interpretive weight than older manually labeled report residues or site names.
-
-### 13.2 Pocket identity is conditional
-Pocket comparison should preserve evidence rather than force absolute conclusions.
-A pocket in one receptor state may shift, overlap partially, or disappear in another state.
-
-### 13.3 Primary vs auxiliary evidence must remain separate
-- Vina-centered pocket outputs are the current primary evidence layer.
-- PyRosetta and AlphaFold-Multimer outputs are supporting evidence.
-
-The run workflow and reports should preserve this distinction.
-
----
-
-## 14. Minimal operator checklist before handing work to Codex
-
-Before asking Codex to modify code, make sure the repo contains at least:
-
-- `README.md`
-- `docs/project-context.md`
-- `docs/brief-egfr-myo1d-pipeline.md`
-- `docs/prd-egfr-myo1d-pipeline.md`
-- `docs/tasks-egfr-myo1d-pipeline.md`
-- `CODEX_HANDOFF_EGFR_MYO1D_PIPELINE.md`
-- `docs/runbook.md`
-
-And make sure Codex is explicitly told to start only with:
-- Task Group 0
-- Task Group 1
-- Task Group 2
-
----
-
-## 15. Recommended Codex start condition
-
-The cleanest starting condition is:
-
-- repository documents are placed correctly,
-- receptor and ligand paths are known,
-- a draft config file exists,
-- and Codex is instructed to first inspect the repo and propose a narrow refactor plan.
-
-This reduces the risk of premature full rewrites.
-
----
-
-## 16. Korean summary (간단 요약)
-
-이 runbook은 이 저장소를 실제로 어떻게 돌릴지를 정리한 운영 문서다.
-
-핵심 내용은 다음과 같다.
-- receptor는 3GT8 raw / 38–48 cluster rep / 85–100 cluster rep 세 개다.
-- 현재 최우선은 Vina 중심 실행과 표준화다.
-- 서버는 32코어지만 16코어만 실사용 기준으로 병렬 실행을 설정한다.
-- 먼저 해야 할 것은 config 기반 batch 실행, pose parsing, contact extraction, pocket clustering의 실행 흐름을 고정하는 것이다.
-- raw / parsed / reports / logs 출력 위치를 분리해야 한다.
-- 실패는 조용히 넘어가면 안 되고, 어느 단계에서 무엇이 실패했는지 보여야 한다.
-- Codex에게 작업을 넘기기 전에는 최소 문서 세트를 repo에 두어야 한다.
-
+- pre-qsub validation fails
+- receptor state registration is incomplete or ambiguous
+- the run depends on AFM inputs that are currently unset
+- LightDock is being cited without PyRosetta support in a context that expects primary evidence
+- the expected result files are missing but downstream interpretation is already starting
+- output files appear to be stale pointers rather than current payloads
+
+## Use These Docs Next
+
+- [manual_execution.md](manual_execution.md): exact commands and execution surfaces
+- [architecture.md](architecture.md): data-flow map and handoff structure
+- [data_inventory.md](data_inventory.md): physical input and output locations
+- [output_artifact_map.md](output_artifact_map.md): artifact meaning, priority, and downstream consumption
+- [current_vs_plan_matrix.md](current_vs_plan_matrix.md): current implementation gaps relative to the 4-phase plan

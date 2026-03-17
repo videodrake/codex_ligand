@@ -1,202 +1,201 @@
 # Architecture Overview
 
-> 현재 유효한 진입점, 데이터 흐름, 스키마 계약을 한곳에 정리한 문서.
-> 최종 업데이트: 2026-03-10
+Last updated: 2026-03-13
 
----
+This document describes the current data-flow architecture of the repository. It is not the run procedure guide and it is not the plan-vs-gap document. Use [runbook.md](runbook.md) for operator steps, [current_vs_plan_matrix.md](current_vs_plan_matrix.md) for plan differences, and [output_artifact_map.md](output_artifact_map.md) for artifact-by-artifact meaning.
 
-## 유효 진입점
+## Architecture Snapshot
 
-| 진입점 | 용도 | 실행 환경 |
-|--------|------|----------|
-| `python main.py` | 통합 CLI (인터랙티브 메뉴 + 서브커맨드) | 로컬/서버 |
-| `python main.py vina` | Vina 리간드 도킹 | 로컬 (Vina 필요) |
-| `python main.py postprocess` | Vina 후처리 체인 | 로컬 |
-| `python main.py verdict` | 사이트 판정 (evidence classification) | 로컬 |
-| `python main.py report` | 종합 보고서 생성 | 로컬 |
-| `python main.py validate` | 출력 검증 | 로컬 |
-| `python main.py full` | 전체 파이프라인 (vina→postprocess→verdict→report→validate) | 로컬 |
-| `python main.py pyrosetta` | PyRosetta PPI 도킹 (서브메뉴) | HPC (PBS) |
-| `python -m egfr_pipeline.vina.bootstrap config.yaml` | 부트스트랩 안정성 분석 (독립 CLI) | 로컬 |
-| `python -m egfr_pipeline.vina.sweep config.yaml` | 커트오프 감도 스윕 (독립 CLI) | 로컬 |
-| `qsub config/run_ppi_test.pbs` | PyRosetta PBS 배치 (테스트) | HPC |
-| `qsub config/run_ppi_prod.pbs` | PyRosetta PBS 배치 (프로덕션) | HPC |
-| `.venv/bin/pytest tests/ -v` | 테스트 스위트 (46 tests) | 로컬 |
+The repository currently has two architectural layers that coexist:
 
-### Deprecated 진입점 (실행 금지)
+1. A routine Vina-centered baseline flow used by the default CLI and production path
+2. A newer phase-separated scientific flow for Phase 1 through Phase 4
 
-| 경로 | 대체 | 비고 |
+These layers share concepts and some outputs, but they are not yet one unified default execution path.
+
+## Operational Phase Vs Step Interpretation Layer
+
+`run_production.py` now exposes an additive step output layer on top of the canonical project root.
+
+| Operational phase | Canonical root role | Derived step folder | Read first |
+|------|------|------|------|
+| Phase 1 | raw Vina pose `.pdbqt` generation | `step1_vina_raw/` | `raw_pose_index.csv` |
+| Phase 2 | PyRosetta ranking outputs | `step2_ppi_raw/` | `TH1_final_ranking.csv`, `beta_meander_final_ranking.csv` |
+| Phase 3 | PPI residue extraction | `step3_ppi_postprocess/` | `ppi_pyrosetta_residues.csv` |
+| Phase 4 | Vina pocket summarization | `step4_vina_postprocess/` | `vina_pocket_table.csv` |
+| Phase 5 | verdict integration | `step5_verdict/` | `valid_sites.csv` |
+| Phase 6 | report generation | `step6_report/` | `project_report.txt` |
+| Phase 7 | validation | `step7_validate/` | `validation_status.json` |
+
+Canonical runtime outputs remain under `output/{project}/` and stay the runtime source of truth. `egfr_pipeline/output_steps.py` builds the step folders, `step_index.md`, and `current_run_manifest.json` as a derived interpretation view. Large raw PyRosetta directories are referenced by manifest rather than duplicated.
+
+## Layer 1: Routine Baseline Flow
+
+This is the current default operational architecture.
+
+```text
+config/example-project.yaml
+        |
+        +--> input/receptors/*.pdb
+        +--> input/ligands/*.sdf + runtime-prepared *.pdbqt
+        +--> ppi.pyrosetta_result_dirs / legacy PPI registrations
+        |
+        +--> Vina execution branch
+        |      egfr_pipeline/vina/dock.py
+        |      -> output/{project}/raw pose files
+        |
+        +--> Vina postprocess branch
+        |      parse_poses.py
+        |      -> contacts.py
+        |      -> cluster.py
+        |      -> summarize.py
+        |      -> compare.py
+        |      -> bootstrap.py (optional)
+        |      -> output/{project}/
+        |         vina_pose_table.csv
+        |         vina_pocket_table.csv
+        |         vina_drug_pocket_map.csv
+        |         vina_pocket_comparison.csv
+        |
+        +--> PPI support branch
+        |      pyrosetta_docking/pipeline_manager.py
+        |      -> ppi/postprocess_ppi.py
+        |      -> ppi/pyrosetta_extract.py
+        |      -> output/{project}/
+        |
+        +--> Integration branch
+               verdict.py
+               -> output/{project}/cross_method_agreement.csv
+               -> output/{project}/valid_sites.csv
+               -> output/{project}/vina_consensus_sites.csv
+               report.py
+               -> output/{project}/project_report.txt
+               -> output/{project}/combined_residue_evidence.csv
+               validate.py
+               -> output_steps.py
+               -> output/{project}/step1_vina_raw ... step7_validate
+               -> output/{project}/step_index.md
+               -> output/{project}/current_run_manifest.json
+```
+
+Key point:
+
+- This layer is why the repo is still best described as Vina-centered in routine operation.
+
+## Layer 2: Phase-Separated Scientific Flow
+
+This is the newer architecture reflected in `egfr_pipeline/phase1` through `egfr_pipeline/phase4`.
+
+```text
+input/PPI/phase1/
+        |
+        +--> Phase 1: receptor-side patch definition
+        |      prepare_inputs.py
+        |      -> launch_docking.py / pyrosetta_docking/*
+        |      -> extract_interface.py
+        |      -> orientation_filter.py
+        |      -> cluster_consensus.py
+        |      -> compare_states.py
+        |      -> lightdock_validation.py
+        |      -> review_report.py
+        |      -> output/phase1_ppi/
+        |         phase1_downstream_patch_reference.csv
+        |
+        +--> Phase 2: candidate pocket proposal
+        |      patch_ingestion.py
+        |      -> pocket_proposal.py
+        |      -> pocket_merge.py
+        |      -> patch_relationship.py
+        |      -> druggability_confidence.py
+        |      -> cross_state_alignment.py
+        |      -> phase3_export.py
+        |      -> output/phase2_pockets/
+        |         phase3_candidate_pocket_reference.csv
+        |
+        +--> Phase 3: diversity-aware docking
+        |      pocket_reference_ingestion.py
+        |      -> job_construction.py
+        |      -> budget_policy.py
+        |      -> run_diverse_docking.py
+        |      -> pose_attribution.py
+        |      -> diversity_validation.py
+        |      -> phase4_export.py
+        |      -> output/phase3_docking/
+        |         phase4_docking_evidence_reference.csv
+        |
+        +--> Phase 4: perturbation ranking
+               evidence_ingestion.py
+               -> score_framework.py
+               -> mechanistic_classification.py
+               -> perturbation_scoring.py
+               -> state_interpretation.py
+               -> review_output.py
+               -> final_report.py
+               -> presentation_summary.py
+               -> output/phase4_perturbation/
+```
+
+Key point:
+
+- This layer reflects the scientific target structure more directly than the default operational path does.
+
+## Current Cross-Branch Handoffs
+
+These are the most important machine-readable handoff points in the current architecture.
+
+| From | Handoff artifact | To |
 |------|------|------|
-| `legacy/run_docking.py` | `main.py vina` | v1.0 인터랙티브 |
-| `legacy/pipeline_manager.py` | `main.py pyrosetta` | v1.0 PyRosetta |
-| `legacy/*.py` (전부) | `main.py` 서브커맨드 | `legacy/README.md` 매핑 참조 |
+| Phase 1 | `output/phase1_ppi/phase1_downstream_patch_reference.csv` | Phase 2 patch ingestion |
+| Phase 2 | `output/phase2_pockets/phase3_candidate_pocket_reference.csv` | Phase 3 pocket reference ingestion |
+| Phase 3 | `output/phase3_docking/phase4_docking_evidence_reference.csv` | Phase 4 evidence ingestion |
+| Routine Vina + PPI baseline | `vina_pocket_table.csv` plus PPI residue exports | `verdict.py`, `report.py`, `validate.py` |
 
----
+## Current Data Domains
 
-## 데이터 흐름
+| Domain | Main location | Architectural role |
+|------|------|------|
+| Receptor and ligand inputs | `input/receptors/`, `input/ligands/` | Routine Vina baseline inputs |
+| Structured Phase 1 inputs | `input/PPI/phase1/` | Current full-kinase-domain Phase 1 preparation layer |
+| Legacy prepared PPI inputs | `input/PPI/prepared/` | Older dimer-centered preparation layer kept for provenance |
+| Routine baseline outputs | `output/{project}/` | Default operational canonical output root plus additive derived step view |
+| Structured Phase outputs | `output/phase1_ppi/` through `output/phase4_perturbation/` | Phase-separated scientific output roots |
 
-```
-                        ┌──────────────────────────────────────────┐
-                        │            config (YAML/JSON)            │
-                        └────────────────┬─────────────────────────┘
-                                         │
-                    ┌────────────────────┬┴──────────────────────┐
-                    ▼                    ▼                       ▼
-            ┌──────────────┐   ┌─────────────────┐   ┌──────────────────┐
-            │  Vina Docking │   │ PyRosetta PPI   │   │ AlphaFold-Multi  │
-            │  (dock.py)    │   │ (pipeline_mgr)  │   │ (afm_extract)    │
-            └──────┬───────┘   └────────┬────────┘   └────────┬─────────┘
-                   │                    │                      │
-                   ▼                    ▼                      ▼
-         vina_pose_table.csv    ppi_pyrosetta_         ppi_afm_
-                   │            residues.csv            residues.csv
-                   │            ppi_pyrosetta_               │
-                   │            summary.csv                  │
-                   ▼                    │                     │
-    ┌──────────────────────┐            │                     │
-    │  Postprocess Chain   │            │                     │
-    │  parse → contacts    │            │                     │
-    │  → cluster → summarize│           │                     │
-    │  → compare           │            │                     │
-    └──────────┬───────────┘            │                     │
-               │                        │                     │
-               ▼                        │                     │
-    vina_pocket_table.csv               │                     │
-    vina_drug_pocket_map.csv            │                     │
-    vina_pocket_comparison.csv          │                     │
-               │                        │                     │
-               ├────────────────────────┤                     │
-               │         Bootstrap (optional)                 │
-               │         → vina_pocket_bootstrap.csv          │
-               │                        │                     │
-               ▼                        ▼                     ▼
-    ┌──────────────────────────────────────────────────────────┐
-    │                    Verdict Module                         │
-    │  (Vina quality + PPI proximity + Cross-receptor)         │
-    │  + Experimental priors (optional)                        │
-    │  + Bootstrap stability (optional)                        │
-    └──────────────────────┬───────────────────────────────────┘
-                           │
-                           ▼
-              cross_method_agreement.csv
-              valid_sites.csv
-              vina_consensus_sites.csv
-                           │
-                           ▼
-    ┌──────────────────────────────────┐
-    │           Report                  │
-    │  project_report.txt               │
-    │  combined_residue_evidence.csv    │
-    └──────────────────────────────────┘
-                           │
-                           ▼
-    ┌──────────────────────────────────┐
-    │          Validate                 │
-    │  스키마 일치 / ID 일관성 /        │
-    │  잔기 번호 / handoff 준비 확인    │
-    └──────────────────────────────────┘
-```
+## Package Responsibilities
 
----
+| Package or module area | Responsibility |
+|------|------|
+| `egfr_pipeline/vina/` | Vina execution and postprocess chain for the routine ligand workflow |
+| `egfr_pipeline/pyrosetta_docking/` | Core PyRosetta docking execution, scoring, and metadata |
+| `egfr_pipeline/ppi/` | PPI preparation, chain restoration, residue extraction, and legacy AFM parsing |
+| `egfr_pipeline/phase1/` | Structured Phase 1 interface mapping, filtering, convergence, and handoff |
+| `egfr_pipeline/phase2/` | Pocket proposal, merge logic, patch relationship, druggability, and Phase 3 export |
+| `egfr_pipeline/phase3/` | Pocket-guided docking setup, budget control, diversity tracking, and Phase 4 export |
+| `egfr_pipeline/phase4/` | Multi-phase evidence ingestion, mechanistic classification, scoring, and final review outputs |
+| `egfr_pipeline/verdict.py` | Current routine baseline site-judgment layer |
+| `egfr_pipeline/report.py` | Current routine baseline text-report layer |
+| `egfr_pipeline/validate.py` | Current routine baseline schema and handoff validation |
+| `main.py` | Unified interactive and CLI entry surface |
+| `run_production.py` | Production orchestration for the routine baseline flow |
 
-## 모듈 의존 관계
+## Architectural Rules
 
-```
-main.py (CLI/메뉴만 — 비즈니스 로직 없음)
-  └─ egfr_pipeline/
-       ├─ config.py          ← 모든 모듈이 사용
-       ├─ residue_utils.py   ← compare, verdict가 사용
-       │
-       ├─ vina/
-       │   ├─ dock.py        → (외부 Vina 실행)
-       │   ├─ parse_poses.py → vina_pose_table.csv
-       │   ├─ contacts.py    → vina_pose_table.csv (contact_residues 추가)
-       │   ├─ cluster.py     → vina_pose_table.csv (pocket_id 추가)
-       │   ├─ summarize.py   → vina_pocket_table.csv, vina_drug_pocket_map.csv
-       │   ├─ compare.py     → vina_pocket_comparison.csv
-       │   ├─ bootstrap.py   → vina_pocket_bootstrap.csv
-       │   └─ sweep.py       (분석 도구, 출력 파일 없음)
-       │
-       ├─ ppi/
-       │   ├─ pyrosetta_extract.py → ppi_pyrosetta_residues/summary.csv
-       │   ├─ afm_extract.py       → ppi_afm_residues.csv (stub)
-       │   ├─ postprocess_ppi.py   (chain 원복 자동화)
-       │   ├─ prepare_dimer_pdb.py (dimer PDB 준비)
-       │   └─ submit.py            (PBS qsub 제출)
-       │
-       ├─ verdict.py → cross_method_agreement.csv, valid_sites.csv,
-       │               vina_consensus_sites.csv
-       ├─ report.py  → project_report.txt, combined_residue_evidence.csv
-       └─ validate.py (검증만, 출력 파일 없음)
-```
+- Treat Vina as the center of gravity for the current routine baseline.
+- Treat PyRosetta as the primary Phase 1 receptor-side evidence layer.
+- Treat LightDock as the active Phase 1 secondary validation branch.
+- Treat AFM as a legacy optional parser path, not as an active architecture branch.
+- Treat canonical root outputs as the runtime source of truth and the step folders as a derived interpretation view.
+- Treat phase-separated outputs as real architectural components, but do not assume they drive the default CLI path unless the user explicitly works on them.
 
----
+## Current Architectural Cautions
 
-## CSV 스키마 계약
+- `run_production.py` phase numbers are operational stages, not the same as the scientific Phase 1-4 structure.
+- `output/egfr_myo1d_vina/` mixes payload areas and pointer stub files, so file location alone is not enough to infer artifact meaning.
+- The routine baseline final-decision layer is still `verdict/report/validate`, not the advanced Phase 4 perturbation stack.
 
-모든 CSV 스키마는 `egfr_pipeline/validate.py`의 `EXPECTED_SCHEMAS` dict에 정의.
-각 모듈의 `*_FIELDS` 상수와 1:1 대응하며, 테스트(`tests/test_pipeline.py::TestSchemaConsistency`)가 동기화를 보장.
+## Read Next
 
-### Core Outputs (반드시 존재)
-
-| 파일 | 생성 모듈 | 컬럼 수 |
-|------|----------|---------|
-| `vina_pose_table.csv` | parse_poses → contacts → cluster | 13 |
-| `vina_pocket_table.csv` | summarize | 14 |
-| `vina_drug_pocket_map.csv` | summarize | 10 |
-
-### Optional Outputs
-
-| 파일 | 생성 모듈 | 컬럼 수 | 조건 |
-|------|----------|---------|------|
-| `vina_pocket_comparison.csv` | compare | 23 | 2+ receptors |
-| `vina_pocket_bootstrap.csv` | bootstrap | 10 | bootstrap 실행 시 |
-| `cross_method_agreement.csv` | verdict | 16 | verdict 실행 시 |
-| `valid_sites.csv` | verdict | 23 | verdict 실행 시 |
-| `vina_consensus_sites.csv` | verdict | 11 | cross-receptor 매치 존재 시 |
-| `ppi_pyrosetta_residues.csv` | pyrosetta_extract | 10 | PPI 데이터 존재 시 |
-| `combined_residue_evidence.csv` | report | 8 | report 실행 시 |
-
-### 스키마 변경 절차
-
-1. 모듈의 `*_FIELDS` 리스트 수정
-2. `validate.py`의 `EXPECTED_SCHEMAS` 동일하게 수정
-3. `tests/test_pipeline.py` 실행 → `TestSchemaConsistency` 자동 검증
-4. 기존 smoke_test 출력 갱신 (필요 시)
-
----
-
-## 설정 체계
-
-두 독립 파이프라인이 각자의 config 형식 사용:
-
-| 파이프라인 | 형식 | 로더 | 실행 환경 |
-|-----------|------|------|----------|
-| Vina 리간드 도킹 | YAML (또는 JSON) | `egfr_pipeline/config.py` | 로컬 |
-| PyRosetta PPI | INI | `configparser` (pipeline_manager.py 내장) | HPC PBS |
-
-공유 설정값 없음 — 통일 불필요. 상세: `config/README.md`.
-
----
-
-## 테스트
-
-```bash
-.venv/bin/pytest tests/ -v              # 전체 46개 (0.5초)
-.venv/bin/pytest tests/ -k bootstrap    # Bootstrap만
-.venv/bin/pytest tests/ -k e2e          # End-to-end
-.venv/bin/pytest tests/ -k schema       # 스키마 일치
-```
-
-테스트는 합성 fixture 사용 (실제 Vina/PyRosetta 불필요).
-JSON config로 pyyaml 의존성 우회 (YAML 테스트는 별도 클래스).
-
----
-
-## 핵심 불변 규칙
-
-1. **main.py에 비즈니스 로직 금지** — import → call 패턴만
-2. **CSV 스키마는 validate.py가 진실의 원천** — 모듈 FIELDS와 반드시 동기화
-3. **Verdict 100점 총점 불변** — experimental priors는 정보 태그만 (점수 변경 X)
-4. **PyRosetta 구버전 호환** — analysis.py의 try/except/hasattr 절대 제거 금지
-5. **legacy/ 실행 금지** — 참조 전용, legacy/README.md에 매핑 문서
+- [current_pipeline_status.md](current_pipeline_status.md): short current baseline summary
+- [runbook.md](runbook.md): operator-facing run sequence
+- [data_inventory.md](data_inventory.md): where current inputs and outputs physically live
+- [output_artifact_map.md](output_artifact_map.md): which output files are handoff files, review files, or trace files
+- [current_vs_plan_matrix.md](current_vs_plan_matrix.md): where this architecture still differs from the intended 4-phase plan

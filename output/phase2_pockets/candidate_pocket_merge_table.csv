@@ -1,4 +1,0 @@
-receptor_id,pocket_id_a,pocket_id_b,centroid_dist_A,residue_jaccard,merge_decision,merge_reason
-3GT8_raw,3GT8_raw_fpocket_P01,3GT8_raw_fpocket_P02,21.58,0.000,kept_separate,no_overlap
-3GT8_raw,3GT8_raw_fpocket_P01,3GT8_raw_fpocket_P03,21.72,0.000,kept_separate,no_overlap
-3GT8_raw,3GT8_raw_fpocket_P02,3GT8_raw_fpocket_P03,42.37,0.000,kept_separate,no_overlap

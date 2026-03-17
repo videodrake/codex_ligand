@@ -21,7 +21,7 @@ import pytest
 # Fixtures: synthetic test data
 # ---------------------------------------------------------------------------
 
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 
 @pytest.fixture
@@ -37,19 +37,19 @@ def tmp_phase2(tmp_path):
         "is_hotspot,pyrosetta_support,lightdock_support,method_agreement,"
         "confidence,phase1_evidence_source,notes",
         "LEU838,838,LEU,A,C_lobe,full_kinase_domain,True,robust,3,"
-        "3GT8_raw;3GT8_cl38_48;3GT8_cl85_100,0.85,True,True,True,both,"
+        "3GT8_raw;EGFR_160-185;EGFR_170-200,0.85,True,True,True,both,"
         "high,pyrosetta+lightdock,",
         "ASP855,855,ASP,A,C_lobe,full_kinase_domain,True,robust,3,"
-        "3GT8_raw;3GT8_cl38_48;3GT8_cl85_100,0.78,True,True,False,pyrosetta_only,"
+        "3GT8_raw;EGFR_160-185;EGFR_170-200,0.78,True,True,False,pyrosetta_only,"
         "medium,pyrosetta,",
         "ILE857,857,ILE,A,C_lobe,full_kinase_domain,True,moderate,2,"
-        "3GT8_raw;3GT8_cl38_48,0.62,True,True,False,pyrosetta_only,"
+        "3GT8_raw;EGFR_160-185,0.62,True,True,False,pyrosetta_only,"
         "medium,pyrosetta,",
         "GLU866,866,GLU,A,C_lobe,full_kinase_domain,True,robust,3,"
-        "3GT8_raw;3GT8_cl38_48;3GT8_cl85_100,0.71,True,True,True,both,"
+        "3GT8_raw;EGFR_160-185;EGFR_170-200,0.71,True,True,True,both,"
         "high,pyrosetta+lightdock,",
         "LEU819,819,LEU,A,N_lobe,full_kinase_domain,True,moderate,2,"
-        "3GT8_raw;3GT8_cl85_100,0.55,True,True,False,pyrosetta_only,"
+        "3GT8_raw;EGFR_170-200,0.55,True,True,False,pyrosetta_only,"
         "medium,pyrosetta,",
         "ALA822,822,ALA,A,N_lobe,full_kinase_domain,True,state_specific,1,"
         "3GT8_raw,0.51,True,True,False,pyrosetta_only,low,pyrosetta,",
@@ -71,11 +71,11 @@ def tmp_phase2(tmp_path):
         # 3GT8_raw: p2rank (overlaps with fpocket P01)
         "3GT8_raw,3GT8_raw_p2rank_P01,p2rank,1,0.78,0.68,44.8,32.0,18.2,910.0,0,"
         "LEU838;ASP855;ILE857;GLU866;MET769,838;855;857;866;769,5,44.8,32.0,18.2,15.0,14.0,13.5",
-        # 3GT8_cl38_48: fpocket (similar location to raw PKT01)
-        "3GT8_cl38_48,3GT8_cl38_48_fpocket_P01,fpocket,1,0.75,0.62,45.0,33.0,19.0,850.0,38,"
+        # EGFR_160-185: fpocket (similar location to raw PKT01)
+        "EGFR_160-185,EGFR_160-185_fpocket_P01,fpocket,1,0.75,0.62,45.0,33.0,19.0,850.0,38,"
         "LEU838;ASP855;GLU866,838;855;866,3,45.0,33.0,19.0,13.0,12.5,12.0",
-        # 3GT8_cl38_48: fpocket (distant pocket)
-        "3GT8_cl38_48,3GT8_cl38_48_fpocket_P02,fpocket,2,0.35,0.20,80.0,60.0,50.0,300.0,14,"
+        # EGFR_160-185: fpocket (distant pocket)
+        "EGFR_160-185,EGFR_160-185_fpocket_P02,fpocket,2,0.35,0.20,80.0,60.0,50.0,300.0,14,"
         "ARG748;GLY750,748;750,2,80.0,60.0,50.0,10.0,10.0,10.0",
     ])
 
@@ -94,7 +94,7 @@ def tmp_phase2_single_state(tmp_path):
         "is_hotspot,pyrosetta_support,lightdock_support,method_agreement,"
         "confidence,phase1_evidence_source,notes",
         "LEU838,838,LEU,A,C_lobe,full_kinase_domain,True,robust,3,"
-        "3GT8_raw;3GT8_cl38_48;3GT8_cl85_100,0.85,True,True,True,both,"
+        "3GT8_raw;EGFR_160-185;EGFR_170-200,0.85,True,True,True,both,"
         "high,pyrosetta+lightdock,",
     ])
 
@@ -153,8 +153,8 @@ class TestPocketMerge:
         merged = _load(tmp_phase2 / "candidate_pockets.csv")
         # 3GT8_raw: fpocket_P01 + p2rank_P01 should merge (close centroids)
         # 3GT8_raw: fpocket_P02 stays separate
-        # 3GT8_cl38_48: 2 pockets, distant, stay separate
-        raw_states = {"3GT8_raw", "3GT8_cl38_48"}
+        # EGFR_160-185: 2 pockets, distant, stay separate
+        raw_states = {"3GT8_raw", "EGFR_160-185"}
         merged_states = {p["receptor_id"] for p in merged}
         assert merged_states == raw_states
 
@@ -173,9 +173,7 @@ class TestPocketMerge:
         for row in prov:
             # merged_pocket_id starts with a state, raw_pocket_id starts with same state
             merged_state = row["merged_pocket_id"].split("_PKT")[0]
-            raw_state = "_".join(row["raw_pocket_id"].split("_")[:-2])
-            # Handle potential naming issues by checking receptor_id
-            assert row["receptor_id"] in merged_state
+            assert row["receptor_id"] == merged_state
 
     def test_stable_pocket_ids(self, tmp_phase2):
         from egfr_pipeline.phase2.pocket_merge import run_pocket_merge
@@ -503,7 +501,7 @@ class TestCrossStateAlignment:
         run_cross_state_alignment(tmp_phase2)
 
         comp = _load(tmp_phase2 / "candidate_pocket_cross_state_comparison.csv")
-        # Should have comparisons between 3GT8_raw and 3GT8_cl38_48
+        # Should have comparisons between 3GT8_raw and EGFR_160-185
         assert len(comp) > 0
         states_in_comp = set()
         for c in comp:
@@ -533,7 +531,7 @@ class TestCrossStateAlignment:
             assert c["state_class"] in valid
 
     def test_similar_pockets_match(self, tmp_phase2):
-        """3GT8_raw PKT01 and 3GT8_cl38_48 PKT01 have similar centroids → should match."""
+        """3GT8_raw PKT01 and EGFR_160-185 PKT01 have similar centroids → should match."""
         self._setup(tmp_phase2)
         from egfr_pipeline.phase2.cross_state_alignment import run_cross_state_alignment
         run_cross_state_alignment(tmp_phase2)
@@ -662,7 +660,7 @@ class TestPhase3Export:
 
         note = tmp_phase2 / "phase2_to_phase3_handoff_note.md"
         assert note.exists()
-        content = note.read_text()
+        content = note.read_text(encoding="utf-8")
         assert "Phase 3" in content
         assert "primary" in content
 
@@ -711,6 +709,7 @@ class TestDockingPriorityUnit:
 # TG 2.7: Review Report
 # ===================================================================
 
+@pytest.mark.reporting
 class TestReviewReport:
     """Tests for egfr_pipeline.phase2.review_report."""
 
@@ -731,14 +730,14 @@ class TestReviewReport:
         from egfr_pipeline.phase2.review_report import run_review_report
         path = run_review_report(tmp_phase2)
         assert path.exists()
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
         assert len(content) > 500
 
     def test_report_has_all_sections(self, tmp_phase2):
         self._setup(tmp_phase2)
         from egfr_pipeline.phase2.review_report import run_review_report
         path = run_review_report(tmp_phase2)
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
 
         sections = [
             "Executive Summary",
@@ -758,7 +757,7 @@ class TestReviewReport:
         self._setup(tmp_phase2)
         from egfr_pipeline.phase2.review_report import run_review_report
         path = run_review_report(tmp_phase2)
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
 
         merged = _load(tmp_phase2 / "candidate_pockets.csv")
         for p in merged:
@@ -821,7 +820,7 @@ class TestEndToEnd:
         run_phase3_export(d)
         run_review_report(d)
 
-        report = (d / "phase2_candidate_pocket_report.md").read_text()
+        report = (d / "phase2_candidate_pocket_report.md").read_text(encoding="utf-8")
         assert "state_specific_pocket" in report
 
     def test_idempotency(self, tmp_phase2):
@@ -834,14 +833,14 @@ class TestEndToEnd:
         run_patch_relationship(tmp_phase2)
         run_druggability_confidence(tmp_phase2)
 
-        first = (tmp_phase2 / "druggability_proposal_summary.csv").read_text()
+        first = (tmp_phase2 / "druggability_proposal_summary.csv").read_text(encoding="utf-8")
 
         # Re-run
         run_pocket_merge(tmp_phase2)
         run_patch_relationship(tmp_phase2)
         run_druggability_confidence(tmp_phase2)
 
-        second = (tmp_phase2 / "druggability_proposal_summary.csv").read_text()
+        second = (tmp_phase2 / "druggability_proposal_summary.csv").read_text(encoding="utf-8")
         assert first == second, "Pipeline should be deterministic"
 
 

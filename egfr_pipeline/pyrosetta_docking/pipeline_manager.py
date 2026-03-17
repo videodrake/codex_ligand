@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import base64
 import configparser
+import csv
 import gc
 import html as html_mod
 import json
@@ -26,6 +27,14 @@ from pyrosetta.rosetta.core.scoring import calpha_superimpose_pose
 
 from . import analysis, common, docking
 from .common import TOP_LEVEL_DIR
+from ..runtime_support import resolve_runtime_resources
+from .metadata import (
+    build_decoy_score_rows,
+    build_input_validation_report,
+    build_input_validation_markdown,
+    build_output_root_name,
+    build_run_metadata,
+)
 
 # ---- Module Constants ---- #
 REPORT_WIDTH = 72
@@ -56,7 +65,14 @@ QUALITY_THRESHOLDS = {
 
 
 class PipelineManager:
-    def __init__(self, config_file: str, override_input_pdb: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        config_file: str,
+        override_input_pdb: Optional[str] = None,
+        *,
+        allocated_cpus: Optional[int] = None,
+        runtime_dir: Optional[str] = None,
+    ) -> None:
         if not os.path.exists(config_file):
             raise FileNotFoundError(f"Config file not found: {config_file}")
 
@@ -65,12 +81,13 @@ class PipelineManager:
         self.config.read(config_file)
 
         req_cpus = self.config.getint('System', 'n_cpus', fallback=1)
-        real_cpus = multiprocessing.cpu_count()
-        self.n_cpus = min(req_cpus, real_cpus)
+        self.runtime_resources = resolve_runtime_resources(
+            requested_cpus=req_cpus,
+            allocated_cpus=allocated_cpus,
+        )
+        self.requested_cpus = req_cpus
+        self.n_cpus = self.runtime_resources.effective_cpus
         self.chunksize = 1
-
-        self._setup_logging()
-        self._validate_config()
 
         if override_input_pdb:
             self.input_pdb = os.path.abspath(override_input_pdb)
@@ -78,7 +95,20 @@ class PipelineManager:
             self.input_pdb = os.path.abspath(self.config['Path']['input_pdb_name'])
 
         self.filename = os.path.basename(self.input_pdb)
-        self.root_dir = os.path.abspath(os.path.splitext(self.filename)[0])
+        self.root_dir = os.path.abspath(
+            build_output_root_name(
+                self.config,
+                self.input_pdb,
+                os.path.splitext(self.filename)[0],
+            )
+        )
+        self.runtime_dir = os.path.abspath(runtime_dir or os.path.join(self.root_dir, "runtime"))
+        self.runtime_log_dir = os.path.join(self.runtime_dir, "logs")
+        os.makedirs(self.runtime_log_dir, exist_ok=True)
+        os.environ["PYROSETTA_WORKER_LOG_DIR"] = self.runtime_log_dir
+
+        self._setup_logging()
+        self._validate_config()
 
         self.dir_cache = os.path.join(TOP_LEVEL_DIR, "relaxed_cache")
         os.makedirs(self.dir_cache, exist_ok=True)
@@ -95,19 +125,41 @@ class PipelineManager:
 
         self.stats = {}
         self.stage_times = {}
+        self.run_metadata = build_run_metadata(
+            config=self.config,
+            config_file=self.config_file,
+            input_pdb=self.input_pdb,
+            root_dir=self.root_dir,
+            filename=self.filename,
+            requested_cpus=self.requested_cpus,
+            used_cpus=self.n_cpus,
+            master_seed=self.master_seed,
+            dir_filter=self.dir_filter,
+            dir_cluster=self.dir_cluster,
+            dir_final=self.dir_final,
+        )
+        self.input_validation_report = build_input_validation_report(
+            config=self.config,
+            input_pdb=self.input_pdb,
+            run_metadata=self.run_metadata,
+        )
 
     # ------------------------------------------------------------------ #
     #  Logging
     # ------------------------------------------------------------------ #
     def _setup_logging(self) -> None:
         self.progress_logger = logging.getLogger('pipeline_progress')
-        self.internal_logger = logging.getLogger('python_internal')
-
-        if self.progress_logger.handlers:
-            return
-
+        self.internal_logger = logging.getLogger('pipeline_internal')
         self.progress_logger.setLevel(logging.INFO)
         self.internal_logger.setLevel(logging.DEBUG)
+
+        for logger in (self.progress_logger, self.internal_logger):
+            for handler in list(logger.handlers):
+                logger.removeHandler(handler)
+                try:
+                    handler.close()
+                except Exception:
+                    pass
 
         progress_fmt = logging.Formatter(
             '%(asctime)s [%(levelname)s] %(message)s',
@@ -122,7 +174,17 @@ class PipelineManager:
         progress_sh.setFormatter(progress_fmt)
         self.progress_logger.addHandler(progress_sh)
 
-        internal_fh = logging.FileHandler(os.path.join(TOP_LEVEL_DIR, "worker_debug.log"), encoding='utf-8')
+        progress_fh = logging.FileHandler(
+            os.path.join(self.runtime_log_dir, "pipeline_progress.log"),
+            encoding='utf-8',
+        )
+        progress_fh.setFormatter(progress_fmt)
+        self.progress_logger.addHandler(progress_fh)
+
+        internal_fh = logging.FileHandler(
+            os.path.join(self.runtime_log_dir, "pipeline_internal.log"),
+            encoding='utf-8',
+        )
         internal_fh.setFormatter(internal_fmt)
         self.internal_logger.addHandler(internal_fh)
 
@@ -562,6 +624,162 @@ class PipelineManager:
                         f"min_sc={self.min_sc_value}\n")
         self.progress_logger.info(f"    > [Config] Snapshot saved: {snap_path}")
 
+    def _save_run_metadata(self, status: str) -> None:
+        """Persist normalized run metadata for reproducibility and handoff."""
+        metadata = dict(self.run_metadata)
+        metadata["run_status"] = status
+        metadata["input_validation_status"] = self.input_validation_report.get("status", "")
+        metadata["stats"] = dict(self.stats)
+        metadata["stage_times"] = dict(self.stage_times)
+        metadata["resolved_cluster_threshold"] = getattr(self, "cluster_threshold", "")
+        metadata["resolved_cluster_top_n"] = getattr(self, "cluster_top_n", "")
+
+        out_path = os.path.join(self.root_dir, "pyrosetta_run_metadata.json")
+        with open(out_path, "w", encoding="utf-8") as handle:
+            json.dump(metadata, handle, indent=2, ensure_ascii=False)
+        self.stats["pyrosetta_run_metadata_path"] = out_path
+        self.progress_logger.info(f"    > [Output] Run metadata: {out_path}")
+
+    def _save_input_validation_report(self) -> None:
+        """Persist static Phase 1 input validation details before docking begins."""
+        json_path = os.path.join(self.root_dir, "phase1_input_validation_report.json")
+        with open(json_path, "w", encoding="utf-8") as handle:
+            json.dump(self.input_validation_report, handle, indent=2, ensure_ascii=False)
+        markdown_path = os.path.join(self.root_dir, "phase1_input_validation_summary.md")
+        with open(markdown_path, "w", encoding="utf-8") as handle:
+            handle.write(build_input_validation_markdown(self.input_validation_report))
+
+        self.stats["phase1_input_validation_report_path"] = json_path
+        self.stats["phase1_input_validation_summary_path"] = markdown_path
+
+        status = self.input_validation_report.get("status", "unknown")
+        self.progress_logger.info(
+            f"    > [Output] Input validation report ({status}): {json_path}"
+        )
+        self.progress_logger.info(
+            f"    > [Output] Input validation summary ({status}): {markdown_path}"
+        )
+        for warning in self.input_validation_report.get("warnings", []):
+            self.progress_logger.warning(f"    [Input Validation WARN] {warning}")
+
+    def _export_decoy_scores(self, fully_scored: List[Dict]) -> None:
+        """Write standardized full-scoring export for downstream review."""
+        out_path = os.path.join(self.root_dir, "pyrosetta_decoy_scores.csv")
+        rows = build_decoy_score_rows(fully_scored, self.run_metadata)
+        pd.DataFrame(rows).to_csv(out_path, index=False)
+        self.stats["pyrosetta_decoy_scores_path"] = out_path
+        self.progress_logger.info(
+            f"    > [Output] Standardized decoy scores: {out_path} ({len(rows)} rows)"
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Comprehensive scored-model CSV exports (all models, pre-filter)
+    # ------------------------------------------------------------------ #
+
+    def _save_scored_all_models_csv(
+        self, combined_data: List[Dict], filter_status_map: Optional[Dict[str, str]] = None
+    ) -> str:
+        """Write scored_all_models.csv with Pass 1 metrics for EVERY scored model.
+
+        Called twice:
+        1) Before filtering — filter_status_map is None, column written as empty.
+        2) After filtering — filter_status_map maps id -> status string.
+
+        Returns the CSV path.
+        """
+        csv_path = os.path.join(self.root_dir, "scored_all_models.csv")
+        columns = [
+            'id', 'dG_separated', 'dSASA', 'dSASA_polar', 'dSASA_hydrophobic',
+            'sc_value', 'total_score',
+            'center_x', 'center_y', 'center_z',
+            'excluded_contacts', 'key_contact_ratio', 'filter_status',
+        ]
+
+        rows: List[Dict[str, Any]] = []
+        for d in combined_data:
+            row: Dict[str, Any] = {
+                'id': d.get('id', ''),
+                'dG_separated': d.get('dG_separated', ''),
+                'dSASA': d.get('dSASA', ''),
+                'dSASA_polar': d.get('dSASA_polar', 0.0),
+                'dSASA_hydrophobic': d.get('dSASA_hydrophobic', 0.0),
+                'sc_value': d.get('sc_value', ''),
+                'total_score': d.get('total_score', ''),
+                'center_x': d.get('center_x', ''),
+                'center_y': d.get('center_y', ''),
+                'center_z': d.get('center_z', ''),
+                'excluded_contacts': d.get('excluded_contacts', ''),
+                'key_contact_ratio': d.get('key_contact_ratio', ''),
+                'filter_status': '',
+            }
+            if filter_status_map is not None:
+                row['filter_status'] = filter_status_map.get(
+                    str(d.get('id', '')), '')
+            rows.append(row)
+
+        df = pd.DataFrame(rows, columns=columns)
+        df.to_csv(csv_path, index=False)
+        self.progress_logger.info(
+            f"    > [Output] All scored models: {csv_path} ({len(rows)} rows)")
+        return csv_path
+
+    def _save_scored_stage2_models_csv(self, stage2_all: List[Dict]) -> str:
+        """Write scored_stage2_models.csv for models that received expensive metrics.
+
+        Includes both Stage 2 pass and Stage 2 fail models (all that had
+        expensive metrics computed).
+        """
+        csv_path = os.path.join(self.root_dir, "scored_stage2_models.csv")
+        columns = [
+            'id', 'dG_separated', 'dSASA', 'sc_value', 'total_score',
+            'packstat', 'delta_unsatHbonds', 'nres_int', 'hbonds_int',
+            'filter_status',
+        ]
+
+        rows: List[Dict[str, Any]] = []
+        for d in stage2_all:
+            rows.append({
+                'id': d.get('id', ''),
+                'dG_separated': d.get('dG_separated', ''),
+                'dSASA': d.get('dSASA', ''),
+                'sc_value': d.get('sc_value', ''),
+                'total_score': d.get('total_score', ''),
+                'packstat': d.get('packstat', ''),
+                'delta_unsatHbonds': d.get('delta_unsatHbonds', ''),
+                'nres_int': d.get('nres_int', ''),
+                'hbonds_int': d.get('hbonds_int', ''),
+                'filter_status': d.get('_filter_status', ''),
+            })
+
+        df = pd.DataFrame(rows, columns=columns)
+        df.to_csv(csv_path, index=False)
+        self.progress_logger.info(
+            f"    > [Output] Stage 2 scored models: {csv_path} ({len(rows)} rows)")
+        return csv_path
+
+    def _update_scored_all_models_filter_status(
+        self, filter_status_map: Dict[str, str]
+    ) -> None:
+        """Update the filter_status column in scored_all_models.csv.
+
+        Reads the previously saved CSV, maps id -> filter_status, and re-writes.
+        """
+        csv_path = os.path.join(self.root_dir, "scored_all_models.csv")
+        if not os.path.exists(csv_path):
+            self.internal_logger.warning(
+                "scored_all_models.csv not found; skipping filter_status update")
+            return
+
+        df = pd.read_csv(csv_path)
+        df['id'] = df['id'].astype(str)
+        df['filter_status'] = df['id'].map(filter_status_map).fillna('')
+        df.to_csv(csv_path, index=False)
+        n_pass = (df['filter_status'] == 'pass').sum()
+        n_reject = (df['filter_status'] != 'pass').sum()
+        self.progress_logger.info(
+            f"    > [Output] Updated filter_status in scored_all_models.csv "
+            f"(pass={n_pass}, reject={n_reject})")
+
     # ------------------------------------------------------------------ #
     #  Experimental data correlation
     # ------------------------------------------------------------------ #
@@ -779,6 +997,10 @@ class PipelineManager:
                     'L_RMSD': d.get('L_RMSD', RMSD_ERROR_VALUE),
                     'L_RMSD_best': d.get('L_RMSD_best', RMSD_ERROR_VALUE),
                     'dSASA': d.get('dSASA', 0),
+                    'dSASA_polar': d.get('dSASA_polar', 0.0),
+                    'dSASA_hydrophobic': d.get('dSASA_hydrophobic', 0.0),
+                    'sc_value': d.get('sc_value', 0.0),
+                    'total_score': d.get('total_score', 0.0),
                 })
             pd.DataFrame(rows).to_csv(csv_path, index=False)
             self.progress_logger.info(
@@ -1511,6 +1733,19 @@ class PipelineManager:
         a("     높은 L_RMSD가 정상이며, 다양한 사이트 탐색을 반영합니다)")
         a("")
 
+        # I_RMSD 분포 (인터페이스 RMSD)
+        if 'I_RMSD' in ranking_df.columns:
+            irmsd = ranking_df['I_RMSD']
+            valid_irmsd = irmsd[(irmsd >= 0) & (irmsd.notna())]
+            if len(valid_irmsd) > 0:
+                a("  I_RMSD 분포 (Chain B 인터페이스 잔기만, 최종 모델):")
+                a(f"    평균   : {valid_irmsd.mean():.2f} A")
+                a(f"    범위   : {valid_irmsd.min():.2f} ~ {valid_irmsd.max():.2f} A")
+                a(f"    유효   : {len(valid_irmsd)}/{len(irmsd)} 모델")
+                a("    (I_RMSD는 결합 인터페이스 잔기만의 RMSD로,")
+                a("     L_RMSD보다 결합 포즈 품질을 더 정확히 반영합니다)")
+                a("")
+
         # 결합 핫스팟 분석 (Chain A / Chain B 분리)
         _invalid_tags = {'None', 'No_Chain_2', 'Analysis_Failed', ''}
 
@@ -2070,7 +2305,7 @@ class PipelineManager:
 
         # Build ranking table data
         table_cols = ['Rank', 'Parent', 'dG_separated', 'dSASA', 'sc_value',
-                      'packstat', 'dG_density', 'L_RMSD']
+                      'packstat', 'dG_density', 'L_RMSD', 'I_RMSD']
         if 'Site_Group' in ranking_df.columns:
             table_cols.append('Site_Group')
         if 'key_contact_ratio' in ranking_df.columns:
@@ -2433,6 +2668,9 @@ function sortTable(th) {
         self.progress_logger.info(f"    > [Stats] Scored: {total_scored}/{self.total_global}")
         self.progress_logger.info(f"    > [Stats] dG  Mean={mean_dG:.2f}  Std={std_dG:.2f}  Min={min_dG:.2f}  Max={max_dG:.2f}")
 
+        # Save initial all-models CSV (filter_status filled later)
+        self._save_scored_all_models_csv(combined_data)
+
         if self.filter_v2_enabled and self.stage1_enabled:
             cluster_candidates = self._filter_v2(
                 combined_data, total_scored, mean_dG, median_dG, std_dG, min_dG, max_dG, scores_np, t_start)
@@ -2535,6 +2773,8 @@ function sortTable(th) {
                     d['center_x'] = score_res['center_x']
                     d['center_y'] = score_res['center_y']
                     d['center_z'] = score_res['center_z']
+                    d['dSASA_polar'] = score_res.get('dSASA_polar', 0.0)
+                    d['dSASA_hydrophobic'] = score_res.get('dSASA_hydrophobic', 0.0)
                     d['excluded_contacts'] = score_res.get('excluded_contacts', 0)
                     d['key_contact_ratio'] = score_res.get('key_contact_ratio', 0.0)
                     # Recalculate adjusted_dG if key_residue_bonus is active
@@ -2597,44 +2837,119 @@ function sortTable(th) {
 
         return refined_pool
 
+    def _save_filter_thresholds_csv(self, threshold_records: List[Dict]) -> None:
+        """Save filter threshold records to a machine-readable CSV file.
+
+        Each record has: filter_name, threshold_value, source, stage,
+        n_input, n_passed, n_rejected.  Also stores the records in
+        self.stats['filter_thresholds'] for the validation report.
+        """
+        self.stats['filter_thresholds'] = threshold_records
+
+        csv_path = os.path.join(self.root_dir, "filter_thresholds.csv")
+        fieldnames = [
+            'filter_name', 'threshold_value', 'source', 'stage',
+            'n_input', 'n_passed', 'n_rejected',
+        ]
+        try:
+            with open(csv_path, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                for rec in threshold_records:
+                    writer.writerow(rec)
+            self.progress_logger.info(
+                f"    > [Output] Filter thresholds saved to {csv_path} "
+                f"({len(threshold_records)} rows)")
+        except Exception as e:
+            self.internal_logger.warning(
+                f"Failed to write filter_thresholds.csv: {e}")
+
     def _filter_v2(self, combined_data: List[Dict], total_scored: int, mean_dG: float, median_dG: float, std_dG: float, min_dG: float, max_dG: float, scores_np: Any, t_start: float) -> List[Dict]:
         """v2.0 multi-stage filtering pathway. Returns cluster_candidates list."""
         self.progress_logger.info("    > [Filter] Using v2.0 multi-stage filtering")
+
+        # Threshold tracking records
+        _thresh_records = []
+
+        # Filter status tracking: id -> rejection reason
+        _filter_status_map: Dict[str, str] = {}
 
         # ---- Stage 1: Coarse Energy Filtering ---- #
 
         # 1a. Excluded residue hard filter (preserved from v1.0)
         if self.excluded_residues_A:
             pre_excl = len(combined_data)
-            combined_data = [d for d in combined_data
-                             if d.get('excluded_contacts', 0) <= self.max_excluded_contacts]
+            _excl_pass = []
+            for d in combined_data:
+                if d.get('excluded_contacts', 0) <= self.max_excluded_contacts:
+                    _excl_pass.append(d)
+                else:
+                    _filter_status_map[str(d.get('id', ''))] = 'reject_exclusion'
+            combined_data = _excl_pass
             excl_rejected = pre_excl - len(combined_data)
             self.progress_logger.info(
                 f"    > [S1-Excl] Excluded zone contacts <= {self.max_excluded_contacts}  "
                 f"Passed={len(combined_data)}/{pre_excl}  "
                 f"(rejected {excl_rejected})")
             self.stats['excl_filter_rejected'] = excl_rejected
+            _thresh_records.append({
+                'filter_name': 'stage1_excluded_zone_max_contacts',
+                'threshold_value': self.max_excluded_contacts,
+                'source': 'config',
+                'stage': 'stage1',
+                'n_input': pre_excl,
+                'n_passed': len(combined_data),
+                'n_rejected': excl_rejected,
+            })
         else:
             self.stats['excl_filter_rejected'] = 0
 
         # 1b. dG > max_dG_separated removal (repulsive interfaces)
         pre_dG = len(combined_data)
-        stage1_pool = [d for d in combined_data
-                       if d.get('dG_separated', 0) <= self.stage1_max_dG]
+        stage1_pool = []
+        for d in combined_data:
+            if d.get('dG_separated', 0) <= self.stage1_max_dG:
+                stage1_pool.append(d)
+            else:
+                _filter_status_map[str(d.get('id', ''))] = 'reject_dG'
         self.progress_logger.info(
             f"    > [S1-dG] dG <= {self.stage1_max_dG}  "
             f"Passed={len(stage1_pool)}/{pre_dG}")
+        _thresh_records.append({
+            'filter_name': 'stage1_max_dG_separated',
+            'threshold_value': self.stage1_max_dG,
+            'source': 'config',
+            'stage': 'stage1',
+            'n_input': pre_dG,
+            'n_passed': len(stage1_pool),
+            'n_rejected': pre_dG - len(stage1_pool),
+        })
 
         # 1c. total_score percentile filter (top N%)
+        ts_cutoff = None
         if stage1_pool and self.stage1_total_score_pct < 100:
             ts_arr = np.array([d.get('total_score', 0) for d in stage1_pool])
             ts_cutoff = float(np.percentile(ts_arr, self.stage1_total_score_pct))
             pre_ts = len(stage1_pool)
-            stage1_pool = [d for d in stage1_pool
-                           if d.get('total_score', 0) <= ts_cutoff]
+            _ts_pass = []
+            for d in stage1_pool:
+                if d.get('total_score', 0) <= ts_cutoff:
+                    _ts_pass.append(d)
+                else:
+                    _filter_status_map[str(d.get('id', ''))] = 'reject_total_score'
+            stage1_pool = _ts_pass
             self.progress_logger.info(
                 f"    > [S1-TS] total_score {self.stage1_total_score_pct}%  "
                 f"Cutoff={ts_cutoff:.2f}  Passed={len(stage1_pool)}/{pre_ts}")
+            _thresh_records.append({
+                'filter_name': 'stage1_total_score_percentile',
+                'threshold_value': ts_cutoff,
+                'source': 'computed_percentile',
+                'stage': 'stage1',
+                'n_input': pre_ts,
+                'n_passed': len(stage1_pool),
+                'n_rejected': pre_ts - len(stage1_pool),
+            })
 
         stage1_count = len(stage1_pool)
         self.progress_logger.info(
@@ -2655,12 +2970,18 @@ function sortTable(th) {
 
         # 2a. Cheap metrics (already computed in Pass 1)
         stage2_cheap = []
+        _s2_rej_dSASA = 0
+        _s2_rej_dG_density = 0
+        _s2_rej_sc = 0
         for d in stage1_pool:
             dSASA = d.get('dSASA', 0)
             dG = d.get('dG_separated', 0)
             sc = d.get('sc_value', 0)
+            _did = str(d.get('id', ''))
 
             if dSASA < self.stage2_min_dSASA:
+                _s2_rej_dSASA += 1
+                _filter_status_map[_did] = 'reject_stage2'
                 continue
             if abs(dSASA) > 1e-6:
                 dG_density = dG / dSASA * 100
@@ -2668,8 +2989,12 @@ function sortTable(th) {
                 dG_density = 0.0
             d['dG_density'] = dG_density
             if dG_density > self.stage2_max_dG_density:
+                _s2_rej_dG_density += 1
+                _filter_status_map[_did] = 'reject_stage2'
                 continue
             if sc < self.stage2_min_sc:
+                _s2_rej_sc += 1
+                _filter_status_map[_did] = 'reject_stage2'
                 continue
             stage2_cheap.append(d)
 
@@ -2679,8 +3004,44 @@ function sortTable(th) {
             f"sc>={self.stage2_min_sc}  "
             f"Passed={len(stage2_cheap)}/{stage1_count}")
 
+        # Track per-filter counts for cheap metrics (sequential cascade)
+        _s2c_input = stage1_count
+        _thresh_records.append({
+            'filter_name': 'stage2_min_dSASA',
+            'threshold_value': self.stage2_min_dSASA,
+            'source': 'config',
+            'stage': 'stage2_cheap',
+            'n_input': _s2c_input,
+            'n_passed': _s2c_input - _s2_rej_dSASA,
+            'n_rejected': _s2_rej_dSASA,
+        })
+        _thresh_records.append({
+            'filter_name': 'stage2_max_dG_density',
+            'threshold_value': self.stage2_max_dG_density,
+            'source': 'config',
+            'stage': 'stage2_cheap',
+            'n_input': _s2c_input - _s2_rej_dSASA,
+            'n_passed': _s2c_input - _s2_rej_dSASA - _s2_rej_dG_density,
+            'n_rejected': _s2_rej_dG_density,
+        })
+        _thresh_records.append({
+            'filter_name': 'stage2_min_sc_value',
+            'threshold_value': self.stage2_min_sc,
+            'source': 'config',
+            'stage': 'stage2_cheap',
+            'n_input': _s2c_input - _s2_rej_dSASA - _s2_rej_dG_density,
+            'n_passed': len(stage2_cheap),
+            'n_rejected': _s2_rej_sc,
+        })
+
         # 2b. Expensive metrics (Pass 2 - only on cheap survivors)
         stage2_full = stage2_cheap
+        _s2e_rej_packstat = 0
+        _s2e_rej_unsat = 0
+        _s2e_rej_nres = 0
+        _s2e_rej_hbonds = 0
+        _s2e_errors = 0
+        _stage2_all_scored: List[Dict] = []  # all models with expensive metrics (pass+fail)
         if self.stage2_expensive and stage2_cheap:
             self.progress_logger.info(
                 f"    > [S2-Pass2] Computing expensive metrics for "
@@ -2696,10 +3057,13 @@ function sortTable(th) {
                 stage2_full = []
                 for i, inter_res in enumerate(inter_iter):
                     d = stage2_cheap[i]
+                    _did = str(d.get('id', ''))
                     if inter_res['status'] != 'success':
                         self.internal_logger.warning(
                             f"Intermediate scoring error (ID: {d.get('id')}): "
                             f"{inter_res.get('error')}")
+                        _s2e_errors += 1
+                        _filter_status_map[_did] = 'reject_stage2'
                         continue
 
                     d['packstat'] = inter_res.get('packstat', 0)
@@ -2707,20 +3071,35 @@ function sortTable(th) {
                     d['nres_int'] = inter_res.get('nres_int', 0)
                     d['hbonds_int'] = inter_res.get('hbonds_int', 0)
 
+                    _s2_passed = True
                     if (self.stage2_min_packstat > 0 and
                             d['packstat'] < self.stage2_min_packstat):
-                        continue
-                    if (self.stage2_max_unsat < 99 and
+                        _s2e_rej_packstat += 1
+                        _s2_passed = False
+                    elif (self.stage2_max_unsat < 99 and
                             d['delta_unsatHbonds'] > self.stage2_max_unsat):
-                        continue
-                    if (self.stage2_min_nres > 0 and
+                        _s2e_rej_unsat += 1
+                        _s2_passed = False
+                    elif (self.stage2_min_nres > 0 and
                             d['nres_int'] < self.stage2_min_nres):
-                        continue
-                    if (self.stage2_min_hbonds > 0 and
+                        _s2e_rej_nres += 1
+                        _s2_passed = False
+                    elif (self.stage2_min_hbonds > 0 and
                             d['hbonds_int'] < self.stage2_min_hbonds):
-                        continue
+                        _s2e_rej_hbonds += 1
+                        _s2_passed = False
 
-                    stage2_full.append(d)
+                    if _s2_passed:
+                        d['_filter_status'] = 'pass'
+                        stage2_full.append(d)
+                    else:
+                        d['_filter_status'] = 'reject_stage2'
+                        _filter_status_map[_did] = 'reject_stage2'
+
+                    _stage2_all_scored.append(d)
+
+            # Save Stage 2 CSV (all models with expensive metrics)
+            self._save_scored_stage2_models_csv(_stage2_all_scored)
 
             self.progress_logger.info(
                 f"    > [S2-Expensive] packstat>={self.stage2_min_packstat} & "
@@ -2728,6 +3107,46 @@ function sortTable(th) {
                 f"nres>={self.stage2_min_nres} & "
                 f"hbonds>={self.stage2_min_hbonds}  "
                 f"Passed={len(stage2_full)}/{len(stage2_cheap)}")
+
+            # Track expensive filter thresholds (sequential cascade)
+            _s2e_input = len(stage2_cheap)
+            _s2e_scored = _s2e_input - _s2e_errors  # successfully scored
+            _thresh_records.append({
+                'filter_name': 'stage2_min_packstat',
+                'threshold_value': self.stage2_min_packstat,
+                'source': 'config',
+                'stage': 'stage2_expensive',
+                'n_input': _s2e_scored,
+                'n_passed': _s2e_scored - _s2e_rej_packstat,
+                'n_rejected': _s2e_rej_packstat,
+            })
+            _thresh_records.append({
+                'filter_name': 'stage2_max_delta_unsatHbonds',
+                'threshold_value': self.stage2_max_unsat,
+                'source': 'config',
+                'stage': 'stage2_expensive',
+                'n_input': _s2e_scored - _s2e_rej_packstat,
+                'n_passed': _s2e_scored - _s2e_rej_packstat - _s2e_rej_unsat,
+                'n_rejected': _s2e_rej_unsat,
+            })
+            _thresh_records.append({
+                'filter_name': 'stage2_min_nres_int',
+                'threshold_value': self.stage2_min_nres,
+                'source': 'config',
+                'stage': 'stage2_expensive',
+                'n_input': _s2e_scored - _s2e_rej_packstat - _s2e_rej_unsat,
+                'n_passed': _s2e_scored - _s2e_rej_packstat - _s2e_rej_unsat - _s2e_rej_nres,
+                'n_rejected': _s2e_rej_nres,
+            })
+            _thresh_records.append({
+                'filter_name': 'stage2_min_hbonds_int',
+                'threshold_value': self.stage2_min_hbonds,
+                'source': 'config',
+                'stage': 'stage2_expensive',
+                'n_input': _s2e_scored - _s2e_rej_packstat - _s2e_rej_unsat - _s2e_rej_nres,
+                'n_passed': len(stage2_full),
+                'n_rejected': _s2e_rej_hbonds,
+            })
 
         stage2_count = len(stage2_full)
 
@@ -2796,7 +3215,32 @@ function sortTable(th) {
             'stage2_survivors': stage2_count,
         })
 
+        # Record fallback information
+        if fallback_level > 0:
+            _thresh_records.append({
+                'filter_name': f'graduated_fallback_level_{fallback_level}',
+                'threshold_value': fallback_level,
+                'source': 'fallback',
+                'stage': 'fallback',
+                'n_input': stage2_count if fallback_level == 1 else stage1_count,
+                'n_passed': len(cluster_candidates),
+                'n_rejected': 0,
+            })
+
+        # Save filter thresholds to CSV
+        self._save_filter_thresholds_csv(_thresh_records)
+
+        # Mark final candidates as "pass" in the filter status map
+        # (overrides any prior rejection if rescued via fallback)
+        for d in cluster_candidates:
+            _did = str(d.get('id', ''))
+            _filter_status_map[_did] = 'pass'
+
+        # Update scored_all_models.csv with filter_status column
+        self._update_scored_all_models_filter_status(_filter_status_map)
+
         del combined_data, stage1_pool, stage2_cheap, stage2_full, scores_np
+        del _stage2_all_scored, _filter_status_map
         gc.collect()
         return cluster_candidates
 
@@ -2809,17 +3253,41 @@ function sortTable(th) {
         else:
             self.progress_logger.info("    > [Filter] Using v1.0 filtering")
 
+        # Filter status tracking: id -> rejection reason
+        _filter_status_map: Dict[str, str] = {}
+
+        # Threshold tracking records
+        _thresh_records = []
+
         # --- Filter 1: dSASA (physical contact — applied first) ---
-        dSASA_passed = [d for d in combined_data if d.get('dSASA', 0) >= self.min_dSASA]
+        dSASA_passed = []
+        for d in combined_data:
+            if d.get('dSASA', 0) >= self.min_dSASA:
+                dSASA_passed.append(d)
+            else:
+                _filter_status_map[str(d.get('id', ''))] = 'reject_dSASA'
         self.progress_logger.info(
             f"    > [Filter-1] dSASA >= {self.min_dSASA} A^2  "
             f"Passed={len(dSASA_passed)}/{total_scored}")
+        _thresh_records.append({
+            'filter_name': 'v1_min_dSASA',
+            'threshold_value': self.min_dSASA,
+            'source': 'config',
+            'stage': 'filter1_dSASA',
+            'n_input': total_scored,
+            'n_passed': len(dSASA_passed),
+            'n_rejected': total_scored - len(dSASA_passed),
+        })
 
         # --- Filter 1.5: Excluded residue contact (hard rejection) ---
         if self.excluded_residues_A:
             pre_excl = len(dSASA_passed)
-            excl_passed = [d for d in dSASA_passed
-                           if d.get('excluded_contacts', 0) <= self.max_excluded_contacts]
+            excl_passed = []
+            for d in dSASA_passed:
+                if d.get('excluded_contacts', 0) <= self.max_excluded_contacts:
+                    excl_passed.append(d)
+                else:
+                    _filter_status_map[str(d.get('id', ''))] = 'reject_exclusion'
             excl_rejected = pre_excl - len(excl_passed)
             self.progress_logger.info(
                 f"    > [Filter-1.5] Excluded zone contacts <= {self.max_excluded_contacts}  "
@@ -2827,6 +3295,15 @@ function sortTable(th) {
                 f"(rejected {excl_rejected} forbidden-zone poses)")
             dSASA_passed = excl_passed
             self.stats['excl_filter_rejected'] = excl_rejected
+            _thresh_records.append({
+                'filter_name': 'v1_excluded_zone_max_contacts',
+                'threshold_value': self.max_excluded_contacts,
+                'source': 'config',
+                'stage': 'filter1.5_excluded',
+                'n_input': pre_excl,
+                'n_passed': len(excl_passed),
+                'n_rejected': excl_rejected,
+            })
         else:
             self.stats['excl_filter_rejected'] = 0
 
@@ -2834,27 +3311,73 @@ function sortTable(th) {
         dG_cutoff = None
         if not dSASA_passed:
             dG_passed = []
+            _thresh_records.append({
+                'filter_name': 'v1_dG_percentile',
+                'threshold_value': '',
+                'source': 'skipped_no_input',
+                'stage': 'filter2_dG',
+                'n_input': 0,
+                'n_passed': 0,
+                'n_rejected': 0,
+            })
         elif std_dG < 1e-6:
             self.progress_logger.warning("    > [Warning] dG std ~= 0. Skipping dG filter.")
             dG_passed = dSASA_passed
+            _thresh_records.append({
+                'filter_name': 'v1_dG_percentile',
+                'threshold_value': '',
+                'source': 'skipped_zero_std',
+                'stage': 'filter2_dG',
+                'n_input': len(dSASA_passed),
+                'n_passed': len(dSASA_passed),
+                'n_rejected': 0,
+            })
         else:
             contact_dGs = np.array([d['dG_separated'] for d in dSASA_passed])
             dG_cutoff = float(np.percentile(contact_dGs, self.filter_percentile))
-            dG_passed = [d for d in dSASA_passed if d['dG_separated'] <= dG_cutoff]
+            dG_passed = []
+            for d in dSASA_passed:
+                if d['dG_separated'] <= dG_cutoff:
+                    dG_passed.append(d)
+                else:
+                    _filter_status_map[str(d.get('id', ''))] = 'reject_dG'
             self.progress_logger.info(
                 f"    > [Filter-2] dG {self.filter_percentile}%  Cutoff={dG_cutoff:.2f}  "
                 f"Passed={len(dG_passed)}/{len(dSASA_passed)}")
+            _thresh_records.append({
+                'filter_name': 'v1_dG_percentile',
+                'threshold_value': dG_cutoff,
+                'source': 'computed_percentile',
+                'stage': 'filter2_dG',
+                'n_input': len(dSASA_passed),
+                'n_passed': len(dG_passed),
+                'n_rejected': len(dSASA_passed) - len(dG_passed),
+            })
 
         # ---- Funnel Data (L_RMSD computation for energy landscape plot) ----
         if dG_passed:
             self._compute_funnel_data(dG_passed)
 
         # --- Filter 3: sc_value (shape complementarity sanity check) ---
-        sc_passed = [d for d in dG_passed if d.get('sc_value', 0) >= self.min_sc_value]
+        sc_passed = []
+        for d in dG_passed:
+            if d.get('sc_value', 0) >= self.min_sc_value:
+                sc_passed.append(d)
+            else:
+                _filter_status_map[str(d.get('id', ''))] = 'reject_sc'
         if len(dG_passed) - len(sc_passed) > 0:
             self.progress_logger.info(
                 f"    > [Filter-3] sc >= {self.min_sc_value}  "
                 f"Passed={len(sc_passed)}/{len(dG_passed)}")
+        _thresh_records.append({
+            'filter_name': 'v1_min_sc_value',
+            'threshold_value': self.min_sc_value,
+            'source': 'config',
+            'stage': 'filter3_sc',
+            'n_input': len(dG_passed),
+            'n_passed': len(sc_passed),
+            'n_rejected': len(dG_passed) - len(sc_passed),
+        })
 
         # --- Graduated Fallback ---
         fallback_level = 0
@@ -2880,6 +3403,11 @@ function sortTable(th) {
 
         cluster_candidates.sort(key=lambda x: x['dG_separated'])
 
+        # Mark final candidates as "pass" in the filter status map
+        for d in cluster_candidates:
+            _did = str(d.get('id', ''))
+            _filter_status_map[_did] = 'pass'
+
         pass_rate = len(cluster_candidates) / total_scored * 100
         self.progress_logger.info(
             f"    > [Filter Result] {len(cluster_candidates)} candidates "
@@ -2900,7 +3428,27 @@ function sortTable(th) {
             'filter_version': 'v1.0',
         })
 
+        # Record fallback information
+        if fallback_level > 0:
+            _thresh_records.append({
+                'filter_name': f'graduated_fallback_level_{fallback_level}',
+                'threshold_value': fallback_level,
+                'source': 'fallback',
+                'stage': 'fallback',
+                'n_input': len(sc_passed) if fallback_level == 1 else (
+                    len(dG_passed) if fallback_level == 2 else total_scored),
+                'n_passed': len(cluster_candidates),
+                'n_rejected': 0,
+            })
+
+        # Save filter thresholds to CSV
+        self._save_filter_thresholds_csv(_thresh_records)
+
+        # Update scored_all_models.csv with filter_status column
+        self._update_scored_all_models_filter_status(_filter_status_map)
+
         del combined_data, dSASA_passed, dG_passed, sc_passed, scores_np
+        del _filter_status_map
         gc.collect()
         return cluster_candidates
 
@@ -2962,6 +3510,12 @@ function sortTable(th) {
 
         centers = np.array([[c.get('center_x', 0), c.get('center_y', 0),
                              c.get('center_z', 0)] for c in cluster_candidates])
+        # Warn about models with unresolved center coordinates (all zeros)
+        n_zero_center = int(np.sum(np.all(centers == 0, axis=1)))
+        if n_zero_center > 0:
+            self.progress_logger.warning(
+                f"    [Cluster WARN] {n_zero_center}/{n_cands} models have center (0,0,0) "
+                f"— scoring may have failed for these; CoM pre-filter unreliable for them")
         com_threshold = max(self.cluster_threshold * 8, COM_THRESHOLD_MIN)
 
         leaders = []
@@ -2971,6 +3525,7 @@ function sortTable(th) {
         com_skipped = 0
         potential_extra_clusters = 0
         dropped_records = []
+        all_membership_records = []  # Track every model→cluster assignment
 
         # Adaptive escalation state
         escalation_applied = False
@@ -3026,6 +3581,7 @@ function sortTable(th) {
 
             if assigned_cid is not None:
                 cluster_populations[assigned_cid] += 1
+                is_rep = False
                 members = cluster_members[assigned_cid]
                 if len(members) < self.members_per_cluster:
                     is_diverse = True
@@ -3038,6 +3594,17 @@ function sortTable(th) {
                         candidate['Member_ID'] = len(members) + 1
                         candidate['Parent'] = f"C{candidate['Cluster_ID']:02d}_M{candidate['Member_ID']:02d}"
                         members.append((candidate, cand_pose))
+                        is_rep = True
+                all_membership_records.append({
+                    'model_id': candidate.get('id', idx + 1),
+                    'cluster_id': f"C{assigned_cid + 1:02d}",
+                    'is_representative': is_rep,
+                    'dG_separated': candidate.get('dG_separated', 0),
+                    'L_RMSD': candidate.get('L_RMSD', 0),
+                    'center_x': round(float(cand_center[0]), 2),
+                    'center_y': round(float(cand_center[1]), 2),
+                    'center_z': round(float(cand_center[2]), 2),
+                })
             elif len(leaders) < self.cluster_top_n:
                 cid = len(leaders)
                 candidate['Cluster_ID'] = cid + 1
@@ -3047,6 +3614,16 @@ function sortTable(th) {
                 leader_centers.append(cand_center)
                 cluster_members.append([(candidate, cand_pose)])
                 cluster_populations.append(1)
+                all_membership_records.append({
+                    'model_id': candidate.get('id', idx + 1),
+                    'cluster_id': f"C{cid + 1:02d}",
+                    'is_representative': True,
+                    'dG_separated': candidate.get('dG_separated', 0),
+                    'L_RMSD': candidate.get('L_RMSD', 0),
+                    'center_x': round(float(cand_center[0]), 2),
+                    'center_y': round(float(cand_center[1]), 2),
+                    'center_z': round(float(cand_center[2]), 2),
+                })
             else:
                 # Shadow archive: record with L_RMSD (pose already deserialized)
                 nearest_dist = float('inf')
@@ -3111,6 +3688,8 @@ function sortTable(th) {
                 'dG_separated': item.get('dG_separated', 0),
                 'Total_Score': item.get('Total_Score', 0),
                 'dSASA': item.get('dSASA', 0),
+                'dSASA_polar': item.get('dSASA_polar', 0.0),
+                'dSASA_hydrophobic': item.get('dSASA_hydrophobic', 0.0),
                 'dG_density': item.get('dG_density', 0),
                 'sc_value': item.get('sc_value', 0),
                 'packstat': item.get('packstat', 0),
@@ -3118,12 +3697,16 @@ function sortTable(th) {
                 'nres_int': item.get('nres_int', ''),
                 'hbonds_int': item.get('hbonds_int', ''),
                 'L_RMSD': item.get('L_RMSD', 0),
+                'I_RMSD': item.get('I_RMSD', ''),
                 'L_RMSD_best': getattr(self, 'lrmsd_best_map', {}).get(
                     item.get('id'), ''),
                 'Binding_Residues': item.get('Binding_Residues', ''),
                 'Binding_Residues_A': item.get('Binding_Residues_A', ''),
                 'Binding_Residues_B': item.get('Binding_Residues_B', ''),
                 'Population': cluster_populations[item['Cluster_ID'] - 1],
+                'center_x': item.get('center_x', 0),
+                'center_y': item.get('center_y', 0),
+                'center_z': item.get('center_z', 0),
                 'File_PDB': fname,
             }
             if self.key_residues_B:
@@ -3134,6 +3717,19 @@ function sortTable(th) {
             cluster_csv_path = os.path.join(self.dir_cluster, "cluster_summary.csv")
             pd.DataFrame(cluster_csv_rows).to_csv(cluster_csv_path, index=False)
             self.progress_logger.info(f"    > [Output] Cluster summary: {cluster_csv_path}")
+
+        # Save full cluster membership CSV (all models → cluster mapping)
+        if all_membership_records:
+            membership_csv_path = os.path.join(self.dir_cluster, "cluster_membership.csv")
+            membership_df = pd.DataFrame(all_membership_records, columns=[
+                'model_id', 'cluster_id', 'is_representative',
+                'dG_separated', 'L_RMSD',
+                'center_x', 'center_y', 'center_z',
+            ])
+            membership_df.to_csv(membership_csv_path, index=False)
+            self.progress_logger.info(
+                f"    > [Output] Cluster membership: {membership_csv_path} "
+                f"({len(all_membership_records)} models mapped)")
 
         if not final_representatives:
             self.progress_logger.critical("!!! CRITICAL: 0 cluster representatives.")
@@ -3160,7 +3756,7 @@ function sortTable(th) {
             self.stats['cluster_top_n_original'] = original_cluster_top_n
             self.stats['cluster_top_n_escalated_to'] = self.cluster_top_n
 
-        del leaders, leader_centers, cluster_members
+        del leaders, leader_centers, cluster_members, all_membership_records
         gc.collect()
         return final_representatives
 
@@ -3321,6 +3917,16 @@ function sortTable(th) {
                 with open(os.path.join(self.dir_final, fname_iface), "w") as f:
                     f.write(interface_csv)
 
+            try:
+                contact_pairs_csv = item.get('contact_pairs_csv_data', '')
+                if contact_pairs_csv and len(contact_pairs_csv.split('\n')) > 1:
+                    fname_contacts = f"Rank{rank+1:02d}_{item['Parent']}_ContactPairs.csv"
+                    with open(os.path.join(self.dir_final, fname_contacts), "w") as f:
+                        f.write(contact_pairs_csv)
+            except Exception as e:
+                self.internal_logger.warning(
+                    f"Error writing ContactPairs CSV for Rank {rank+1}: {e}")
+
             dSASA_val = item.get('dSASA', 0)
             dG_val = item.get('dG_separated', 0)
             dG_density = (dG_val / dSASA_val * 100) if abs(dSASA_val) > 1e-6 else 0.0
@@ -3331,6 +3937,8 @@ function sortTable(th) {
                 'dG_separated': dG_val,
                 'Total_Score': item.get('Total_Score', 0),
                 'dSASA': dSASA_val,
+                'dSASA_polar': item.get('dSASA_polar', 0.0),
+                'dSASA_hydrophobic': item.get('dSASA_hydrophobic', 0.0),
                 'dG_density': round(dG_density, 4),
                 'sc_value': item.get('sc_value', 0),
                 'packstat': item.get('packstat', 0),
@@ -3338,10 +3946,14 @@ function sortTable(th) {
                 'nres_int': item.get('nres_int', ''),
                 'hbonds_int': item.get('hbonds_int', ''),
                 'L_RMSD': item.get('L_RMSD', 0),
+                'I_RMSD': item.get('I_RMSD', ''),
                 'L_RMSD_best': final_lrmsd_best[rank] if rank < len(final_lrmsd_best) else '',
                 'Binding_Residues': item.get('Binding_Residues', ''),
                 'Binding_Residues_A': item.get('Binding_Residues_A', ''),
                 'Binding_Residues_B': item.get('Binding_Residues_B', ''),
+                'center_x': item.get('center_x', 0),
+                'center_y': item.get('center_y', 0),
+                'center_z': item.get('center_z', 0),
                 'File_PDB': fname_pdb,
                 'File_CSV': fname_csv,
             }
@@ -3374,6 +3986,8 @@ function sortTable(th) {
                     'Cluster_ID': item.get('Cluster_ID', ''),
                     'dG_separated': dG_a,
                     'dSASA': dSASA_a,
+                    'dSASA_polar': item.get('dSASA_polar', 0.0),
+                    'dSASA_hydrophobic': item.get('dSASA_hydrophobic', 0.0),
                     'sc_value': item.get('sc_value', 0),
                     'dG_density': round(dG_density_a, 4),
                     'packstat': item.get('packstat', 0),
@@ -3381,6 +3995,7 @@ function sortTable(th) {
                     'nres_int': item.get('nres_int', ''),
                     'hbonds_int': item.get('hbonds_int', ''),
                     'L_RMSD': item.get('L_RMSD', 0),
+                    'I_RMSD': item.get('I_RMSD', ''),
                     'center_x': item.get('center_x', 0),
                     'center_y': item.get('center_y', 0),
                     'center_z': item.get('center_z', 0),
@@ -3447,40 +4062,54 @@ function sortTable(th) {
             # Log all filter thresholds for transparency
             self._log_filter_thresholds()
 
+            self._save_input_validation_report()
             self._save_config_snapshot()
+            self._save_run_metadata("started")
 
             # Step 2: Global Docking
             docking_results = self._step2_global_docking(relaxed_pdb)
             if docking_results is None:
+                self._save_run_metadata("docking_failed")
                 return
 
             # Step 2.5: Fast Scoring & Filtering
             result = self._step2_5_scoring_filtering(docking_results, cache_path)
             cluster_candidates, constraints_dict = result
             if cluster_candidates is None:
+                self._save_run_metadata("filtering_failed")
                 return
 
             # Step 3: Full Scoring of filter survivors
             fully_scored = self._step3_full_scoring(cluster_candidates, cache_path, constraints_dict)
             if fully_scored is None:
+                self._save_run_metadata("full_scoring_failed")
                 return
+            self._export_decoy_scores(fully_scored)
+            self._save_run_metadata("full_scoring_completed")
 
             # Step 4: Clustering
             final_representatives = self._step4_clustering(fully_scored)
             if final_representatives is None:
+                self._save_run_metadata("clustering_failed")
                 return
 
             # Step 5: Selection & Save
             ranking_df, final_csv_path = self._step5_selection_and_save(final_representatives)
+            self._save_run_metadata("selection_completed")
 
             # Step 6: Visualization & Report
             self._step6_visualization(ranking_df, final_csv_path, overall_start_time)
+            self._save_run_metadata("completed")
 
             gc.collect()
 
         except Exception as e:
             self.internal_logger.critical(f"!!! CRITICAL UNHANDLED ERROR: {str(e)}")
             self.internal_logger.critical(traceback.format_exc())
+            try:
+                self._save_run_metadata("unhandled_error")
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

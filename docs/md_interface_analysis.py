@@ -161,10 +161,14 @@ def compute_residue_occupancy(
     cutoff: float = 5.0,
     stride: int = 10,
     first_n_frames: Optional[int] = None,
+    start_time_ps: Optional[float] = None,
 ) -> Dict[int, float]:
     """
     For each partner residue, compute the fraction of frames where it
     has at least one contact with the receptor.
+
+    If start_time_ps is provided, only frames at or after that time
+    contribute to the occupancy estimate.
 
     Returns: {partner_resid: occupancy_fraction}
     """
@@ -177,6 +181,8 @@ def compute_residue_occupancy(
     frames = universe.trajectory[::stride]
     if first_n_frames is not None:
         frames = list(frames)[:first_n_frames]
+    if start_time_ps is not None:
+        frames = [ts for ts in frames if ts.time >= start_time_ps]
 
     for ts in frames:
         contacts = get_residue_contact_pairs(
@@ -347,11 +353,13 @@ def run_full_analysis(
     # Select last 100 ns of frames
     total_time = u.trajectory[-1].time
     last_100ns_start = total_time - 100_000  # 100 ns in ps
-    n_frames_last100 = sum(
-        1 for ts in u.trajectory[::stride] if ts.time >= last_100ns_start
-    )
     occupancy = compute_residue_occupancy(
-        u, receptor_sel, partner_sel, contact_cutoff, stride
+        u,
+        receptor_sel,
+        partner_sel,
+        contact_cutoff,
+        stride,
+        start_time_ps=last_100ns_start,
     )
     with open(f"{out_prefix}_residue_occupancy.csv", "w") as f:
         f.write("partner_resid,occupancy\n")

@@ -1,0 +1,81 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N Phase2Cascade
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=24:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/phase2_cascade.o
+#PBS -e ${PBS_O_WORKDIR}/phase2_cascade.e
+
+cd $PBS_O_WORKDIR
+
+# Conda 환경 활성화
+source ~/.bashrc
+conda activate pyrosetta
+
+# ============================================================
+# Phase 2 Cascade: fpocket/P2Rank + TG 2.0->2.7
+#
+# 2단계:
+#   Step 1: fpocket + P2Rank 실행 (pocket_proposal_run.sh)
+#   Step 2: Phase 2 캐스케이드 (parse + 분석)
+#
+# 사용법:
+#   qsub config/run_phase2_cascade.pbs                    # 기본 (전체)
+#   qsub -v SKIP_TOOLS=1 config/run_phase2_cascade.pbs    # fpocket 건너뛰기
+#   qsub -v FROM_TG=2.5 config/run_phase2_cascade.pbs     # 특정 TG부터
+# ============================================================
+
+SKIP_TOOLS=${SKIP_TOOLS:-0}
+FROM_TG=${FROM_TG:-2.0}
+FTMAP_DIR=${FTMAP_DIR:-}
+
+echo "============================================"
+echo "  Phase 2 Cascade"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  SKIP_TOOLS: $SKIP_TOOLS"
+echo "  FROM_TG: $FROM_TG"
+echo "  FTMAP_DIR: ${FTMAP_DIR:-(none)}"
+echo "============================================"
+
+# Step 1: Run fpocket + P2Rank (server-side tools)
+if [ "$SKIP_TOOLS" = "0" ]; then
+    echo ""
+    echo "[Step 1] Running fpocket + P2Rank..."
+    SCRIPT="output/phase2_pockets/pocket_proposal_run.sh"
+    if [ -f "$SCRIPT" ]; then
+        bash "$SCRIPT"
+        echo "  fpocket/P2Rank done."
+    else
+        echo "  Run script not found: $SCRIPT"
+        echo "  Generating setup first..."
+        python -m egfr_pipeline.phase2.pocket_proposal --setup
+        if [ -f "$SCRIPT" ]; then
+            bash "$SCRIPT"
+            echo "  fpocket/P2Rank done."
+        else
+            echo "  [ERROR] Could not generate run script. Exiting."
+            exit 1
+        fi
+    fi
+else
+    echo ""
+    echo "[Step 1] SKIPPED (SKIP_TOOLS=1)"
+fi
+
+# Step 2: Phase 2 cascade (TG 2.0 -> 2.7)
+echo ""
+echo "[Step 2] Running Phase 2 cascade..."
+
+CASCADE_ARGS="--parse-only --from-tg $FROM_TG"
+if [ -n "$FTMAP_DIR" ]; then
+    CASCADE_ARGS="$CASCADE_ARGS --ftmap-dir $FTMAP_DIR"
+fi
+
+python -m egfr_pipeline.phase2.rerun_cascade $CASCADE_ARGS
+
+echo ""
+echo "============================================"
+echo "  Finished: $(date)"
+echo "============================================"

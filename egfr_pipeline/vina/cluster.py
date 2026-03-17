@@ -17,6 +17,7 @@ Post-hoc residue-based merging (Union-Find) is available as an additional
 safety net against fragmentation.
 """
 import csv
+import json
 import math
 from collections import defaultdict
 from pathlib import Path
@@ -257,7 +258,7 @@ def merge_pockets_by_residue(
     jaccard_threshold: float = 0.3,
     overlap_threshold: float = 0.5,
     centroid_fallback_cutoff: float = 6.0,
-) -> List[dict]:
+) -> Tuple[List[dict], List[dict]]:
     """Post-hoc merge of pockets within each receptor based on residue overlap.
 
     Two pockets are merged if their contact residue sets satisfy:
@@ -269,9 +270,15 @@ def merge_pockets_by_residue(
 
     Transitive closure via Union-Find ensures A-B and B-C merges also merge A-C.
     The merged pocket keeps the ID of the pocket with more poses.
+
+    Returns:
+        A tuple of (rows, merge_log) where *merge_log* is a list of dicts
+        recording every pairwise merge decision (one entry per merged pair).
     """
+    merge_log: List[dict] = []
+
     if not rows:
-        return rows
+        return rows, merge_log
 
     # Group rows by receptor
     by_receptor: Dict[str, Dict[str, List[dict]]] = defaultdict(lambda: defaultdict(list))
@@ -308,27 +315,52 @@ def merge_pockets_by_residue(
                 res_a, res_b = pocket_residues[pid_a], pocket_residues[pid_b]
 
                 should_merge = False
+                reasons: List[str] = []
 
-                # Residue-based criteria
+                # Compute all metrics for logging
+                intersection = 0
+                union_size = 0
+                j = 0.0
+                oc = 0.0
                 if res_a and res_b:
-                    intersection = len(res_a & res_b)
-                    union = len(res_a | res_b)
-                    j = intersection / union if union else 0.0
-                    oc = intersection / min(len(res_a), len(res_b))
-                    if j >= jaccard_threshold or oc >= overlap_threshold:
+                    shared = res_a & res_b
+                    intersection = len(shared)
+                    union_size = len(res_a | res_b)
+                    j = intersection / union_size if union_size else 0.0
+                    min_size = min(len(res_a), len(res_b))
+                    oc = intersection / min_size if min_size else 0.0
+                    if j >= jaccard_threshold:
                         should_merge = True
+                        reasons.append("jaccard")
+                    if oc >= overlap_threshold:
+                        should_merge = True
+                        reasons.append("overlap")
+
+                dist = euclidean_distance(
+                    pocket_centroids[pid_a], pocket_centroids[pid_b]
+                )
 
                 # Centroid fallback: merge if centroids are very close,
                 # even when residue data is sparse or absent
                 if not should_merge and centroid_fallback_cutoff > 0:
-                    dist = euclidean_distance(
-                        pocket_centroids[pid_a], pocket_centroids[pid_b]
-                    )
                     if dist <= centroid_fallback_cutoff:
                         should_merge = True
+                        reasons.append("centroid")
 
                 if should_merge:
                     _union_find_merge(parent, uf_rank, pid_a, pid_b)
+                    merge_log.append({
+                        "receptor_id": receptor_id,
+                        "pocket_id_a": pid_a,
+                        "pocket_id_b": pid_b,
+                        "jaccard": round(j, 4),
+                        "overlap_coeff": round(oc, 4),
+                        "centroid_dist_A": round(dist, 2),
+                        "n_residues_a": len(res_a),
+                        "n_residues_b": len(res_b),
+                        "n_shared_residues": intersection,
+                        "merge_reason": "+".join(reasons),
+                    })
 
         # Build merge groups
         groups: Dict[str, List[str]] = defaultdict(list)
@@ -351,7 +383,42 @@ def merge_pockets_by_residue(
                 if row["receptor_id"] == receptor_id and row.get("pocket_id", "") in remap:
                     row["pocket_id"] = remap[row["pocket_id"]]
 
-    return rows
+    return rows, merge_log
+
+
+# ---------------------------------------------------------------------------
+# Merge log I/O
+# ---------------------------------------------------------------------------
+
+_MERGE_LOG_COLUMNS = [
+    "receptor_id",
+    "pocket_id_a",
+    "pocket_id_b",
+    "jaccard",
+    "overlap_coeff",
+    "centroid_dist_A",
+    "n_residues_a",
+    "n_residues_b",
+    "n_shared_residues",
+    "merge_reason",
+]
+
+
+def write_merge_log(path: Path, merge_log: List[dict]) -> Path:
+    """Write merge decision log CSV.  Writes header even when *merge_log* is empty."""
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_MERGE_LOG_COLUMNS)
+        writer.writeheader()
+        for entry in merge_log:
+            writer.writerow(entry)
+    return path
+
+
+def write_merge_parameters(path: Path, params: dict) -> Path:
+    """Write clustering/merge parameters to a JSON file for reproducibility."""
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(params, handle, indent=2)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -378,11 +445,35 @@ def cluster_pose_table(
         max_iterations=max_iterations,
         min_pocket_size=min_pocket_size,
     )
+
+    merge_log: List[dict] = []
     if merge_by_residue:
-        clustered_rows = merge_pockets_by_residue(
+        clustered_rows, merge_log = merge_pockets_by_residue(
             clustered_rows,
             jaccard_threshold=merge_jaccard,
             overlap_threshold=merge_overlap,
             centroid_fallback_cutoff=merge_centroid_fallback,
         )
+
+    # Write merge decision log (always, even if empty)
+    merge_log_path = target.parent / "vina_clustering_merge_log.csv"
+    write_merge_log(merge_log_path, merge_log)
+
+    # Write clustering parameters for reproducibility
+    params = {
+        "clustering": {
+            "cutoff": cutoff,
+            "max_iterations": max_iterations,
+            "min_pocket_size": min_pocket_size,
+        },
+        "post_hoc_merge": {
+            "enabled": merge_by_residue,
+            "jaccard_threshold": merge_jaccard,
+            "overlap_threshold": merge_overlap,
+            "centroid_fallback_cutoff": merge_centroid_fallback,
+        },
+    }
+    params_path = target.parent / "vina_clustering_parameters.json"
+    write_merge_parameters(params_path, params)
+
     return write_pose_table(target, clustered_rows)

@@ -37,7 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
-RECEPTOR_STATES = ["3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"]
+RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Cross-state alignment thresholds
 CENTROID_MATCH_DISTANCE_A = 8.0    # ≤ 8Å → candidate match

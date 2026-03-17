@@ -38,7 +38,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
 
-EXPECTED_RECEPTOR_STATES = {"3GT8_raw", "3GT8_cl38_48", "3GT8_cl85_100"}
+EXPECTED_RECEPTOR_STATES = {"3GT8_raw", "EGFR_160-185", "EGFR_170-200"}
 
 # Phase 3 reference schema — the single file Phase 3 needs to consume
 EXPORT_COLUMNS = [

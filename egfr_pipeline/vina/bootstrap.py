@@ -36,6 +36,8 @@ def bootstrap_once(
     pocket_cutoff: float,
     rng: random.Random,
     sample_fraction: float = 0.8,
+    max_iterations: int = 10,
+    min_pocket_size: int = 2,
     merge_by_residue: bool = True,
     merge_jaccard: float = 0.3,
     merge_overlap: float = 0.5,
@@ -62,9 +64,14 @@ def bootstrap_once(
             r.pop("pocket_id", None)
             sampled.append(r)
 
-    clustered = assign_pockets(sampled, pocket_cutoff)
+    clustered = assign_pockets(
+        sampled,
+        pocket_cutoff,
+        max_iterations=max_iterations,
+        min_pocket_size=min_pocket_size,
+    )
     if merge_by_residue:
-        clustered = merge_pockets_by_residue(
+        clustered, _merge_log = merge_pockets_by_residue(
             clustered,
             jaccard_threshold=merge_jaccard,
             overlap_threshold=merge_overlap,
@@ -83,6 +90,8 @@ def run_bootstrap_replicates(
     pocket_cutoff: float = 8.0,
     sample_fraction: float = 0.8,
     seed: int = 42,
+    max_iterations: int = 10,
+    min_pocket_size: int = 2,
     merge_by_residue: bool = True,
     merge_jaccard: float = 0.3,
     merge_overlap: float = 0.5,
@@ -100,15 +109,20 @@ def run_bootstrap_replicates(
     ref_rows = copy.deepcopy(base_rows)
     for r in ref_rows:
         r.pop("pocket_id", None)
-    ref_clustered = assign_pockets(ref_rows, pocket_cutoff)
+    ref_clustered = assign_pockets(
+        ref_rows,
+        pocket_cutoff,
+        max_iterations=max_iterations,
+        min_pocket_size=min_pocket_size,
+    )
     if merge_by_residue:
-        ref_clustered = merge_pockets_by_residue(
+        ref_clustered, _merge_log = merge_pockets_by_residue(
             ref_clustered,
             jaccard_threshold=merge_jaccard,
             overlap_threshold=merge_overlap,
             centroid_fallback_cutoff=merge_centroid_fallback,
         )
-    ref_pockets, _ = summarize_pose_rows(ref_clustered)
+    ref_pockets, _, _ = summarize_pose_rows(ref_clustered)
 
     # Replicates
     replicate_summaries: List[List[dict]] = []
@@ -117,12 +131,14 @@ def run_bootstrap_replicates(
         rep_rows = bootstrap_once(
             base_rows, pocket_cutoff, rng,
             sample_fraction=sample_fraction,
+            max_iterations=max_iterations,
+            min_pocket_size=min_pocket_size,
             merge_by_residue=merge_by_residue,
             merge_jaccard=merge_jaccard,
             merge_overlap=merge_overlap,
             merge_centroid_fallback=merge_centroid_fallback,
         )
-        rep_pockets, _ = summarize_pose_rows(rep_rows)
+        rep_pockets, _, _ = summarize_pose_rows(rep_rows)
         replicate_summaries.append(rep_pockets)
 
     return ref_pockets, replicate_summaries
@@ -195,6 +211,8 @@ BOOTSTRAP_FIELDS = [
     "n_pose_mean",
     "n_pose_std",
     "n_replicates",
+    "sample_fraction",
+    "stability_scope",
 ]
 
 
@@ -294,6 +312,8 @@ def bootstrap_from_config(
     s = seed or bs.get("seed", 42)
     cutoff = pp.get("pocket_cutoff", 8.0)
     fraction = bs.get("sample_fraction", 0.8)
+    max_iterations = pp.get("cluster_max_iterations", 10)
+    min_pocket_size = pp.get("min_pocket_size", 2)
     merge = pp.get("merge_by_residue", True)
     merge_j = pp.get("merge_jaccard", 0.3)
     merge_oc = pp.get("merge_overlap", 0.5)
@@ -305,6 +325,8 @@ def bootstrap_from_config(
         pocket_cutoff=cutoff,
         sample_fraction=fraction,
         seed=s,
+        max_iterations=max_iterations,
+        min_pocket_size=min_pocket_size,
         merge_by_residue=merge,
         merge_jaccard=merge_j,
         merge_overlap=merge_oc,
@@ -312,6 +334,9 @@ def bootstrap_from_config(
     )
 
     stats = compute_bootstrap_stats(ref_pockets, rep_summaries, centroid_cutoff=cutoff)
+    for row in stats:
+        row["sample_fraction"] = round(float(fraction), 4)
+        row["stability_scope"] = "pose_resampling"
 
     out_csv = Path(output_path) if output_path else project_root / "vina_pocket_bootstrap.csv"
     out_csv.parent.mkdir(parents=True, exist_ok=True)
