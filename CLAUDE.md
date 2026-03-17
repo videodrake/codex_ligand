@@ -8,7 +8,7 @@
 PyRosetta 기반 **단백질-단백질 상호작용(PPI) Global Blind Docking 파이프라인**.
 2-chain PDB를 입력받아 Relax -> Global Docking -> Filtering -> Clustering -> Refinement -> Final Scoring을 수행하여 최적 결합 포즈를 예측한다.
 
-- **상태**: Phase 1 monomer-based PPI 전환 완료, v2.0 필터링 파이프라인 (v1.0 하위 호환)
+- **상태**: Phase 1 monomer-based PPI 전환 완료, 3 states × 5 seeds (300K models), v2.0 필터링 파이프라인 (v1.0 하위 호환)
 - **실행 환경**: Linux HPC (PBS/qsub), 32 CPU cores, 네트워크 차단
 - **언어**: Python 3.x + PyRosetta (구버전 호환성 필수)
 
@@ -132,6 +132,7 @@ output/{project}/steps/
 
 ```
 <PDB_NAME>/
+  seed_complete.json     # 시드 완료 마커 (재실행 시 스킵 판단, --force로 초기화)
   scored_all_models.csv  # 전체 스코어링 모델 메트릭 + filter_status (재도킹 없이 재분석 가능)
   scored_stage2_models.csv # Stage 2 대상 모델의 비싼 메트릭 (packstat, unsatHb 등)
   filter_thresholds.csv  # 필터 임계값 기록 (재현성 보장)
@@ -277,3 +278,5 @@ Global Blind Docking에서 **높은 L_RMSD는 정상**이다. 표면 전체를 �
 - ContactPairs CSV: 잔기 쌍별 최소 거리 (CB-CB 기본, GLY는 CA, 실패 시 heavy-atom 최소)
 - scored_all_models.csv: 전체 모델의 Pass 1 메트릭 + filter_status (재도킹 없이 재분석 가능)
 - filter_thresholds.csv: 사용된 필터 임계값 + 입출력 카운트 (재현성 보장)
+- Per-seed 완료 마커: `seed_complete.json`으로 시드별 완료 추적. 재실행 시 완료된 시드 스킵, `--force`로 마커 초기화. 기존 `final_ranking.csv`만 있는 시드는 자동 backfill (하위호환)
+- PPI_TARGETS 동적 생성: `RECEPTOR_STATES` × `PRODUCTION_N_SEEDS`로 `_build_ppi_targets()` 생성 (run_production.py). `--status` 시 시드별 상태 그리드 출력

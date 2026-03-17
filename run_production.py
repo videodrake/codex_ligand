@@ -503,7 +503,7 @@ def check_phase2() -> List[str]:
     missing = []
     for target in PPI_TARGETS:
         if not _seed_is_complete(target):
-            missing.append(f"{target['name']}: {SEED_MARKER_FILENAME}")
+            missing.append(target["name"])
     return missing
 
 
@@ -595,61 +595,66 @@ def print_status(
     config: Optional[dict] = None,
     step_view_enabled_flag: bool = True,
 ):
-    """각 Phase별 완료 상태와 step view 상태를 읽기 전용으로 출력한다."""
+    """각 Phase별 완료 상태를 출력한다."""
     config = config or _load_config()
-    print("\n  Phase 상태 점검:")
-    print(f"  {'Phase':<8} {'상태':<8} {'결과물':<50} {'상세'}")
-    print(f"  {'─'*8} {'─'*8} {'─'*50} {'─'*20}")
 
-    canonical_done = {}
+    # Step view stale 감지용 manifest (enabled일 때만)
+    stale_phases: List[int] = []
+    if step_view_enabled_flag:
+        manifest = build_current_run_manifest(
+            CONFIG_PATH,
+            repo_root=REPO_ROOT,
+            execution_mode="status",
+            ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
+            pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
+        )
+
+    print("\n  Pipeline 상태:")
+    print(f"  {'#':<4} {'상태':<8} {'결과물':<44} {'상세'}")
+    print(f"  {'─'*4} {'─'*8} {'─'*44} {'─'*20}")
+
     for phase_num, (desc, check_fn) in PHASE_CHECKS.items():
         missing = check_fn()
-        canonical_done[phase_num] = not missing
-        if not missing:
-            status = "[DONE]"
+        done = not missing
+        if done:
+            phase_status = "[DONE]"
             detail = ""
         else:
-            status = "[TODO]"
-            detail = f"누락: {', '.join(missing[:3])}"
-            if len(missing) > 3:
-                detail += f" ...+{len(missing)-3}"
-        print(f"  Phase {phase_num:<3} {status:<8} {desc:<50} {detail}")
+            phase_status = "[TODO]"
+            if phase_num == 2:
+                total = len(PPI_TARGETS)
+                completed = total - len(missing)
+                detail = f"{completed}/{total} seeds 완료"
+            else:
+                detail = f"누락: {', '.join(missing[:3])}"
+                if len(missing) > 3:
+                    detail += f" ...+{len(missing)-3}"
+
+        print(f"  {phase_num:<4} {phase_status:<8} {desc:<44} {detail}")
 
         # Phase 2 시드별 상태 그리드
         if phase_num == 2:
             for state in RECEPTOR_STATES:
+                state_targets = [t for t in PPI_TARGETS if t["receptor_id"] == state]
+                state_done = sum(1 for t in state_targets if _seed_is_complete(t))
                 seeds_str = []
-                for t in PPI_TARGETS:
-                    if t["receptor_id"] != state:
-                        continue
-                    mark = "DONE" if _seed_is_complete(t) else "TODO"
+                for t in state_targets:
+                    mark = "DONE" if _seed_is_complete(t) else "----"
                     seeds_str.append(f"seed{t['seed_index']}[{mark}]")
-                print(f"            {state:<17} {' '.join(seeds_str)}")
+                print(f"         {state:<17} ({state_done}/{len(state_targets)})  {' '.join(seeds_str)}")
 
-    print("  Phase 7   [항상]   Validate (매 실행마다 검증)")
-    print()
+        # Step view stale 감지
+        if step_view_enabled_flag and done and phase_num in STEP_VIEW_COLLECTORS:
+            sv = manifest["step_status"].get(f"step{phase_num}", "not_generated")
+            if sv in {"not_generated", "incomplete"}:
+                stale_phases.append(phase_num)
 
-    if not step_view_enabled_flag:
-        print("  Derived step view 상태:")
-        print("  [DISABLED] Step output view generation is disabled by config or CLI.")
-        print()
-        return
+    print(f"  {7:<4} {'[항상]':<8} {'Validate (매 실행마다 검증)':<44}")
 
-    manifest = build_current_run_manifest(
-        CONFIG_PATH,
-        repo_root=REPO_ROOT,
-        execution_mode="status",
-        ppi_config_paths=[target["config_ini"] for target in PPI_TARGETS],
-        pyrosetta_raw_run_paths=_pyrosetta_raw_run_paths(config),
-    )
-    print("  Derived step view 상태:")
-    print(f"  {'Step':<8} {'상태':<12} {'폴더':<24}")
-    print(f"  {'─'*8} {'─'*12} {'─'*24}")
-    for phase_num, (folder_name, _) in STEP_VIEW_COLLECTORS.items():
-        status = manifest["step_status"].get(f"step{phase_num}", "not_generated")
-        if phase_num in canonical_done and canonical_done[phase_num] and status in {"not_generated", "incomplete"}:
-            status = "stale"
-        print(f"  Step {phase_num:<4} {status:<12} {folder_name:<24}")
+    # Step view stale 경고 (문제가 있을 때만 표시)
+    if stale_phases:
+        phases_str = ", ".join(str(p) for p in stale_phases)
+        print(f"\n  [WARN] Phase {phases_str}의 steps/ 출력이 최신이 아닙니다. 재실행하면 자동 갱신됩니다.")
     print()
 
 
@@ -1123,6 +1128,10 @@ def _run_lane(
             "GPU lanes are intentionally explicit but still require a site-local engine wrapper."
         )
 
+    if lane == "status":
+        print_status(config=config, step_view_enabled_flag=step_output_view_enabled(config))
+        return {"status": "completed", "lane": lane}
+
     if not _FORCE_MODE and lane_is_complete(
         project_root,
         lane,
@@ -1300,13 +1309,15 @@ def main():
     vina_cfg = config.get("vina", {})
     ppi_models = f"{len(RECEPTOR_STATES) * PRODUCTION_N_SEEDS * 20}K"
 
+    banner_width = 54
+    vina_ppi_line = (f"Vina (exh={vina_cfg.get('exhaustiveness', '?')}, "
+                     f"poses={vina_cfg.get('n_poses', '?')}) + "
+                     f"PPI ({ppi_models})")
     print()
-    print("╔══════════════════════════════════════════════════════╗")
-    print(f"║  EGFR-MYO1D Production Pipeline                     ║")
-    print(f"║  Vina (exh={vina_cfg.get('exhaustiveness', '?')}, "
-          f"poses={vina_cfg.get('n_poses', '?')}) + "
-          f"PPI ({ppi_models}) ║")
-    print("╚══════════════════════════════════════════════════════╝")
+    print(f"╔{'═' * banner_width}╗")
+    print(f"║  {'EGFR-MYO1D Production Pipeline':<{banner_width - 2}}║")
+    print(f"║  {vina_ppi_line:<{banner_width - 2}}║")
+    print(f"╚{'═' * banner_width}╝")
 
     fresh_run = not _project_root().exists()
     execution_mode = _execution_mode_label(args)
