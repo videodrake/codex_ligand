@@ -27,6 +27,7 @@ This folder contains the main documentation set for the `codex_ligand` project. 
 
 - [runbook.md](runbook.md)
 - [manual_execution.md](manual_execution.md)
+- [nightly_review_automation.md](nightly_review_automation.md)
 - [manual_vina.md](manual_vina.md)
 - [manual_pyrosetta.md](manual_pyrosetta.md)
 - [server_environment_setup.md](server_environment_setup.md)

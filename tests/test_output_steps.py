@@ -23,6 +23,7 @@ from egfr_pipeline.output_steps import (
     record_step7_outputs,
     refresh_root_step_views,
     step_output_view_enabled,
+    update_step_index,
     update_run_overview,
     write_run_status,
     write_artifact_index,
@@ -500,6 +501,11 @@ def test_step_collectors_refresh_root_views_without_changing_canonical_outputs(t
     index_text = index_path.read_text(encoding="utf-8")
     assert "## Run Summary" in index_text
     assert "## Step Overview Table" in index_text
+    assert "| Step | Folder | Purpose | Status | Step Summary | Triage | Inspect First |" in index_text
+    assert "[4](run_overview.html#section=result-highlights&step=4)" in index_text
+    assert "step4_vina_postprocess/summary.md" in index_text
+    assert "## Step Triage" in index_text
+    assert "No active recovery groups are linked to any step right now." in index_text
     assert "## Where To Read First" in index_text
     assert "## Raw Debug Paths" in index_text
     assert "## Notes and Warnings" in index_text
@@ -599,6 +605,7 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
         project_root,
         current_run_manifest=manifest,
     )
+    index_path = update_step_index(project_root, current_run_manifest=manifest)
     overview_data = build_run_overview_data(project_root, current_run_manifest=manifest)
 
     assert markdown_path == project_root / "run_overview.md"
@@ -609,7 +616,11 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert (project_root / "step7_validate" / "validation_recovery_playbook.md").exists()
     markdown = markdown_path.read_text(encoding="utf-8")
     html = html_path.read_text(encoding="utf-8")
+    index_text = index_path.read_text(encoding="utf-8")
     report_digest = (project_root / "report_digest.md").read_text(encoding="utf-8")
+    validation_playbook = (project_root / "step7_validate" / "validation_recovery_playbook.md").read_text(
+        encoding="utf-8"
+    )
     assert "## At a Glance" in markdown
     assert "## Operational Readiness" in markdown
     assert "Overall execution status: `completed`" in markdown
@@ -626,6 +637,9 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert "python run_production.py --only 7" in markdown
     assert "python run_production.py --from 4" in markdown
     assert "validation_recovery_playbook.md" in markdown
+    assert "validation_recovery_playbook.md#validation-" in markdown
+    assert "Step summaries: `step4_vina_postprocess/summary.md`, `step7_validate/summary.md`" in markdown
+    assert "Step summaries: `step6_report/summary.md`" in markdown
     assert "Manual review findings: 1." in markdown
     assert "Recovery checklist groups: 2." in markdown
     assert "<title>Run Overview" in html
@@ -636,8 +650,14 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert 'id="action-filter-status"' in html
     assert 'id="guided-command-list"' in html
     assert 'id="command-filter-status"' in html
+    assert 'id="prioritized-quick-links"' in html
+    assert 'id="quick-link-filter-status"' in html
+    assert 'id="clear-group-focus"' in html
+    assert 'id="toggle-step-radar-visibility"' in html
+    assert 'id="group-focus-status"' in html
     assert 'href="#recovery-radar"' in html
     assert 'id="recovery-radar"' in html
+    assert 'id="recovery-radar-list"' in html
     assert 'id="suggested-commands"' in html
     assert 'data-radar-filter="validation"' in html
     assert 'data-radar-filter="manual"' in html
@@ -648,16 +668,69 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert 'data-source-kind="validation"' in html
     assert 'data-priority="immediate"' in html
     assert 'data-priority-rank="0"' in html
+    assert 'data-availability-rank="0"' in html
+    assert 'data-group-key="' in html
+    assert 'data-group-keys="' in html
+    assert 'id="result-context-status"' in html
+    assert 'id="result-card-list"' in html
+    assert 'id="operational-context-status"' in html
+    assert 'id="operational-card-list"' in html
+    assert 'data-step-numbers="4 7"' in html
+    assert 'data-step-numbers="4"' in html
+    assert 'data-step-numbers="7"' in html
+    assert 'href="step4_vina_postprocess/summary.md"' in html
+    assert 'href="step7_validate/summary.md"' in html
     assert "Pipeline Progress" in html
     assert "Quick Links" in html
     assert "Operational Readiness" in html
     assert "Suggested Commands" in html
     assert "matchesPriority" in html
-    assert 'const state = { scope: "all", priority: "all" };' in html
+    assert 'const sectionLinks = Array.from(document.querySelectorAll(".jump-link"));' in html
+    assert 'const radarList = document.getElementById("recovery-radar-list");' in html
+    assert 'const toggleStepRadarButton = document.getElementById("toggle-step-radar-visibility");' in html
+    assert 'const state = { scope: "all", priority: "all", section: "", group: "", step: "", stepRadarExpanded: false };' in html
+    assert 'const params = new URLSearchParams(rawHash);' in html
+    assert 'params.set("scope", state.scope);' in html
+    assert 'params.set("priority", state.priority);' in html
+    assert 'params.set("section", state.section);' in html
+    assert 'params.set("group", state.group);' in html
+    assert 'params.set("step", state.step);' in html
+    assert 'window.addEventListener("hashchange", function () {' in html
+    assert 'const initialHashState = parseHashState();' in html
+    assert 'window.location.hash = nextHash;' in html
+    assert "scrollToSection(state.section);" in html
+    assert "applyGroupFocus()" in html
+    assert "groupKeysFor(item)" in html
+    assert "function stepNumbersFor(element)" in html
+    assert "function relatedGroupKeysForActiveStep()" in html
+    assert 'const resultCards = Array.from(document.querySelectorAll(".result-card"));' in html
+    assert 'const operationalCards = Array.from(document.querySelectorAll(".operational-card"));' in html
+    assert 'syncContextCards(' in html
+    assert 'Show Unrelated Recovery Cards' in html
+    assert 'Collapse Unrelated Recovery Cards' in html
+    assert 'state.stepRadarExpanded = !state.stepRadarExpanded;' in html
+    assert 'recovery group(s) linked to Step ' in html
+    assert "Linked guidance for " in html
+    assert "validation_recovery_playbook.md#validation-" in html
     assert 'syncCollection(actionItems, actionList, actionEmpty, actionStatus, "top action(s)")' in html
     assert 'syncCollection(commandItems, commandList, commandEmpty, commandStatus, "command suggestion(s)")' in html
+    assert 'syncPriorityCollection(linkItems, linkList, linkStatus, "quick link(s)")' in html
+    assert "Showing 14 quick link(s) in default review order." in html
     assert "Showing 2 top action(s) in urgency order." in html
+    assert "Showing all 4 result highlight card(s) in default review order." in html
+    assert "Showing all 4 operational readiness card(s) in default review order." in html
+    assert "Step-linked focus for Step " in html
+    assert "Select a recovery card to highlight matching actions, commands, links, and step cards." in html
     assert "Validation: Missing artifact" in html
+    assert "Related steps:</strong> Steps 4, 7" in html
+    assert "## Step Triage" in index_text
+    assert "[4](run_overview.html#section=result-highlights&step=4)" in index_text
+    assert "[7](run_overview.html#section=result-highlights&step=7)" in index_text
+    assert "### Step 4: vina_postprocess" in index_text
+    assert "### Step 7: validate" in index_text
+    assert "run_overview.html#section=recovery-radar&scope=validation&priority=immediate&group=validation-" in index_text
+    assert "step7_validate/validation_recovery_playbook.md#validation-" in index_text
+    assert "Related step summaries: `step4_vina_postprocess/summary.md`, `step7_validate/summary.md`" in index_text
     assert "## Operational Follow-up" in report_digest
     assert "## Validation Follow-up" in report_digest
     assert "## Recovery Snapshot" in report_digest
@@ -665,8 +738,12 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert "Manual Review: 1 group(s), 1 high." in report_digest
     assert "Validation - Missing artifact" in report_digest
     assert "python run_production.py --from 4" in report_digest
+    assert "validation_recovery_playbook.md#validation-" in report_digest
+    assert "Step summaries: `step4_vina_postprocess/summary.md`, `step7_validate/summary.md`" in report_digest
     assert "operational_recovery_playbook.md" in report_digest
     assert "step7_validate/validation_recovery_playbook.md" in report_digest
+    assert '<a id="validation-' in validation_playbook
+    assert "Deep link: `validation_recovery_playbook.md#validation-" in validation_playbook
     assert overview_data["progress_percent"] == 100
     assert overview_data["validation_summary"]["status"] == "failed"
     assert overview_data["validation_summary"]["recommended_command"] == "python run_production.py --from 4"
@@ -676,23 +753,50 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert overview_data["recovery_radar"]["summary"]["total_groups"] == 2
     assert overview_data["recovery_radar"]["summary"]["validation_groups"] == 2
     assert overview_data["recovery_radar"]["summary"]["priority_counts"]["immediate"] == 1
+    assert len(overview_data["recovery_radar"]["all_items"]) == 2
     filter_views = {item["filter_key"]: item for item in overview_data["recovery_radar"]["filter_views"]}
     assert filter_views["all"]["group_count"] == 2
     assert filter_views["validation"]["group_count"] == 2
     assert filter_views["operational"]["group_count"] == 0
     assert filter_views["manual"]["group_count"] == 1
     assert filter_views["manual"]["priority_counts"]["high"] == 1
+    first_group_key = overview_data["recovery_radar"]["items"][0]["group_key"]
+    assert first_group_key.startswith("validation-")
+    assert overview_data["recovery_radar"]["items"][0]["playbook_link"].endswith(f"#{first_group_key}")
+    assert overview_data["recovery_radar"]["items"][0]["step_numbers"] == [4, 7]
+    assert [item["path"] for item in overview_data["recovery_radar"]["items"][0]["step_summary_links"]] == [
+        "step4_vina_postprocess/summary.md",
+        "step7_validate/summary.md",
+    ]
     assert overview_data["action_focus"][0]["source_kind"] == "validation"
     assert overview_data["action_focus"][0]["priority_label"] == "immediate"
+    assert overview_data["action_focus"][0]["path"].endswith(f"#{first_group_key}")
+    assert overview_data["action_focus"][0]["group_keys"] == [first_group_key]
     annotated_commands = {item["command"]: item for item in overview_data["annotated_command_suggestions"]}
     assert annotated_commands["python run_production.py --from 4"]["source_kind"] == "validation"
     assert annotated_commands["python run_production.py --from 4"]["priority_label"] == "immediate"
+    assert first_group_key in annotated_commands["python run_production.py --from 4"]["group_keys"]
     assert annotated_commands["python run_production.py --only 7"]["priority_label"] == "high"
+    annotated_links = {item["path"]: item for item in overview_data["annotated_quick_links"]}
+    assert annotated_links["step7_validate/validation_recovery_playbook.md"]["source_kind"] == "validation"
+    assert annotated_links["step7_validate/validation_recovery_playbook.md"]["priority_label"] == "immediate"
+    assert annotated_links["step7_validate/validation_recovery_playbook.md"]["manual_review_required"] is True
+    assert first_group_key in annotated_links["step7_validate/validation_recovery_playbook.md"]["group_keys"]
+    assert annotated_links["report_digest.md"]["source_kind"] == "overview"
+    assert overview_data["pocket_summary"]["step_numbers"] == [4]
+    assert overview_data["pocket_summary"]["step_summary_links"][0]["path"] == "step4_vina_postprocess/summary.md"
     assert overview_data["report_summary"]["available"] is True
+    assert overview_data["report_summary"]["step_numbers"] == [6]
+    assert overview_data["report_summary"]["step_summary_links"][0]["path"] == "step6_report/summary.md"
+    assert overview_data["validation_summary"]["step_numbers"] == [7]
+    assert overview_data["validation_summary"]["step_summary_links"][0]["path"] == "step7_validate/summary.md"
     assert overview_data["operational_summaries"][0]["available"] is True
+    assert overview_data["operational_summaries"][0]["step_numbers"] == [1]
+    assert overview_data["operational_summaries"][0]["step_summary_links"][0]["path"] == "step1_vina_raw/summary.md"
     assert overview_data["operational_summaries"][1]["available"] is True
     assert overview_data["operational_summaries"][2]["available"] is True
     assert overview_data["operational_summaries"][3]["available"] is True
+    assert overview_data["operational_summaries"][3]["step_numbers"] == [1, 2, 3]
 
 
 def test_build_run_overview_data_suggests_resume_command_for_failed_run(tmp_path: Path) -> None:
@@ -737,6 +841,7 @@ def test_update_run_overview_writes_operational_recovery_playbook_for_upstream_i
     )
 
     update_run_overview(project_root, current_run_manifest=manifest)
+    index_path = update_step_index(project_root, current_run_manifest=manifest)
     overview_data = build_run_overview_data(project_root, current_run_manifest=manifest)
 
     recovery_plan = _read_json(project_root / "operational_recovery_plan.json")
@@ -754,34 +859,74 @@ def test_update_run_overview_writes_operational_recovery_playbook_for_upstream_i
     assert "python run_production.py --from 1" in playbook_text
     assert "Using fallback canonical source" in playbook_text
     assert "Optional Phase 1 interface report is not available." in playbook_text
+    assert '<a id="operational-' in playbook_text
+    assert "Deep link: `operational_recovery_playbook.md#operational-" in playbook_text
 
     markdown = (project_root / "run_overview.md").read_text(encoding="utf-8")
     html = (project_root / "run_overview.html").read_text(encoding="utf-8")
+    index_text = index_path.read_text(encoding="utf-8")
     report_digest = (project_root / "report_digest.md").read_text(encoding="utf-8")
     assert "## Recovery Radar" in markdown
     assert "### Filter Views" in markdown
     assert "Operational: 5 group(s), 2 immediate, 2 high, 1 medium, 3 manual review." in markdown
     assert "Manual Review: 3 group(s), 2 high, 1 medium." in markdown
     assert "Radar 1: Operational - Missing raw pose coverage" in markdown
+    assert "operational_recovery_playbook.md#operational-" in markdown
+    assert "Step summaries: `step1_vina_raw/summary.md`" in markdown
+    assert "Step summaries: `step1_vina_raw/summary.md`, `step2_ppi_raw/summary.md`, `step3_ppi_postprocess/summary.md`" in markdown
     assert "Recovery Radar" in html
     assert "Operational 5" in html
     assert "python run_production.py --from 1" in html
     assert 'id="guided-action-list"' in html
     assert 'id="guided-command-list"' in html
+    assert 'id="prioritized-quick-links"' in html
+    assert 'id="clear-group-focus"' in html
+    assert 'id="toggle-step-radar-visibility"' in html
+    assert 'id="recovery-radar-list"' in html
     assert 'data-radar-filter="operational"' in html
     assert 'data-radar-priority-filter="medium"' in html
     assert 'data-source-kind="operational"' in html
     assert 'data-manual-review="yes"' in html
+    assert 'data-group-key="' in html
+    assert 'data-group-keys="' in html
+    assert 'id="result-context-status"' in html
+    assert 'id="operational-context-status"' in html
+    assert 'data-step-numbers="1"' in html
+    assert 'data-step-numbers="1 2 3"' in html
+    assert 'href="step1_vina_raw/summary.md"' in html
     assert "matchesScope" in html
     assert "matchesPriority" in html
     assert "all scopes and all priorities" in html
+    assert 'window.addEventListener("hashchange", function () {' in html
+    assert 'window.location.hash = nextHash;' in html
+    assert 'params.set("group", state.group);' in html
+    assert 'syncPriorityCollection(linkItems, linkList, linkStatus, "quick link(s)")' in html
+    assert "applyGroupFocus()" in html
+    assert "function stepNumbersFor(element)" in html
+    assert "function relatedGroupKeysForActiveStep()" in html
+    assert 'state.stepRadarExpanded = !state.stepRadarExpanded;' in html
+    assert 'Show Unrelated Recovery Cards' in html
+    assert 'Collapse Unrelated Recovery Cards' in html
+    assert "Showing all 4 result highlight card(s) in default review order." in html
+    assert "Showing all 4 operational readiness card(s) in default review order." in html
     assert "Showing 5 top action(s) in urgency order." in html
     assert "Operational: Missing raw pose coverage" in html
+    assert "Related steps:</strong> Step 1" in html
+    assert "operational_recovery_playbook.md#operational-" in html
+    assert "## Step Triage" in index_text
+    assert "[1](run_overview.html#section=operational-readiness&step=1)" in index_text
+    assert "[2](run_overview.html#section=operational-readiness&step=2)" in index_text
+    assert "### Step 1: vina_raw" in index_text
+    assert "run_overview.html#section=recovery-radar&scope=operational&priority=immediate&group=operational-" in index_text
+    assert "operational_recovery_playbook.md#operational-" in index_text
+    assert "Related step summaries: `step1_vina_raw/summary.md`" in index_text
     assert "## Recovery Snapshot" in report_digest
     assert "### Filter Views" in report_digest
     assert "All Groups: 5 group(s), 2 immediate, 2 high, 1 medium, 3 manual review." in report_digest
     assert "Operational - Missing raw pose coverage" in report_digest
     assert "python run_production.py --from 1" in report_digest
+    assert "operational_recovery_playbook.md#operational-" in report_digest
+    assert "Step summaries: `step1_vina_raw/summary.md`" in report_digest
 
     commands = [item["command"] for item in overview_data["command_suggestions"]]
     assert "python run_production.py --from 1" in commands
@@ -792,15 +937,40 @@ def test_update_run_overview_writes_operational_recovery_playbook_for_upstream_i
     assert overview_data["recovery_radar"]["summary"]["priority_counts"]["immediate"] == 2
     assert overview_data["recovery_radar"]["summary"]["priority_counts"]["high"] == 2
     assert overview_data["recovery_radar"]["summary"]["priority_counts"]["medium"] == 1
+    assert len(overview_data["recovery_radar"]["all_items"]) == 5
     filter_views = {item["filter_key"]: item for item in overview_data["recovery_radar"]["filter_views"]}
     assert filter_views["validation"]["group_count"] == 0
     assert filter_views["operational"]["group_count"] == 5
     assert filter_views["operational"]["manual_review_groups"] == 3
     assert filter_views["manual"]["group_count"] == 3
+    first_group_key = overview_data["recovery_radar"]["items"][0]["group_key"]
+    assert first_group_key.startswith("operational-")
+    assert overview_data["recovery_radar"]["items"][0]["playbook_link"].endswith(f"#{first_group_key}")
+    assert overview_data["recovery_radar"]["items"][0]["step_numbers"] == [1]
+    assert overview_data["recovery_radar"]["items"][0]["step_summary_links"][0]["path"] == "step1_vina_raw/summary.md"
     assert overview_data["action_focus"][0]["source_kind"] == "operational"
     assert overview_data["action_focus"][0]["priority_label"] == "immediate"
+    assert overview_data["action_focus"][0]["path"].endswith(f"#{first_group_key}")
+    assert overview_data["action_focus"][0]["group_keys"] == [first_group_key]
     assert overview_data["annotated_command_suggestions"][0]["source_kind"] == "operational"
     assert overview_data["annotated_command_suggestions"][0]["priority_label"] == "immediate"
+    assert first_group_key in overview_data["annotated_command_suggestions"][0]["group_keys"]
+    annotated_links = {item["path"]: item for item in overview_data["annotated_quick_links"]}
+    assert annotated_links["operational_recovery_playbook.md"]["source_kind"] == "operational"
+    assert annotated_links["operational_recovery_playbook.md"]["priority_label"] == "immediate"
+    assert annotated_links["operational_recovery_playbook.md"]["manual_review_required"] is True
+    assert first_group_key in annotated_links["operational_recovery_playbook.md"]["group_keys"]
+    assert annotated_links["step6_report/project_report.txt"]["source_kind"] == "results"
+    assert overview_data["operational_summaries"][0]["step_numbers"] == [1]
+    assert overview_data["operational_summaries"][0]["step_summary_links"][0]["path"] == "step1_vina_raw/summary.md"
+    assert overview_data["operational_summaries"][3]["step_numbers"] == [1, 2, 3]
+    assert [item["path"] for item in overview_data["operational_summaries"][3]["step_summary_links"]] == [
+        "step1_vina_raw/summary.md",
+        "step2_ppi_raw/summary.md",
+        "step3_ppi_postprocess/summary.md",
+    ]
+    assert overview_data["report_summary"]["step_numbers"] == [6]
+    assert overview_data["report_summary"]["step_summary_links"][0]["path"] == "step6_report/summary.md"
     assert overview_data["next_actions"][0].startswith("Open `operational_recovery_playbook.md`")
 
 

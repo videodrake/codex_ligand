@@ -19,7 +19,8 @@ from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
+from urllib.parse import urlencode
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline.pyrosetta_docking.metadata import build_output_root_name
@@ -408,6 +409,25 @@ def _display_path(
         except ValueError:
             pass
     return path_obj.resolve(strict=False).as_posix()
+
+
+def _slugify_group_token(value: object) -> str:
+    token = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return token or "item"
+
+
+def _recovery_group_key(source_kind: str, *parts: object) -> str:
+    tokens = [_slugify_group_token(source_kind)]
+    tokens.extend(_slugify_group_token(part) for part in parts if str(part or "").strip())
+    return "-".join(tokens)
+
+
+def _playbook_group_link(path: str, group_key: str) -> str:
+    cleaned_path = str(path or "").strip()
+    cleaned_group_key = str(group_key or "").strip()
+    if cleaned_path and cleaned_group_key:
+        return f"{cleaned_path}#{cleaned_group_key}"
+    return cleaned_path
 
 
 def _read_json(path: Path) -> dict:
@@ -1035,6 +1055,12 @@ def _validation_action_groups(issues: Sequence[dict]) -> List[dict]:
                 "phase_number": issue.get("phase_number"),
                 "phase_label": issue.get("phase_label", "Manual review"),
                 "recommended_command": issue.get("recommended_command", ""),
+                "group_key": _recovery_group_key(
+                    "validation",
+                    issue.get("category", "validation_check"),
+                    issue.get("phase_number"),
+                    issue.get("recommended_command", ""),
+                ),
                 "action_type": issue.get("action_type", "manual_then_validate"),
                 "action_label": issue.get("action_label", "Manual review first, then rerun validation"),
                 "priority_rank": int(issue.get("priority_rank", 2)),
@@ -1217,7 +1243,9 @@ def write_validation_recovery_outputs(
         for index, group in enumerate(recovery_plan["action_groups"], start=1):
             lines.extend(
                 [
+                    f"<a id=\"{group['group_key']}\"></a>",
                     f"### Action Group {index}: {group['category_label']}",
+                    f"- Deep link: `{_playbook_group_link('validation_recovery_playbook.md', group['group_key'])}`",
                     f"- Priority: `{group['priority_label']}`",
                     f"- Action path: `{group['action_label']}`",
                     f"- Likely source phase: `{group['phase_label']}`",
@@ -2585,6 +2613,12 @@ def _operational_action_groups(issues: Sequence[dict]) -> List[dict]:
                 "step_label": issue["step_label"],
                 "category": issue["category"],
                 "category_label": issue["category_label"],
+                "group_key": _recovery_group_key(
+                    "operational",
+                    issue.get("step_number"),
+                    issue.get("category", ""),
+                    issue.get("recommended_command", ""),
+                ),
                 "priority_rank": issue["priority_rank"],
                 "priority_label": issue["priority_label"],
                 "action_type": issue["action_type"],
@@ -2705,7 +2739,9 @@ def write_operational_recovery_outputs(
         for index, group in enumerate(recovery_plan["action_groups"], start=1):
             lines.extend(
                 [
+                    f"<a id=\"{group['group_key']}\"></a>",
                     f"### Action Group {index}: {group['category_label']}",
+                    f"- Deep link: `{_playbook_group_link('operational_recovery_playbook.md', group['group_key'])}`",
                     f"- Priority: `{group['priority_label']}`",
                     f"- Scope: `{group['step_label']}`",
                     f"- Action path: `{group['action_label']}`",
@@ -2759,6 +2795,119 @@ def _step_health_summary(current_manifest: Optional[dict], project_root: Path) -
     }
 
 
+def _normalize_step_numbers(step_numbers: Optional[Iterable[object]]) -> List[int]:
+    normalized: List[int] = []
+    for item in step_numbers or []:
+        step_number = _safe_int(item, None)
+        if step_number is None or step_number not in STEP_SPECS or step_number in normalized:
+            continue
+        normalized.append(step_number)
+    return normalized
+
+
+def _step_context_label(step_numbers: Optional[Iterable[object]]) -> str:
+    normalized = _normalize_step_numbers(step_numbers)
+    if not normalized:
+        return ""
+    if len(normalized) == 1:
+        return f"Step {normalized[0]}"
+    return "Steps " + ", ".join(str(step_number) for step_number in normalized)
+
+
+def _step_summary_path(step_number: int) -> str:
+    spec = _step_spec(step_number)
+    return f"{spec.folder_name}/summary.md"
+
+
+def _step_summary_links(step_numbers: Optional[Iterable[object]]) -> List[dict]:
+    links: List[dict] = []
+    for step_number in _normalize_step_numbers(step_numbers):
+        spec = _step_spec(step_number)
+        links.append(
+            {
+                "step_number": step_number,
+                "label": f"Step {step_number}: {spec.step_name.replace('_', ' ').title()}",
+                "path": _step_summary_path(step_number),
+            }
+        )
+    return links
+
+
+def _with_step_summary_links(payload: Mapping[str, object]) -> dict:
+    enriched = dict(payload)
+    enriched["step_numbers"] = _normalize_step_numbers(payload.get("step_numbers"))
+    enriched["step_summary_links"] = _step_summary_links(enriched.get("step_numbers"))
+    return enriched
+
+
+def _step_summary_links_text(step_summary_links: Sequence[Mapping[str, object]]) -> str:
+    return ", ".join(f"`{str(item.get('path', ''))}`" for item in step_summary_links if str(item.get("path", "")).strip())
+
+
+def _overview_group_link(item: Mapping[str, object]) -> str:
+    group_key = str(item.get("group_key", "")).strip()
+    if not group_key:
+        return "run_overview.html#recovery-radar"
+    params = urlencode(
+        {
+            "section": "recovery-radar",
+            "scope": str(item.get("source_kind", "all")),
+            "priority": str(item.get("priority_label", "all")),
+            "group": group_key,
+        }
+    )
+    return f"run_overview.html#{params}"
+
+
+def _overview_step_link(step_number: int) -> str:
+    section = "operational-readiness" if int(step_number) <= 3 else "result-highlights"
+    params = urlencode({"section": section, "step": int(step_number)})
+    return f"run_overview.html#{params}"
+
+
+def _step_triage_items(recovery_radar: Mapping[str, object]) -> Dict[int, List[dict]]:
+    triage: Dict[int, List[dict]] = {step_num: [] for step_num in STEP_SPECS}
+    radar_items = recovery_radar.get("all_items") or recovery_radar.get("items") or []
+    for index, item in enumerate(radar_items, start=1):
+        triage_entry = {
+            "group_key": str(item.get("group_key", "")),
+            "title": str(item.get("title", "Recovery group")),
+            "source_kind": str(item.get("source_kind", "general")),
+            "source_label": str(item.get("source_label", "General")),
+            "priority_rank": _safe_int(item.get("priority_rank"), 3),
+            "priority_label": str(item.get("priority_label", "low")),
+            "scope_label": str(item.get("scope_label", "")),
+            "recommended_command": str(item.get("recommended_command", "")).strip(),
+            "playbook_link": str(item.get("playbook_link", item.get("playbook_path", ""))),
+            "overview_link": _overview_group_link(item),
+            "step_summary_links": list(item.get("step_summary_links") or []),
+            "default_order": index,
+        }
+        for step_number in _normalize_step_numbers(item.get("step_numbers")):
+            triage.setdefault(step_number, []).append(dict(triage_entry))
+    for step_number in list(triage):
+        triage[step_number] = sorted(
+            triage[step_number],
+            key=lambda entry: (
+                _safe_int(entry.get("priority_rank"), 3),
+                _safe_int(entry.get("default_order"), 99),
+                str(entry.get("title", "")),
+            ),
+        )
+    return triage
+
+
+def _step_triage_summary(triage_items: Sequence[Mapping[str, object]]) -> str:
+    if not triage_items:
+        return "`clear`"
+    first_item = triage_items[0]
+    summary = f"`{str(first_item.get('overview_link', 'run_overview.html#recovery-radar'))}`"
+    overflow = len(triage_items) - 1
+    if overflow > 0:
+        summary += f" (+{overflow} more)"
+    return summary
+
+
 def _step1_input_summary(project_root: Path) -> dict:
     path = project_root / STEP_SPECS[1].folder_name / "raw_pose_index.csv"
     rows = _load_csv_rows(path)
@@ -2770,6 +2919,7 @@ def _step1_input_summary(project_root: Path) -> dict:
             "path": f"{STEP_SPECS[1].folder_name}/raw_pose_index.csv",
             "headline": "Raw Vina pose coverage is not indexed yet.",
             "details": [],
+            "step_numbers": [1],
         }
 
     expected = len(rows)
@@ -2803,6 +2953,7 @@ def _step1_input_summary(project_root: Path) -> dict:
                 else "Step manifest is not available."
             ),
         ],
+        "step_numbers": [1],
     }
 
 
@@ -2817,6 +2968,7 @@ def _step2_ppi_summary(project_root: Path) -> dict:
             "path": f"{STEP_SPECS[2].folder_name}/raw_run_paths.tsv",
             "headline": "Raw PyRosetta run coverage is not indexed yet.",
             "details": [],
+            "step_numbers": [2],
         }
 
     ranking_ready = [row for row in rows if str(row.get("final_ranking_csv", "")).strip()]
@@ -2845,6 +2997,7 @@ def _step2_ppi_summary(project_root: Path) -> dict:
                 else "Step manifest is not available."
             ),
         ],
+        "step_numbers": [2],
     }
 
 
@@ -2860,6 +3013,7 @@ def _step3_evidence_summary(project_root: Path) -> dict:
             "path": f"{STEP_SPECS[3].folder_name}/ppi_pyrosetta_residues.csv",
             "headline": "Aggregated PPI residue evidence is not available yet.",
             "details": [],
+            "step_numbers": [3],
         }
 
     def _priority(row: dict) -> Tuple[float, float, float]:
@@ -2889,6 +3043,7 @@ def _step3_evidence_summary(project_root: Path) -> dict:
                 else "Step manifest is not available."
             ),
         ],
+        "step_numbers": [3],
     }
 
 
@@ -2900,6 +3055,7 @@ def _pocket_summary(project_root: Path) -> dict:
             "path": "step4_vina_postprocess/vina_pocket_table.csv",
             "headline": "Pocket summary is not available yet.",
             "details": [],
+            "step_numbers": [4],
         }
 
     receptors = sorted({str(row.get("receptor_id", "")).strip() for row in rows if row.get("receptor_id")})
@@ -2937,6 +3093,7 @@ def _pocket_summary(project_root: Path) -> dict:
             ),
             (f"Top residues for the strongest pocket: {top_residues}." if top_residues else "Top residues are not available."),
         ],
+        "step_numbers": [4],
     }
 
 
@@ -2948,6 +3105,7 @@ def _verdict_summary(project_root: Path) -> dict:
             "path": "step5_verdict/valid_sites.csv",
             "headline": "Verdict summary is not available yet.",
             "details": [],
+            "step_numbers": [5],
         }
 
     verdict_counts: Counter = Counter(
@@ -2990,6 +3148,7 @@ def _verdict_summary(project_root: Path) -> dict:
                 else "Top site reasons are not available."
             ),
         ],
+        "step_numbers": [5],
     }
 
 
@@ -3005,6 +3164,7 @@ def _validation_summary_for_overview(project_root: Path) -> dict:
             "recommended_command": "",
             "validation_only_command": "python run_production.py --only 7",
             "playbook_path": f"{STEP_SPECS[7].folder_name}/validation_recovery_playbook.md",
+            "step_numbers": [7],
         }
 
     payload = _read_json(path)
@@ -3046,6 +3206,7 @@ def _validation_summary_for_overview(project_root: Path) -> dict:
         "manual_review_count": manual_review_count,
         "action_group_count": action_group_count,
         "manual_review_required": bool(recovery_plan.get("manual_review_required", False)),
+        "step_numbers": [7],
     }
 
 
@@ -3093,6 +3254,7 @@ def _operational_recovery_summary_for_overview(
             "action_group_count": 0,
             "manual_review_count": 0,
             "recommended_command": "",
+            "step_numbers": [1, 2, 3],
         }
 
     details: List[str] = []
@@ -3114,7 +3276,20 @@ def _operational_recovery_summary_for_overview(
         "action_group_count": action_group_count,
         "manual_review_count": manual_review_count,
         "recommended_command": str(plan.get("recommended_command", "")),
+        "step_numbers": [1, 2, 3],
     }
+
+
+def _recovery_step_numbers(source_kind: str, group: Mapping[str, object]) -> List[int]:
+    explicit = _normalize_step_numbers(group.get("step_numbers"))
+    if explicit:
+        return explicit
+    if source_kind == "validation":
+        phase_number = _safe_int(group.get("phase_number"), None)
+        if phase_number is not None and phase_number in STEP_SPECS and phase_number != 7:
+            return [phase_number, 7]
+        return [7]
+    return _normalize_step_numbers([group.get("step_number")])
 
 
 def _recovery_radar_item(
@@ -3128,9 +3303,20 @@ def _recovery_radar_item(
     messages = [str(item.get("message", "")).strip() for item in findings if str(item.get("message", "")).strip()]
     artifacts = [str(item).strip() for item in (group.get("artifacts") or []) if str(item).strip()]
     scope_label = str(group.get("phase_label") or group.get("step_label") or "Manual review")
+    step_numbers = _recovery_step_numbers(source_kind, group)
+    group_key = str(
+        group.get("group_key")
+        or _recovery_group_key(
+            source_kind,
+            group.get("category_label", "Recovery group"),
+            scope_label,
+            group.get("recommended_command", ""),
+        )
+    )
     return {
         "source_kind": source_kind,
         "source_label": source_label,
+        "group_key": group_key,
         "title": str(group.get("category_label", "Recovery group")),
         "scope_label": scope_label,
         "priority_rank": _safe_int(group.get("priority_rank"), 2),
@@ -3144,6 +3330,9 @@ def _recovery_radar_item(
         "artifacts": artifacts[:2],
         "artifact_overflow_count": max(0, len(artifacts) - 2),
         "playbook_path": playbook_path,
+        "playbook_link": _playbook_group_link(playbook_path, group_key),
+        "step_numbers": step_numbers,
+        "step_summary_links": _step_summary_links(step_numbers),
     }
 
 
@@ -3253,6 +3442,7 @@ def _build_recovery_radar(
     return {
         "headline": headline,
         "items": visible_items,
+        "all_items": items,
         "summary": summary,
         "filter_views": filter_views,
         "available": bool(items),
@@ -3268,6 +3458,7 @@ def _report_summary(project_root: Path) -> dict:
             "path": "step6_report/project_report.txt",
             "headline": "Narrative report is not available yet.",
             "details": [],
+            "step_numbers": [6],
         }
 
     try:
@@ -3298,6 +3489,7 @@ def _report_summary(project_root: Path) -> dict:
                 else "Combined residue evidence table is not available."
             ),
         ],
+        "step_numbers": [6],
     }
 
 
@@ -3528,8 +3720,9 @@ def _guided_action_focus(
                 "title": f"{radar_item['source_label']}: {radar_item['title']}",
                 "summary": preview_text,
                 "detail": next_step,
-                "path": str(radar_item.get("playbook_path", "")),
+                "path": str(radar_item.get("playbook_link") or radar_item.get("playbook_path", "")),
                 "command": command_text,
+                "group_keys": [str(radar_item.get("group_key", ""))] if str(radar_item.get("group_key", "")).strip() else [],
                 "source_kind": str(radar_item.get("source_kind", "general")),
                 "source_label": str(radar_item.get("source_label", "General")),
                 "priority_label": str(radar_item.get("priority_label", "low")),
@@ -3550,6 +3743,7 @@ def _guided_action_focus(
                 "detail": "Default review order from the latest overview snapshot.",
                 "path": "",
                 "command": "",
+                "group_keys": [],
                 "source_kind": "general",
                 "source_label": "General",
                 "priority_label": "low",
@@ -3582,6 +3776,16 @@ def _annotate_command_suggestions(
         failed_phase_command = f"python run_production.py --from {current_phase_number}"
     validation_only_command = str(validation_summary.get("validation_only_command", "")).strip()
     operational_command = str(operational_recovery_summary.get("recommended_command", "")).strip()
+    validation_group_keys = [
+        str(item.get("group_key", "")).strip()
+        for item in recovery_radar.get("items") or []
+        if str(item.get("source_kind", "")) == "validation" and str(item.get("group_key", "")).strip()
+    ]
+    operational_group_keys = [
+        str(item.get("group_key", "")).strip()
+        for item in recovery_radar.get("items") or []
+        if str(item.get("source_kind", "")) == "operational" and str(item.get("group_key", "")).strip()
+    ]
 
     for index, item in enumerate(command_suggestions, start=1):
         command_text = str(item.get("command", "")).strip()
@@ -3590,6 +3794,7 @@ def _annotate_command_suggestions(
         priority_rank = 3
         priority_label = "low"
         manual_review_required = False
+        group_keys: List[str] = []
         matched_groups = command_matches.get(command_text) or []
         if matched_groups:
             best_group = min(
@@ -3604,18 +3809,25 @@ def _annotate_command_suggestions(
             priority_rank = _safe_int(best_group.get("priority_rank"), 3)
             priority_label = str(best_group.get("priority_label", _validation_priority_label(priority_rank)))
             manual_review_required = any(group.get("manual_review_required") for group in matched_groups)
+            group_keys = [
+                str(group.get("group_key", "")).strip()
+                for group in matched_groups
+                if str(group.get("group_key", "")).strip()
+            ]
         elif validation_only_command and command_text == validation_only_command:
             source_kind = "validation"
             source_label = "Validation"
             priority_rank = 1 if validation_summary.get("status") in {"failed", "error"} else 2
             priority_label = _validation_priority_label(priority_rank)
             manual_review_required = _safe_int(validation_summary.get("manual_review_count"), 0) > 0
+            group_keys = validation_group_keys
         elif operational_command and command_text == operational_command:
             source_kind = "operational"
             source_label = "Operational"
             priority_rank = 0 if _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0 else 2
             priority_label = _validation_priority_label(priority_rank)
             manual_review_required = _safe_int(operational_recovery_summary.get("manual_review_count"), 0) > 0
+            group_keys = operational_group_keys
         elif failed_phase_command and command_text == failed_phase_command:
             priority_rank = 0
             priority_label = _validation_priority_label(priority_rank)
@@ -3624,17 +3836,127 @@ def _annotate_command_suggestions(
             source_label = "Operational"
             priority_rank = 1
             priority_label = _validation_priority_label(priority_rank)
+            group_keys = operational_group_keys
 
         annotated.append(
             {
                 "label": str(item.get("label", "")),
                 "command": command_text,
                 "reason": str(item.get("reason", "")),
+                "group_keys": group_keys,
                 "source_kind": source_kind,
                 "source_label": source_label,
                 "priority_label": priority_label,
                 "priority_rank": priority_rank,
                 "manual_review_required": manual_review_required,
+                "default_order": index,
+            }
+        )
+    return annotated
+
+
+def _annotate_quick_links(
+    *,
+    quick_links: Sequence[dict],
+    recovery_radar: dict,
+    validation_summary: dict,
+    operational_recovery_summary: dict,
+    run_status: Optional[dict],
+    current_manifest: Optional[dict],
+) -> List[dict]:
+    overall_status = str((run_status or {}).get("overall_status", "available"))
+    step_status = (current_manifest or {}).get("step_status") or {}
+    stale_present = any(status == "stale" for status in step_status.values())
+    validation_active = validation_summary.get("status") in {"failed", "error"}
+    operational_active = _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0
+    validation_manual = _safe_int(validation_summary.get("manual_review_count"), 0) > 0
+    operational_manual = _safe_int(operational_recovery_summary.get("manual_review_count"), 0) > 0
+    validation_group_keys = [
+        str(item.get("group_key", "")).strip()
+        for item in recovery_radar.get("items") or []
+        if str(item.get("source_kind", "")) == "validation" and str(item.get("group_key", "")).strip()
+    ]
+    operational_group_keys = [
+        str(item.get("group_key", "")).strip()
+        for item in recovery_radar.get("items") or []
+        if str(item.get("source_kind", "")) == "operational" and str(item.get("group_key", "")).strip()
+    ]
+
+    annotated: List[dict] = []
+    for index, item in enumerate(quick_links, start=1):
+        path = str(item.get("path", ""))
+        description = str(item.get("description", ""))
+        available = bool(item.get("available"))
+        source_kind = "overview"
+        source_label = "Overview"
+        priority_rank = 3
+        manual_review_required = False
+        reason = "Reference entry point for the latest derived outputs."
+        group_keys: List[str] = []
+
+        if path == "step7_validate/validation_recovery_playbook.md":
+            source_kind = "validation"
+            source_label = "Validation"
+            priority_rank = 0 if validation_active else 2
+            manual_review_required = validation_manual
+            reason = "Primary recovery checklist when validation blocks final sign-off."
+            group_keys = validation_group_keys
+        elif path == "step7_validate/validation_summary.txt":
+            source_kind = "validation"
+            source_label = "Validation"
+            priority_rank = 1 if validation_active else 2
+            manual_review_required = validation_manual
+            reason = "Fast validation snapshot with the safest rerun path."
+            group_keys = validation_group_keys
+        elif path == "operational_recovery_playbook.md":
+            source_kind = "operational"
+            source_label = "Operational"
+            priority_rank = 0 if operational_active else 2
+            manual_review_required = operational_manual
+            reason = "Primary upstream recovery checklist before trusting downstream results."
+            group_keys = operational_group_keys
+        elif path == "operational_recovery_plan.json":
+            source_kind = "operational"
+            source_label = "Operational"
+            priority_rank = 1 if operational_active else 2
+            manual_review_required = operational_manual
+            reason = "Machine-readable operational triage summary."
+            group_keys = operational_group_keys
+        elif path in {"run_status.json", "current_run_manifest.json", "step_index.md"}:
+            source_kind = "operational" if overall_status in {"running", "failed"} or operational_active or stale_present else "overview"
+            source_label = "Operational" if source_kind == "operational" else "Overview"
+            priority_rank = 1 if overall_status in {"running", "failed"} or stale_present else (2 if operational_active else 3)
+            reason = "Best source for live execution state, stale steps, and derived health."
+            group_keys = operational_group_keys if source_kind == "operational" else []
+        elif path in {"run_overview.md", "run_overview.html", "report_digest.md"}:
+            source_kind = "overview"
+            source_label = "Overview"
+            priority_rank = 2 if not (validation_active or operational_active or overall_status == "running") else 3
+            reason = "User-facing summary layer for fast scanning and triage."
+        elif path in {
+            "step6_report/project_report.txt",
+            "step6_report/combined_residue_evidence.csv",
+            "step5_verdict/valid_sites.csv",
+            "step4_vina_postprocess/vina_pocket_table.csv",
+        }:
+            source_kind = "results"
+            source_label = "Results"
+            priority_rank = 1 if not (validation_active or operational_active or overall_status == "running") else 3
+            reason = "Core interpretation artifact once recovery blockers are cleared."
+
+        annotated.append(
+            {
+                "path": path,
+                "description": description,
+                "available": available,
+                "group_keys": group_keys,
+                "source_kind": source_kind,
+                "source_label": source_label,
+                "priority_rank": priority_rank,
+                "priority_label": _validation_priority_label(priority_rank),
+                "manual_review_required": manual_review_required,
+                "reason": reason,
+                "availability_rank": 0 if available else 1,
                 "default_order": index,
             }
         )
@@ -3682,15 +4004,15 @@ def build_run_overview_data(
         recovery_plan=operational_plan,
     )
     operational_summaries = [
-        _step1_input_summary(project_root),
-        _step2_ppi_summary(project_root),
-        _step3_evidence_summary(project_root),
-        operational_recovery_summary,
+        _with_step_summary_links(_step1_input_summary(project_root)),
+        _with_step_summary_links(_step2_ppi_summary(project_root)),
+        _with_step_summary_links(_step3_evidence_summary(project_root)),
+        _with_step_summary_links(operational_recovery_summary),
     ]
-    pockets = _pocket_summary(project_root)
-    verdicts = _verdict_summary(project_root)
-    reports = _report_summary(project_root)
-    validation_summary = _validation_summary_for_overview(project_root)
+    pockets = _with_step_summary_links(_pocket_summary(project_root))
+    verdicts = _with_step_summary_links(_verdict_summary(project_root))
+    reports = _with_step_summary_links(_report_summary(project_root))
+    validation_summary = _with_step_summary_links(_validation_summary_for_overview(project_root))
     recovery_radar = _build_recovery_radar(
         operational_recovery_plan=operational_plan,
         validation_recovery_plan=validation_plan,
@@ -3720,6 +4042,14 @@ def build_run_overview_data(
         validation_summary=validation_summary,
         operational_recovery_summary=operational_recovery_summary,
         run_status=status_payload or None,
+    )
+    annotated_quick_links = _annotate_quick_links(
+        quick_links=quick_links,
+        recovery_radar=recovery_radar,
+        validation_summary=validation_summary,
+        operational_recovery_summary=operational_recovery_summary,
+        run_status=status_payload or None,
+        current_manifest=current or None,
     )
 
     overall_status = str(status_payload.get("overall_status", "available"))
@@ -3767,6 +4097,7 @@ def build_run_overview_data(
         "command_suggestions": command_suggestions,
         "action_focus": action_focus,
         "annotated_command_suggestions": annotated_command_suggestions,
+        "annotated_quick_links": annotated_quick_links,
     }
 
 
@@ -3833,9 +4164,13 @@ def write_run_overview_markdown(project_root: Union[Path, str], overview_data: d
                         if item["recommended_command"]
                         else "- Suggested command: manual review only"
                     ),
-                    f"- Playbook: `{item['playbook_path']}`",
+                    f"- Playbook: `{item.get('playbook_link', item['playbook_path'])}`",
                 ]
             )
+            if item.get("step_summary_links"):
+                lines.append(
+                    f"- Step summaries: {_step_summary_links_text(item['step_summary_links'])}"
+                )
             if item["artifacts"]:
                 artifact_text = ", ".join(f"`{name}`" for name in item["artifacts"])
                 if item["artifact_overflow_count"]:
@@ -3869,6 +4204,8 @@ def write_run_overview_markdown(project_root: Union[Path, str], overview_data: d
     lines.extend(["", "## Operational Readiness"])
     for item in overview_data["operational_summaries"]:
         lines.append(f"- {item['title']}: {item['headline']}")
+        if item.get("step_summary_links"):
+            lines.append(f"  - Step summaries: {_step_summary_links_text(item['step_summary_links'])}")
         lines.extend(f"  - {detail}" for detail in item["details"])
 
     lines.extend(
@@ -3878,12 +4215,28 @@ def write_run_overview_markdown(project_root: Union[Path, str], overview_data: d
             f"- Pocket summary: {overview_data['pocket_summary']['headline']}",
         ]
     )
+    if overview_data["pocket_summary"].get("step_summary_links"):
+        lines.append(
+            f"  - Step summaries: {_step_summary_links_text(overview_data['pocket_summary']['step_summary_links'])}"
+        )
     lines.extend(f"  - {detail}" for detail in overview_data["pocket_summary"]["details"])
     lines.append(f"- Verdict summary: {overview_data['verdict_summary']['headline']}")
+    if overview_data["verdict_summary"].get("step_summary_links"):
+        lines.append(
+            f"  - Step summaries: {_step_summary_links_text(overview_data['verdict_summary']['step_summary_links'])}"
+        )
     lines.extend(f"  - {detail}" for detail in overview_data["verdict_summary"]["details"])
     lines.append(f"- Report summary: {overview_data['report_summary']['headline']}")
+    if overview_data["report_summary"].get("step_summary_links"):
+        lines.append(
+            f"  - Step summaries: {_step_summary_links_text(overview_data['report_summary']['step_summary_links'])}"
+        )
     lines.extend(f"  - {detail}" for detail in overview_data["report_summary"]["details"])
     lines.append(f"- Validation summary: {overview_data['validation_summary']['headline']}")
+    if overview_data["validation_summary"].get("step_summary_links"):
+        lines.append(
+            f"  - Step summaries: {_step_summary_links_text(overview_data['validation_summary']['step_summary_links'])}"
+        )
     lines.extend(f"  - {detail}" for detail in overview_data["validation_summary"]["details"])
 
     lines.extend(["", "## Quick Links"])
@@ -3915,16 +4268,46 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
             "</tr>"
         )
 
+    def _step_summary_links_html(step_summary_links: Sequence[dict], *, label: str = "Step summaries") -> str:
+        if not step_summary_links:
+            return ""
+        link_html = ", ".join(
+            f"<a href=\"{escape(str(item.get('path', '')))}\"><code>{escape(str(item.get('path', '')))}</code></a>"
+            for item in step_summary_links
+            if str(item.get("path", "")).strip()
+        )
+        if not link_html:
+            return ""
+        return f"<p><strong>{escape(label)}:</strong> {link_html}</p>"
+
     quick_links_html = []
-    for item in overview_data["quick_links"]:
+    for item in overview_data.get("annotated_quick_links", overview_data["quick_links"]):
         if item["available"]:
             link_body = f"<a href=\"{escape(item['path'])}\"><code>{escape(item['path'])}</code></a>"
         else:
             link_body = f"<code>{escape(item['path'])}</code>"
+        availability_text = "Available" if item["available"] else "Missing"
+        group_keys = " ".join(
+            str(group_key).strip()
+            for group_key in (item.get("group_keys") or [])
+            if str(group_key).strip()
+        )
         quick_links_html.append(
-            "<li>"
-            f"{link_body} - {escape(item['description'])} "
-            f"(<strong>{'available' if item['available'] else 'missing'}</strong>)"
+            f"<li class=\"guided-item guided-link\" "
+            f"data-source-kind=\"{escape(str(item.get('source_kind', 'overview')))}\" "
+            f"data-manual-review=\"{'yes' if item.get('manual_review_required') else 'no'}\" "
+            f"data-priority=\"{escape(str(item.get('priority_label', 'low')))}\" "
+            f"data-priority-rank=\"{escape(str(_safe_int(item.get('priority_rank'), 3)))}\" "
+            f"data-availability-rank=\"{escape(str(_safe_int(item.get('availability_rank'), 1)))}\" "
+            f"data-group-keys=\"{escape(group_keys)}\" "
+            f"data-default-order=\"{escape(str(_safe_int(item.get('default_order'), 0)))}\">"
+            f"<div class=\"tone-row\">"
+            f"<span class=\"tone tone-{escape(str(item.get('source_kind', 'overview')))}\">{escape(str(item.get('source_label', 'Overview')))}</span>"
+            f"<span class=\"tone priority-{escape(str(item.get('priority_label', 'low')))}\">{escape(str(item.get('priority_label', 'low')).title())}</span>"
+            f"<span class=\"tone tone-summary\">{escape(availability_text)}</span>"
+            f"</div>"
+            f"<p>{link_body} - {escape(str(item.get('description', '')))}</p>"
+            f"<p>{escape(str(item.get('reason', '')))}</p>"
             "</li>"
         )
 
@@ -3935,13 +4318,24 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
         ("Validation Summary", overview_data["validation_summary"]),
     ]
     cards_html = []
-    for title, payload in card_specs:
+    for index, (title, payload) in enumerate(card_specs, start=1):
         details_html = "".join(f"<li>{escape(detail)}</li>" for detail in payload["details"]) or "<li>No extra details.</li>"
+        step_numbers = _normalize_step_numbers(payload.get("step_numbers"))
+        step_label = _step_context_label(step_numbers)
+        step_numbers_attr = " ".join(str(step_number) for step_number in step_numbers)
+        step_chip_html = (
+            f"<div class=\"tone-row\"><span class=\"tone tone-step\">{escape(step_label)}</span></div>"
+            if step_label
+            else ""
+        )
+        step_summary_links_html = _step_summary_links_html(payload.get("step_summary_links") or [])
         cards_html.append(
-            "<section class=\"card\">"
+            f"<section class=\"card result-card\" data-step-numbers=\"{escape(step_numbers_attr)}\" data-default-order=\"{index}\">"
+            f"{step_chip_html}"
             f"<h3>{escape(title)}</h3>"
             f"<p>{escape(payload['headline'])}</p>"
             f"<ul>{details_html}</ul>"
+            f"{step_summary_links_html}"
             f"<p class=\"path\"><code>{escape(payload['path'])}</code></p>"
             "</section>"
         )
@@ -3969,12 +4363,18 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
             if item.get("command")
             else ""
         )
+        group_keys = " ".join(
+            str(group_key).strip()
+            for group_key in (item.get("group_keys") or [])
+            if str(group_key).strip()
+        )
         action_html.append(
             f"<li class=\"guided-item guided-action\" "
             f"data-source-kind=\"{source_kind}\" "
             f"data-manual-review=\"{manual_review}\" "
             f"data-priority=\"{priority_label}\" "
             f"data-priority-rank=\"{priority_rank}\" "
+            f"data-group-keys=\"{escape(group_keys)}\" "
             f"data-default-order=\"{default_order}\">"
             f"<div class=\"tone-row\">{''.join(chips)}</div>"
             f"<strong>{escape(str(item.get('title', 'Action')))}</strong>"
@@ -3985,13 +4385,24 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
             "</li>"
         )
     operational_cards_html = []
-    for payload in overview_data["operational_summaries"]:
+    for index, payload in enumerate(overview_data["operational_summaries"], start=1):
         details_html = "".join(f"<li>{escape(detail)}</li>" for detail in payload["details"]) or "<li>No extra details.</li>"
+        step_numbers = _normalize_step_numbers(payload.get("step_numbers"))
+        step_label = _step_context_label(step_numbers)
+        step_numbers_attr = " ".join(str(step_number) for step_number in step_numbers)
+        step_chip_html = (
+            f"<div class=\"tone-row\"><span class=\"tone tone-step\">{escape(step_label)}</span></div>"
+            if step_label
+            else ""
+        )
+        step_summary_links_html = _step_summary_links_html(payload.get("step_summary_links") or [])
         operational_cards_html.append(
-            "<section class=\"card\">"
+            f"<section class=\"card operational-card\" data-step-numbers=\"{escape(step_numbers_attr)}\" data-default-order=\"{index}\">"
+            f"{step_chip_html}"
             f"<h3>{escape(payload['title'])}</h3>"
             f"<p>{escape(payload['headline'])}</p>"
             f"<ul>{details_html}</ul>"
+            f"{step_summary_links_html}"
             f"<p class=\"path\"><code>{escape(payload['path'])}</code></p>"
             "</section>"
         )
@@ -4033,18 +4444,35 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
         source_kind = escape(item["source_kind"])
         manual_review = "yes" if item["manual_review_required"] else "no"
         priority_label = escape(item["priority_label"])
+        group_key = escape(str(item.get("group_key", "")))
+        step_numbers = _normalize_step_numbers(item.get("step_numbers"))
+        step_numbers_attr = escape(" ".join(str(step_number) for step_number in step_numbers))
+        step_label = _step_context_label(step_numbers)
+        step_scope_html = (
+            f"<p><strong>Related steps:</strong> {escape(step_label)}</p>"
+            if step_label
+            else ""
+        )
+        step_summary_links_html = _step_summary_links_html(item.get("step_summary_links") or [])
         recovery_radar_html.append(
             f"<article id=\"radar-card-{index}\" class=\"card radar-card\" "
+            f"tabindex=\"0\" "
+            f"role=\"button\" "
+            f"aria-pressed=\"false\" "
+            f"data-group-key=\"{group_key}\" "
+            f"data-step-numbers=\"{step_numbers_attr}\" "
             f"data-source-kind=\"{source_kind}\" "
             f"data-manual-review=\"{manual_review}\" "
             f"data-priority=\"{priority_label}\">"
             f"<div class=\"tone-row\">{''.join(chips)}</div>"
             f"<h3>{escape(item['title'])}</h3>"
             f"<p><strong>Scope:</strong> {escape(item['scope_label'])}</p>"
+            f"{step_scope_html}"
+            f"{step_summary_links_html}"
             f"<p><strong>Suggested command:</strong> {command_html_line}</p>"
             f"{artifact_html}"
             f"<ul>{findings_html}</ul>"
-            f"<p class=\"path\"><a href=\"{escape(item['playbook_path'])}\"><code>{escape(item['playbook_path'])}</code></a></p>"
+            f"<p class=\"path\"><a href=\"{escape(item.get('playbook_link', item['playbook_path']))}\"><code>{escape(item.get('playbook_link', item['playbook_path']))}</code></a></p>"
             "</article>"
         )
     jump_links_html = "".join(
@@ -4098,7 +4526,9 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
     (function () {
       const scopeButtons = Array.from(document.querySelectorAll("[data-radar-filter]"));
       const priorityButtons = Array.from(document.querySelectorAll("[data-radar-priority-filter]"));
+      const sectionLinks = Array.from(document.querySelectorAll(".jump-link"));
       const cards = Array.from(document.querySelectorAll(".radar-card"));
+      const radarList = document.getElementById("recovery-radar-list");
       const actionList = document.getElementById("guided-action-list");
       const actionItems = Array.from(document.querySelectorAll(".guided-action"));
       const actionStatus = document.getElementById("action-filter-status");
@@ -4107,10 +4537,121 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
       const commandItems = Array.from(document.querySelectorAll(".guided-command"));
       const commandStatus = document.getElementById("command-filter-status");
       const commandEmpty = document.getElementById("command-filter-empty");
+      const linkList = document.getElementById("prioritized-quick-links");
+      const linkItems = Array.from(document.querySelectorAll(".guided-link"));
+      const linkStatus = document.getElementById("quick-link-filter-status");
+      const resultCardList = document.getElementById("result-card-list");
+      const resultCards = Array.from(document.querySelectorAll(".result-card"));
+      const resultStatus = document.getElementById("result-context-status");
+      const operationalCardList = document.getElementById("operational-card-list");
+      const operationalCards = Array.from(document.querySelectorAll(".operational-card"));
+      const operationalStatus = document.getElementById("operational-context-status");
+      const groupStatus = document.getElementById("group-focus-status");
+      const clearGroupButton = document.getElementById("clear-group-focus");
+      const toggleStepRadarButton = document.getElementById("toggle-step-radar-visibility");
       const status = document.getElementById("radar-filter-status");
-      const state = { scope: "all", priority: "all" };
+      const knownSections = sectionLinks
+        .map(function (link) { return (link.getAttribute("href") || "").replace(/^#/, ""); })
+        .filter(Boolean);
+      const knownGroupKeys = cards
+        .map(function (card) { return card.dataset.groupKey || ""; })
+        .filter(Boolean);
+      const knownStepValues = Array.from(new Set(
+        cards.concat(resultCards).concat(operationalCards)
+          .reduce(function (values, card) {
+            return values.concat(stepNumbersFor(card));
+          }, [])
+      ));
+      const state = { scope: "all", priority: "all", section: "", group: "", step: "", stepRadarExpanded: false };
       if (!scopeButtons.length || !priorityButtons.length || !cards.length || !status) {
         return;
+      }
+
+      function normalizeSelection(buttons, attributeName, value, fallbackValue) {
+        const normalized = value || fallbackValue;
+        const supported = buttons.some(function (button) {
+          return button.getAttribute(attributeName) === normalized;
+        });
+        return supported ? normalized : fallbackValue;
+      }
+
+      function parseHashState() {
+        const rawHash = window.location.hash.replace(/^#/, "");
+        const parsed = { scope: "all", priority: "all", section: "", group: "", step: "" };
+        if (!rawHash) {
+          return parsed;
+        }
+        if (rawHash.indexOf("=") === -1 && rawHash.indexOf("&") === -1) {
+          parsed.section = rawHash;
+        } else {
+          const params = new URLSearchParams(rawHash);
+          parsed.section = params.get("section") || "";
+          parsed.scope = params.get("scope") || "all";
+          parsed.priority = params.get("priority") || "all";
+          parsed.group = params.get("group") || "";
+          parsed.step = params.get("step") || "";
+        }
+        parsed.scope = normalizeSelection(scopeButtons, "data-radar-filter", parsed.scope, "all");
+        parsed.priority = normalizeSelection(priorityButtons, "data-radar-priority-filter", parsed.priority, "all");
+        if (knownSections.indexOf(parsed.section) === -1) {
+          parsed.section = "";
+        }
+        if (knownGroupKeys.indexOf(parsed.group) === -1) {
+          parsed.group = "";
+        }
+        if (knownStepValues.indexOf(Number(parsed.step)) === -1) {
+          parsed.step = "";
+        }
+        return parsed;
+      }
+
+      function buildHashState() {
+        if (state.section && state.scope === "all" && state.priority === "all" && !state.group && !state.step) {
+          return "#" + state.section;
+        }
+        const params = new URLSearchParams();
+        if (state.section) {
+          params.set("section", state.section);
+        }
+        if (state.scope !== "all") {
+          params.set("scope", state.scope);
+        }
+        if (state.priority !== "all") {
+          params.set("priority", state.priority);
+        }
+        if (state.group) {
+          params.set("group", state.group);
+        }
+        if (state.step) {
+          params.set("step", state.step);
+        }
+        const nextState = params.toString();
+        return nextState ? "#" + nextState : "";
+      }
+
+      function syncHashState(pushEntry) {
+        const nextHash = buildHashState();
+        const baseUrl = window.location.pathname + window.location.search;
+        if (pushEntry && nextHash) {
+          window.location.hash = nextHash;
+          return;
+        }
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", nextHash ? baseUrl + nextHash : baseUrl);
+        } else if (nextHash) {
+          window.location.hash = nextHash;
+        }
+      }
+
+      function scrollToSection(sectionId) {
+        if (!sectionId) {
+          return;
+        }
+        const target = document.getElementById(sectionId);
+        if (!target) {
+          return;
+        }
+        target.scrollIntoView({ block: "start" });
       }
 
       function matchesScope(card, filterValue) {
@@ -4132,6 +4673,18 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
 
       function matchesCurrentFilters(item) {
         return matchesScope(item, state.scope) && matchesPriority(item, state.priority);
+      }
+
+      function groupKeysFor(element) {
+        const rawValue = element.dataset.groupKeys || "";
+        return rawValue ? rawValue.split(/\s+/).filter(Boolean) : [];
+      }
+
+      function stepNumbersFor(element) {
+        const rawValue = element.dataset.stepNumbers || "";
+        return rawValue
+          ? rawValue.split(/\s+/).map(function (value) { return Number(value); }).filter(function (value) { return !Number.isNaN(value); })
+          : [];
       }
 
       function updateButtons(buttons, attributeName, activeValue) {
@@ -4158,8 +4711,85 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
           if (priorityDiff !== 0) {
             return priorityDiff;
           }
+          const availabilityDiff = Number(left.dataset.availabilityRank || 0) - Number(right.dataset.availabilityRank || 0);
+          if (availabilityDiff !== 0) {
+            return availabilityDiff;
+          }
           return Number(left.dataset.defaultOrder || 0) - Number(right.dataset.defaultOrder || 0);
         });
+      }
+
+      function sortByDefaultOrder(items) {
+        return items.slice().sort(function (left, right) {
+          return Number(left.dataset.defaultOrder || 0) - Number(right.dataset.defaultOrder || 0);
+        });
+      }
+
+      function formatStepContextLabel(stepNumbers) {
+        if (!stepNumbers.length) {
+          return "the selected steps";
+        }
+        if (stepNumbers.length === 1) {
+          return "Step " + stepNumbers[0];
+        }
+        return "Steps " + stepNumbers.join(", ");
+      }
+
+      function activeStepNumber() {
+        return Number(state.step || 0);
+      }
+
+      function relatedGroupKeysForActiveStep() {
+        const activeStep = activeStepNumber();
+        if (!activeStep) {
+          return [];
+        }
+        return cards
+          .filter(function (card) {
+            return stepNumbersFor(card).indexOf(activeStep) !== -1;
+          })
+          .map(function (card) { return card.dataset.groupKey || ""; })
+          .filter(Boolean);
+      }
+
+      function syncContextCards(items, container, statusNode, noun, activeSteps) {
+        if (!container || !statusNode || !items.length) {
+          return 0;
+        }
+        if (!activeSteps.length) {
+          sortByDefaultOrder(items).forEach(function (item) {
+            item.classList.remove("is-related");
+            item.classList.remove("is-dimmed");
+            container.appendChild(item);
+          });
+          statusNode.textContent = "Showing all " + items.length + " " + noun + " in default review order.";
+          return 0;
+        }
+        const relatedItems = [];
+        const otherItems = [];
+        items.forEach(function (item) {
+          const isRelated = stepNumbersFor(item).some(function (stepNumber) {
+            return activeSteps.indexOf(stepNumber) !== -1;
+          });
+          item.classList.toggle("is-related", isRelated);
+          item.classList.toggle("is-dimmed", !isRelated);
+          if (isRelated) {
+            relatedItems.push(item);
+            return;
+          }
+          otherItems.push(item);
+        });
+        sortByDefaultOrder(relatedItems).concat(sortByDefaultOrder(otherItems)).forEach(function (item) {
+          container.appendChild(item);
+        });
+        if (relatedItems.length) {
+          statusNode.textContent = "Promoting " + relatedItems.length + " " + noun + " linked to "
+            + formatStepContextLabel(activeSteps) + ".";
+        } else {
+          statusNode.textContent = "No " + noun + " are directly linked to "
+            + formatStepContextLabel(activeSteps) + "; showing the default review order.";
+        }
+        return relatedItems.length;
       }
 
       function syncCollection(items, container, emptyState, statusNode, noun) {
@@ -4194,37 +4824,307 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
         }
       }
 
-      function applyFilters() {
-        let visibleCount = 0;
-        cards.forEach(function (card) {
-          const visible = matchesCurrentFilters(card);
-          card.hidden = !visible;
-          if (visible) {
-            visibleCount += 1;
+      function syncPriorityCollection(items, container, statusNode, noun) {
+        if (!container || !statusNode) {
+          return;
+        }
+        const useDefaultOrder = state.scope === "all" && state.priority === "all";
+        const matchingItems = [];
+        const nonMatchingItems = [];
+        items.forEach(function (item) {
+          item.hidden = false;
+          item.classList.remove("is-prioritized");
+          if (useDefaultOrder || matchesCurrentFilters(item)) {
+            matchingItems.push(item);
+          } else {
+            nonMatchingItems.push(item);
           }
         });
+        const orderedItems = useDefaultOrder
+          ? sortByDefaultOrder(items)
+          : sortByRank(matchingItems).concat(sortByDefaultOrder(nonMatchingItems));
+        orderedItems.forEach(function (item, index) {
+          if (!useDefaultOrder && index < matchingItems.length) {
+            item.classList.add("is-prioritized");
+          }
+          container.appendChild(item);
+        });
+        if (useDefaultOrder) {
+          statusNode.textContent = "Showing all " + items.length + " " + noun + " in default review order.";
+          return;
+        }
+        if (matchingItems.length) {
+          statusNode.textContent = "Prioritizing " + matchingItems.length + " " + noun + " for "
+            + filterLabel(state.scope, "scope") + " and "
+            + filterLabel(state.priority, "priority") + ".";
+        } else {
+          statusNode.textContent = "No " + noun + " directly match "
+            + filterLabel(state.scope, "scope") + " and "
+            + filterLabel(state.priority, "priority") + "; showing the default order.";
+        }
+      }
+
+      function applyGroupFocus() {
+        const activeGroup = state.group;
+        const activeStep = activeStepNumber();
+        const activeStepGroupKeys = activeGroup ? [] : relatedGroupKeysForActiveStep();
+        const activeCards = cards.filter(function (card) {
+          if (activeGroup) {
+            return card.dataset.groupKey === activeGroup;
+          }
+          return Boolean(activeStep) && stepNumbersFor(card).indexOf(activeStep) !== -1;
+        });
+        cards.forEach(function (card) {
+          const isRelated = activeCards.indexOf(card) !== -1;
+          card.classList.toggle("is-related", isRelated);
+          card.classList.toggle("is-dimmed", Boolean(activeGroup || activeStep) && !isRelated);
+          card.setAttribute("aria-pressed", isRelated ? "true" : "false");
+        });
+
+        function syncRelated(items, container) {
+          let relatedCount = 0;
+          const relatedVisible = [];
+          const otherVisible = [];
+          const hiddenItems = [];
+          items.forEach(function (item) {
+            const groupKeys = groupKeysFor(item);
+            const isRelated = Boolean(activeGroup)
+              ? groupKeys.indexOf(activeGroup) !== -1
+              : activeStepGroupKeys.some(function (groupKey) { return groupKeys.indexOf(groupKey) !== -1; });
+            item.classList.toggle("is-related", isRelated);
+            item.classList.toggle("is-dimmed", Boolean(activeGroup || activeStep) && !isRelated);
+            if (isRelated && !item.hidden) {
+              relatedCount += 1;
+            }
+            if (item.hidden) {
+              hiddenItems.push(item);
+            } else if (isRelated) {
+              relatedVisible.push(item);
+            } else {
+              otherVisible.push(item);
+            }
+          });
+          if (container) {
+            sortByDefaultOrder(relatedVisible)
+              .concat(sortByDefaultOrder(otherVisible))
+              .concat(sortByDefaultOrder(hiddenItems))
+              .forEach(function (item) {
+                container.appendChild(item);
+              });
+          }
+          return relatedCount;
+        }
+
+        const relatedActions = syncRelated(actionItems, actionList);
+        const relatedCommands = syncRelated(commandItems, commandList);
+        const relatedLinks = syncRelated(linkItems, linkList);
+        const activeSteps = activeCards.length ? stepNumbersFor(activeCards[0]) : (activeStep ? [activeStep] : []);
+        const relatedResultCards = syncContextCards(
+          resultCards,
+          resultCardList,
+          resultStatus,
+          "result highlight card(s)",
+          activeSteps
+        );
+        const relatedOperationalCards = syncContextCards(
+          operationalCards,
+          operationalCardList,
+          operationalStatus,
+          "operational readiness card(s)",
+          activeSteps
+        );
+
+        if (clearGroupButton) {
+          clearGroupButton.hidden = !activeGroup && !activeStep;
+        }
+        if (!groupStatus) {
+          return;
+        }
+        if (!activeGroup && !activeStep) {
+          groupStatus.textContent = "Select a recovery card to highlight matching actions, commands, links, and step cards.";
+          return;
+        }
+        if (!activeGroup && activeStep) {
+          groupStatus.textContent = "Step-linked focus for Step " + activeStep + ": "
+            + activeCards.length + " recovery card(s), "
+            + relatedActions + " action(s), "
+            + relatedCommands + " command suggestion(s), "
+            + relatedLinks + " quick link(s), "
+            + relatedResultCards + " result card(s), and "
+            + relatedOperationalCards + " operational card(s).";
+          return;
+        }
+        if (!activeCards.length) {
+          groupStatus.textContent = "Select a recovery card to highlight matching actions, commands, links, and step cards.";
+          return;
+        }
+        const cardTitle = activeCards[0].querySelector("h3");
+        const label = cardTitle ? cardTitle.textContent : "selected recovery group";
+        groupStatus.textContent = "Linked guidance for " + label + ": "
+          + relatedActions + " action(s), "
+          + relatedCommands + " command suggestion(s), and "
+          + relatedLinks + " quick link(s), "
+          + relatedResultCards + " result card(s), and "
+          + relatedOperationalCards + " operational card(s).";
+      }
+
+      function applyFilters() {
+        const activeGroup = state.group;
+        const activeStep = activeStepNumber();
+        const visibleCards = [];
+        const hiddenCards = [];
+        cards.forEach(function (card) {
+          const visible = matchesCurrentFilters(card);
+          if (visible) {
+            visibleCards.push(card);
+          } else {
+            hiddenCards.push(card);
+          }
+        });
+        const relatedVisibleCards = visibleCards.filter(function (card) {
+          if (activeGroup) {
+            return card.dataset.groupKey === activeGroup;
+          }
+          return Boolean(activeStep) && stepNumbersFor(card).indexOf(activeStep) !== -1;
+        });
+        const unrelatedVisibleCards = visibleCards.filter(function (card) {
+          return relatedVisibleCards.indexOf(card) === -1;
+        });
+        const collapseForStep = Boolean(activeStep) && !activeGroup && !state.stepRadarExpanded && relatedVisibleCards.length;
+        visibleCards.forEach(function (card) {
+          card.hidden = false;
+          card.classList.remove("is-prioritized");
+        });
+        hiddenCards.forEach(function (card) {
+          card.hidden = true;
+          card.classList.remove("is-prioritized");
+        });
+        if (collapseForStep) {
+          unrelatedVisibleCards.forEach(function (card) {
+            card.hidden = true;
+          });
+        }
+        if (radarList) {
+          const orderedVisibleCards = (activeGroup || activeStep)
+            ? sortByRank(relatedVisibleCards).concat(sortByRank(unrelatedVisibleCards))
+            : sortByRank(visibleCards);
+          orderedVisibleCards.concat(sortByRank(hiddenCards)).forEach(function (card, index) {
+            if ((activeGroup || activeStep) && index < relatedVisibleCards.length) {
+              card.classList.add("is-prioritized");
+            }
+            radarList.appendChild(card);
+          });
+        }
         updateButtons(scopeButtons, "data-radar-filter", state.scope);
         updateButtons(priorityButtons, "data-radar-priority-filter", state.priority);
-        status.textContent = "Showing " + visibleCount + " recovery group(s) for "
-          + filterLabel(state.scope, "scope") + " and "
-          + filterLabel(state.priority, "priority") + ".";
+        if (toggleStepRadarButton) {
+          const canToggleStepView = Boolean(activeStep) && !activeGroup && relatedVisibleCards.length > 0;
+          toggleStepRadarButton.hidden = !canToggleStepView;
+          toggleStepRadarButton.textContent = collapseForStep
+            ? "Show Unrelated Recovery Cards"
+            : "Collapse Unrelated Recovery Cards";
+        }
+        if (activeStep && !activeGroup && relatedVisibleCards.length) {
+          const hiddenCount = collapseForStep ? unrelatedVisibleCards.length : 0;
+          status.textContent = (collapseForStep ? "Showing " : "Prioritizing ")
+            + relatedVisibleCards.length + " recovery group(s) linked to Step " + activeStep
+            + " for " + filterLabel(state.scope, "scope") + " and "
+            + filterLabel(state.priority, "priority")
+            + (hiddenCount ? "; " + hiddenCount + " unrelated group(s) hidden." : ".");
+        } else {
+          status.textContent = "Showing " + visibleCards.length + " recovery group(s) for "
+            + filterLabel(state.scope, "scope") + " and "
+            + filterLabel(state.priority, "priority") + ".";
+        }
         syncCollection(actionItems, actionList, actionEmpty, actionStatus, "top action(s)");
         syncCollection(commandItems, commandList, commandEmpty, commandStatus, "command suggestion(s)");
+        syncPriorityCollection(linkItems, linkList, linkStatus, "quick link(s)");
+        applyGroupFocus();
       }
 
       scopeButtons.forEach(function (button) {
         button.addEventListener("click", function () {
           state.scope = button.dataset.radarFilter || "all";
+          state.stepRadarExpanded = false;
+          syncHashState(false);
           applyFilters();
         });
       });
       priorityButtons.forEach(function (button) {
         button.addEventListener("click", function () {
           state.priority = button.dataset.radarPriorityFilter || "all";
+          state.stepRadarExpanded = false;
+          syncHashState(false);
           applyFilters();
         });
       });
+      cards.forEach(function (card) {
+        function activateCardGroup(toggleIfSame) {
+          const nextGroup = card.dataset.groupKey || "";
+          state.group = toggleIfSame && state.group === nextGroup ? "" : nextGroup;
+          state.step = "";
+          syncHashState(false);
+          applyFilters();
+        }
+        card.addEventListener("click", function () {
+          activateCardGroup(true);
+        });
+        card.addEventListener("keydown", function (event) {
+          if (event.key !== "Enter" && event.key !== " ") {
+            return;
+          }
+          event.preventDefault();
+          activateCardGroup(true);
+        });
+      });
+      if (clearGroupButton) {
+        clearGroupButton.addEventListener("click", function () {
+          state.group = "";
+          state.step = "";
+          state.stepRadarExpanded = false;
+          syncHashState(false);
+          applyFilters();
+        });
+      }
+      if (toggleStepRadarButton) {
+        toggleStepRadarButton.addEventListener("click", function () {
+          state.stepRadarExpanded = !state.stepRadarExpanded;
+          applyFilters();
+        });
+      }
+      sectionLinks.forEach(function (link) {
+        link.addEventListener("click", function (event) {
+          const targetId = (link.getAttribute("href") || "").replace(/^#/, "");
+          if (!targetId) {
+            return;
+          }
+          event.preventDefault();
+          state.section = targetId;
+          syncHashState(true);
+        });
+      });
+      window.addEventListener("hashchange", function () {
+        const hashState = parseHashState();
+        state.scope = hashState.scope;
+        state.priority = hashState.priority;
+        state.section = hashState.section;
+        state.group = hashState.group;
+        state.step = hashState.step;
+        state.stepRadarExpanded = false;
+        applyFilters();
+        scrollToSection(state.section);
+      });
+      const initialHashState = parseHashState();
+      state.scope = initialHashState.scope;
+      state.priority = initialHashState.priority;
+      state.section = initialHashState.section;
+      state.group = initialHashState.group;
+      state.step = initialHashState.step;
+      state.stepRadarExpanded = false;
       applyFilters();
+      if (state.section) {
+        scrollToSection(state.section);
+      }
     }());
   </script>"""
     command_html = []
@@ -4240,12 +5140,18 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
         ]
         if item.get("manual_review_required"):
             chips.append("<span class=\"tone tone-manual\">Manual review</span>")
+        group_keys = " ".join(
+            str(group_key).strip()
+            for group_key in (item.get("group_keys") or [])
+            if str(group_key).strip()
+        )
         command_html.append(
             f"<li class=\"guided-item guided-command\" "
             f"data-source-kind=\"{source_kind}\" "
             f"data-manual-review=\"{manual_review}\" "
             f"data-priority=\"{priority_label}\" "
             f"data-priority-rank=\"{priority_rank}\" "
+            f"data-group-keys=\"{escape(group_keys)}\" "
             f"data-default-order=\"{default_order}\">"
             f"<div class=\"tone-row\">{''.join(chips)}</div>"
             f"<strong>{escape(item['label'])}</strong><br>"
@@ -4377,6 +5283,11 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
     .tone-action {{
       background: #f2ece3;
     }}
+    .tone-step {{
+      background: #eef3f9;
+      border-color: #b9c9db;
+      color: #244b73;
+    }}
     .tone-manual {{
       background: #fff4de;
       border-color: #d8ba75;
@@ -4405,6 +5316,11 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
     }}
     .radar-card {{
       border-width: 2px;
+      cursor: pointer;
+    }}
+    .radar-card:focus {{
+      outline: 3px solid rgba(10, 77, 140, 0.28);
+      outline-offset: 3px;
     }}
     .radar-empty {{
       color: var(--muted);
@@ -4462,6 +5378,19 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
       border-radius: 16px;
       background: #fcfaf5;
       padding: 14px 16px;
+    }}
+    .card.is-prioritized, .guided-item.is-prioritized {{
+      border-color: #9cc8b6;
+      background: #fffdf8;
+      box-shadow: inset 0 0 0 1px rgba(15, 109, 88, 0.08);
+    }}
+    .card.is-related, .guided-item.is-related {{
+      border-color: #0a4d8c;
+      box-shadow: 0 0 0 2px rgba(10, 77, 140, 0.16), var(--shadow);
+      background: #fffefa;
+    }}
+    .card.is-dimmed, .guided-item.is-dimmed {{
+      opacity: 0.45;
     }}
     .guided-item p {{
       margin: 8px 0 0;
@@ -4544,16 +5473,23 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
       <h2>Recovery Radar</h2>
       <p class="lede">{escape(str(overview_data['recovery_radar']['headline']))}</p>
       <div class="tone-row">{radar_summary_html}</div>
+      <div class="tone-row">
+        <button type="button" id="clear-group-focus" class="filter-chip" hidden>Clear Linked Focus</button>
+        <button type="button" id="toggle-step-radar-visibility" class="filter-chip" hidden>Show Unrelated Recovery Cards</button>
+      </div>
+      <p id="group-focus-status" class="filter-status" role="status">Select a recovery card to highlight matching actions, commands, links, and step cards.</p>
       {radar_filter_controls_html}
-      {f'<div class="cards">{"".join(recovery_radar_html)}</div>' if recovery_radar_html else '<p class="radar-empty">No recovery action groups are active right now.</p>'}
+      {f'<div id="recovery-radar-list" class="cards">{"".join(recovery_radar_html)}</div>' if recovery_radar_html else '<p class="radar-empty">No recovery action groups are active right now.</p>'}
     </section>
     <section id="result-highlights">
       <h2>Result Highlights</h2>
-      <div class="cards">{''.join(cards_html)}</div>
+      <p id="result-context-status" class="filter-status" role="status">Showing all {escape(str(len(cards_html)))} result highlight card(s) in default review order.</p>
+      <div id="result-card-list" class="cards">{''.join(cards_html)}</div>
     </section>
     <section id="operational-readiness">
       <h2>Operational Readiness</h2>
-      <div class="cards">{''.join(operational_cards_html)}</div>
+      <p id="operational-context-status" class="filter-status" role="status">Showing all {escape(str(len(operational_cards_html)))} operational readiness card(s) in default review order.</p>
+      <div id="operational-card-list" class="cards">{''.join(operational_cards_html)}</div>
     </section>
     <section id="pipeline-progress">
       <h2>Pipeline Progress</h2>
@@ -4573,7 +5509,8 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
     </section>
     <section id="quick-links">
       <h2>Quick Links</h2>
-      <ul>{''.join(quick_links_html)}</ul>
+      <p id="quick-link-filter-status" class="filter-status" role="status">Showing {escape(str(len(quick_links_html)))} quick link(s) in default review order.</p>
+      <ul id="prioritized-quick-links" class="guided-list">{''.join(quick_links_html)}</ul>
     </section>
     <section id="suggested-commands">
       <h2>Suggested Commands</h2>
@@ -4619,9 +5556,11 @@ def write_report_digest(project_root: Union[Path, str], overview_data: dict) -> 
                 [
                     f"{index}. {item['source_label']} - {item['title']} ({item['scope_label']})",
                     f"Action: {item['action_label']}; Priority: {item['priority_label']}; Command: `{command_text}`",
-                    f"Playbook: `{item['playbook_path']}`",
+                    f"Playbook: `{item.get('playbook_link', item['playbook_path'])}`",
                 ]
             )
+            if item.get("step_summary_links"):
+                lines.append(f"Step summaries: {_step_summary_links_text(item['step_summary_links'])}")
         if recovery_radar["summary"]["overflow_count"]:
             lines.append(
                 f"Additional recovery groups: {recovery_radar['summary']['overflow_count']} more in `run_overview.md` or `run_overview.html`."
@@ -4641,9 +5580,13 @@ def write_report_digest(project_root: Union[Path, str], overview_data: dict) -> 
     verdict_details = overview_data["verdict_summary"]["details"] or ["Verdict details are not available yet."]
     lines.extend(f"- {detail}" for detail in verdict_details)
     lines.extend(["", "## Operational Follow-up", f"- {operational_recovery['headline']}"])
+    if operational_recovery.get("step_summary_links"):
+        lines.append(f"- Step summaries: {_step_summary_links_text(operational_recovery['step_summary_links'])}")
     operational_details = operational_recovery["details"] or ["Operational recovery follow-up is not available yet."]
     lines.extend(f"- {detail}" for detail in operational_details)
     lines.extend(["", "## Validation Follow-up", f"- {validation_summary['headline']}"])
+    if validation_summary.get("step_summary_links"):
+        lines.append(f"- Step summaries: {_step_summary_links_text(validation_summary['step_summary_links'])}")
     validation_details = validation_summary["details"] or ["Validation follow-up is not available yet."]
     lines.extend(f"- {detail}" for detail in validation_details)
     lines.extend(["", "## Suggested Commands"])
@@ -4706,6 +5649,7 @@ def write_step_index(project_root: Union[Path, str], index_data: dict) -> Path:
     project_root = _as_path(project_root)
     run_summary = index_data["run_summary"]
     steps = index_data["steps"]
+    triage_by_step = index_data["triage_by_step"]
     raw_debug_paths = index_data["raw_debug_paths"]
     notes = index_data["notes"]
 
@@ -4721,14 +5665,44 @@ def write_step_index(project_root: Union[Path, str], index_data: dict) -> Path:
         f"- Config paths: `{', '.join(run_summary['config_paths']) or 'n/a'}`",
         "",
         "## Step Overview Table",
-        "| Step | Folder | Purpose | Status | Inspect First |",
-        "| --- | --- | --- | --- | --- |",
+        "| Step | Folder | Purpose | Status | Step Summary | Triage | Inspect First |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for item in steps:
         lines.append(
-            f"| {item['step_number']} | `{item['folder_name']}` | {item['purpose']} | "
-            f"`{item['status']}` | {item['primary_files']} |"
+            f"| [{item['step_number']}]({item['overview_focus_link']}) | `{item['folder_name']}` | {item['purpose']} | "
+            f"`{item['status']}` | `{item['summary_path']}` | {item['triage_summary']} | {item['primary_files']} |"
         )
+
+    lines.extend(["", "## Step Triage"])
+    if not any(triage_by_step.values()):
+        lines.extend(
+            [
+                "- No active recovery groups are linked to any step right now.",
+                "- Use `run_overview.md` or `run_overview.html` for the clean run summary.",
+            ]
+        )
+    else:
+        for item in steps:
+            triage_items = triage_by_step.get(item["step_number"]) or []
+            lines.extend(["", f"### Step {item['step_number']}: {_step_spec(item['step_number']).step_name}"])
+            if not triage_items:
+                lines.append("- No active recovery groups are linked to this step.")
+                continue
+            lines.append(f"- Active recovery groups: {len(triage_items)}.")
+            for index, triage_item in enumerate(triage_items, start=1):
+                command_text = str(triage_item.get("recommended_command", "")).strip() or "manual review only"
+                lines.append(
+                    f"- Group {index}: {triage_item['source_label']} - {triage_item['title']} "
+                    f"(`{triage_item['priority_label']}`, {triage_item['scope_label']})."
+                )
+                lines.append(f"- Overview link: `{triage_item['overview_link']}`")
+                lines.append(f"- Playbook: `{triage_item['playbook_link']}`")
+                lines.append(f"- Suggested command: `{command_text}`")
+                if triage_item.get("step_summary_links"):
+                    lines.append(
+                        f"- Related step summaries: {_step_summary_links_text(triage_item['step_summary_links'])}"
+                    )
 
     lines.extend(
         [
@@ -4779,14 +5753,20 @@ def update_step_index(
     project_root = _as_path(project_root)
     current = current_run_manifest or _load_current_run_manifest(project_root) or {}
     step_status = current.get("step_status") or _step_status_map(project_root)
+    overview_data = build_run_overview_data(project_root, current_run_manifest=current)
+    triage_by_step = _step_triage_items(overview_data["recovery_radar"])
     steps = []
     for step_num, spec in STEP_SPECS.items():
+        triage_items = triage_by_step.get(step_num) or []
         steps.append(
             {
                 "step_number": step_num,
                 "folder_name": spec.folder_name,
                 "purpose": spec.purpose,
                 "status": step_status.get(f"step{step_num}", "not_generated"),
+                "summary_path": _step_summary_path(step_num),
+                "overview_focus_link": _overview_step_link(step_num),
+                "triage_summary": _step_triage_summary(triage_items),
                 "primary_files": _step_primary_paths(spec),
             }
         )
@@ -4842,6 +5822,7 @@ def update_step_index(
             "config_paths": [current.get("vina_config_path", "n/a"), *current.get("ppi_config_paths", [])],
         },
         "steps": steps,
+        "triage_by_step": triage_by_step,
         "read_first": read_first,
         "raw_debug_paths": {
             "project_root": current.get("project_root", _display_path(project_root, project_root.parent)),
