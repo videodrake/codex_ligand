@@ -53,7 +53,7 @@ postprocess:
   same_patch_centroid_cutoff: 8.0
   same_patch_jaccard: 0.3
   same_patch_overlap: 0.5
-  max_poses_per_pocket: 5
+  max_poses_per_pocket: 100
   phase3_bridge: true
   phase3_primary_cutoff: -7.0
   phase3_secondary_cutoff: -5.0
@@ -107,7 +107,7 @@ vina:
   exhaustiveness: 384
   min_box: 70.0
   mode: blind
-  n_poses: 500
+  n_poses: 2000
   parallel_receptors: 3
   padding: 5.0
   seed: 20260316

@@ -947,6 +947,9 @@ def phase4_vina_postprocess():
     print("\n  --- cluster ---")
     if _stage_enabled("cluster_pockets"):
         from egfr_pipeline.vina.pocket_cluster import cluster_pose_table
+        max_per_pocket = pp.get("max_poses_per_pocket", 0)
+        if max_per_pocket > 0:
+            print(f"  Pocket cap: max {max_per_pocket} poses per pocket (round-robin by ligand)")
         out = cluster_pose_table(
             config_str,
             cutoff=pp.get("pocket_cutoff", 8.0),
@@ -956,10 +959,13 @@ def phase4_vina_postprocess():
             merge_jaccard=pp.get("merge_jaccard", 0.3),
             merge_overlap=pp.get("merge_overlap", 0.5),
             merge_centroid_fallback=pp.get("merge_centroid_fallback", 6.0),
+            max_per_pocket=max_per_pocket,
         )
         print(f"  → {out}")
         print(f"  → {project_root / 'vina_clustering_merge_log.csv'}")
         print(f"  → {project_root / 'vina_clustering_parameters.json'}")
+        if max_per_pocket > 0:
+            print(f"  → {project_root / 'vina_pocket_cap_report.csv'}")
     else:
         print("  [SKIP] cluster_pockets=false")
 
