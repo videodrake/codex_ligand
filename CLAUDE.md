@@ -5,35 +5,148 @@
 
 ## 프로젝트 요약
 
-PyRosetta 기반 **단백질-단백질 상호작용(PPI) Global Blind Docking 파이프라인**.
-2-chain PDB를 입력받아 Relax -> Global Docking -> Filtering -> Clustering -> Refinement -> Final Scoring을 수행하여 최적 결합 포즈를 예측한다.
+EGFR-MYO1D 상호작용 결합 사이트 탐색을 위한 **이중 워크플로우 파이프라인**.
+AutoDock Vina(소분자 blind docking)와 PyRosetta(PPI global blind docking) 결과를 통합하여 후보 결합 포켓을 식별한다.
 
-- **상태**: Phase 1 monomer-based PPI 전환 완료, 3 states × 5 seeds (300K models), v2.0 필터링 파이프라인 (v1.0 하위 호환)
+- **상태**: Workflow A 자동화 완료 (3 states × 5 seeds, 300K PPI 모델), Workflow B 모듈 구현 완료 (통합 자동화 미완)
 - **실행 환경**: Linux HPC (PBS/qsub), 32 CPU cores, 네트워크 차단
 - **언어**: Python 3.x + PyRosetta (구버전 호환성 필수)
+
+## 두 가지 워크플로우
+
+### Workflow A: Standard Production (자동화 완료)
+
+Vina blind docking과 PPI blind docking을 **독립적으로** 수행 후 결과 통합.
+
+```
+Phase 1: Vina blind docking       (vina/)
+Phase 2: PPI global blind docking (pyrosetta_docking/, phase1/)
+Phase 3: PPI 후처리               (ppi/)
+Phase 4: Vina 후처리              (vina/ postprocess chain)
+Phase 5: 사이트 판정              (verdict.py)
+Phase 6: 리포트                   (report.py)
+Phase 7: 검증                     (validate.py)
+```
+
+진입점: `run_production.py` (Phase 1→7 자동 순차), `main.py` (대화형 CLI)
+
+### Workflow B: Advanced PPI-First Pipeline (모듈 구현 완료, 통합 자동화 미완)
+
+PPI 결과를 기반으로 포켓을 **순차적으로 좁혀가며** 분석. 각 Phase 출력이 다음 Phase 입력.
+
+```
+[전제: Workflow A Phase 2 완료]
+  → Adv Phase 2: 포켓 분석 & 제안       (phase2/, TG 2.0→2.7)
+  → Adv Phase 3: 포켓 유도 focused 도킹 (phase3/, TG 3.0→3.7)
+  → Adv Phase 4: 교란 분석 & 최종 스코어 (phase4/, TG 4.0→4.6)
+```
 
 ## 파일 구조
 
 ```
-egfr_pipeline/pyrosetta_docking/
-  pipeline_manager.py        # 메인 오케스트레이터 (~1660줄) - 7단계 파이프라인 실행
-  movers.py                  # 워커: Relax, Global Docking, Refinement (253줄)
-  scoring.py                 # 워커: Scoring, RMSD, Interface 분석 (~590줄)
-  pyrosetta_init.py          # 유틸리티: PyRosetta 초기화, Pose<->String 변환 (150줄)
+main.py                          # 대화형 CLI 진입점 (932줄)
+run_production.py                # Workflow A PBS 배치 오케스트레이터 (1609줄)
+
+egfr_pipeline/
+  config.py                      # YAML/JSON 설정 로드
+  runtime.py                     # 런타임 자원 해석, 환경 감지
+  verdict.py                     # 3축 증거 통합 사이트 판정 (1791줄)
+  report.py                      # Vina+PPI 통합 리포트
+  validate.py                    # 출력 품질 검증
+  output_organizer.py            # steps/ 디렉토리 정리
+  step_view.py                   # Step 인덱스 & 심볼릭 링크 뷰
+  residue_utils.py               # 잔기 파싱 유틸리티
+
+  pyrosetta_docking/             # ── PPI Global Blind Docking 엔진 ──
+    pipeline_manager.py          # 코어 오케스트레이터 (4079줄) - 7단계 PPI 파이프라인
+    scoring.py                   # dG, dSASA, sc, packstat, per-residue 에너지 (1057줄)
+    run_metadata.py              # 실행 메타데이터, 스코어 CSV 빌더 (448줄)
+    movers.py                    # FastRelax, RigidBodyPerturb, DockMCM, MiniRefine (414줄)
+    pyrosetta_init.py            # PyRosetta 초기화, Pose↔String 변환 (230줄)
+    logging_config.py            # 중앙 로깅 설정 (127줄)
+
+  vina/                          # ── AutoDock Vina 도킹 & 분석 ──
+    vina_executor.py             # Vina CLI 오케스트레이터 (2813줄)
+    pocket_cluster.py            # k-means + Union-Find 포켓 클러스터링 (600줄)
+    pocket_stability.py          # Bootstrap 안정성 분석 (405줄)
+    cross_receptor.py            # 교차 수용체 포켓 비교 (282줄)
+    parse_poses.py               # PDBQT → pose_table.csv (259줄)
+    phase3_bridge.py             # Tier 1 포켓 → Phase 3 후보 (253줄)
+    pocket_summary.py            # 포켓 통계 요약 (226줄)
+    param_sweep.py               # 파라미터 민감도 스윕 (223줄)
+    pose_contacts.py             # 접촉 잔기 추출 (167줄)
+
+  ppi/                           # ── PPI 준비 & 후처리 ──
+    pyrosetta_extract.py         # PPI 잔기 추출 (691줄)
+    prepare_dimer_pdb.py         # Dimer PDB 준비, chain 번호 매기기 (410줄)
+    postprocess_ppi.py           # 도킹 후 chain 복원, 잔기 추출 (318줄)
+    afm_extract.py               # AlphaFold-Multimer PPI 추출 (195줄)
+    pbs_submit.py                # PBS qsub 래퍼 (70줄)
+
+  phase1/                        # ── Workflow A Phase 2: PPI 인터페이스 매핑 ──
+    prepare_inputs.py            # 전체 키나아제 도메인 PDB 준비 (1063줄)
+    lightdock_validation.py      # LightDock 교차 검증 (1311줄)
+    cluster_consensus.py         # 클러스터 인터페이스 합의 (817줄)
+    orientation_filter.py        # 방향 인식 필터링 (754줄)
+    review_report.py             # Phase 1 리뷰 리포트 (661줄)
+    extract_interface.py         # 수용체측 인터페이스 잔기 추출 (544줄)
+    compare_states.py            # 다중 상태 패치 비교 (530줄)
+    pilot_comparison.py          # 파일럿 데이터 비교 (378줄)
+    launch_docking.py            # 도킹 런처 (351줄)
+    standardize_scores.py        # 스코어 표준화 (257줄)
+    generate_configs.py          # .ini 설정 자동 생성 (239줄)
+
+  phase2/                        # ── Workflow B Adv Phase 2: 포켓 분석 ──
+    pocket_proposal.py           # fpocket/P2Rank 기반 포켓 제안 (807줄)
+    patch_ingestion.py           # Phase 1 패치 참조 수집 (734줄)
+    cross_state_alignment.py     # 교차 상태 포켓 정렬 (583줄)
+    review_report.py             # Phase 2 리뷰 (551줄)
+    patch_relationship.py        # 패치 연결성/중첩 분류 (550줄)
+    druggability_confidence.py   # 약물성 신뢰도 스코어링 (520줄)
+    phase3_export.py             # Phase 3 후보 테이블 내보내기 (486줄)
+    pocket_merge.py              # 후보 포켓 정규화/병합 (440줄)
+    rerun_cascade.py             # Cascade 러너 TG 2.0→2.7 (172줄)
+
+  phase3/                        # ── Workflow B Adv Phase 3: 포켓 유도 도킹 ──
+    run_diverse_docking.py       # 다양성 인식 Vina 실행 (718줄)
+    budget_policy.py             # 검색 예산 정책 (562줄)
+    pocket_reference_ingestion.py # Phase 2 포켓 참조 수집 (507줄)
+    pose_attribution.py          # 포즈 파싱 & 포켓 귀속 (495줄)
+    phase4_export.py             # Phase 4 내보내기 (474줄)
+    job_construction.py          # 도킹 job 구성 (413줄)
+    review_report.py             # Phase 3 리뷰 (389줄)
+    diversity_validation.py      # 포켓 점유율 & 다양성 검증 (384줄)
+    rerun_cascade.py             # Cascade 러너 TG 3.0→3.7 (284줄)
+
+  phase4/                        # ── Workflow B Adv Phase 4: 교란 분석 ──
+    evidence_ingestion.py        # 다중 Phase 증거 수집 (703줄)
+    score_framework.py           # 4축 스코어 프레임워크 (549줄)
+    state_interpretation.py      # 상태 강건성 해석 (465줄)
+    mechanistic_classification.py # 메커니즘 분류 (445줄)
+    perturbation_scoring.py      # 교란 관련성 스코어링 (441줄)
+    final_report.py              # 최종 리포트 (381줄)
+    presentation_summary.py      # 프레젠테이션 요약 (373줄)
+    review_report.py             # 리뷰 리포트 (266줄)
+    rerun_cascade.py             # Cascade 러너 TG 4.0→4.6 (145줄)
+
+  md/                            # ── MD 분석 (선택적) ──
+    gromacs_analysis.py          # GROMACS 궤적 분석 (1273줄)
+    ligand_contacts.py           # 단백질-리간드 접촉 분석 (507줄)
+
 config/
-  example-project.yaml       # 메인 프로젝트 설정 (Vina + PPI 통합)
-  phase1/*.ini               # Phase 1 PyRosetta 설정 (3 test + 15 production)
-  run_production.pbs         # Workflow A 프로덕션 PBS 진입점
-  run_advanced_pipeline.pbs  # Workflow B 전체 PBS 오케스트레이터
-  run_adv_phase*.pbs         # Workflow B 개별 lane PBS (6개)
-  run_lightdock.pbs          # Phase 1 LightDock 검증 PBS
-  run_lightdock_test.pbs     # Phase 1 LightDock 테스트 PBS
-  run_pre_qsub_checks.pbs   # 사전 검증 PBS 진입점
-input/PPI/phase1/            # Phase 1 입력 PDB (monomer receptor + partner)
-input/PPI/prepared/          # 레거시 dimer 준비 PDB
+  example-project.yaml           # 메인 프로젝트 설정 (Vina + PPI 통합)
+  phase1/*.ini                   # Phase 1 PyRosetta 설정 (3 test + 15 production)
+  run_production.pbs             # Workflow A 프로덕션 PBS 진입점
+  run_advanced_pipeline.pbs      # Workflow B 전체 PBS 오케스트레이터
+  run_adv_phase*.pbs             # Workflow B 개별 lane PBS (6개)
+  run_lightdock.pbs              # Phase 1 LightDock 검증 PBS
+  run_lightdock_test.pbs         # Phase 1 LightDock 테스트 PBS
+  run_pre_qsub_checks.pbs       # 사전 검증 PBS 진입점
+input/PPI/phase1/                # Phase 1 입력 PDB (monomer receptor + partner)
+input/PPI/prepared/              # 레거시 dimer 준비 PDB
 ```
 
-## 파이프라인 7단계 흐름
+## PPI 도킹 7단계 흐름 (pipeline_manager.py 내부)
 
 1. **Relax** - FastRelax (ref2015), 결과는 `relaxed_cache/`에 캐싱
 2. **Global Docking** - RigidBodyPerturbMover(360deg,100A) -> SlideIntoContact -> DockMCMProtocol
