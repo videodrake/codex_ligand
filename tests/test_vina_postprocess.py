@@ -39,8 +39,9 @@ def _make_pose_block(affinity: float, x: float, y: float, z: float) -> str:
 
 
 def test_build_pose_table_writes_coverage_and_pose_provenance(tmp_path: Path) -> None:
-    project_root = tmp_path / "output" / "postprocess_project"
-    raw_pose = project_root / "3GT8_raw" / "173940_blind.pdbqt"
+    vina_docking_root = tmp_path / "output" / "workflow_a" / "phase1_vina_docking"
+    postprocess_root = tmp_path / "output" / "workflow_a" / "phase4_vina_postprocess"
+    raw_pose = vina_docking_root / "3GT8_raw" / "173940_blind.pdbqt"
     _write_text(
         raw_pose,
         "\n".join(
@@ -74,7 +75,7 @@ def test_build_pose_table_writes_coverage_and_pose_provenance(tmp_path: Path) ->
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
     pose_csv = build_pose_table_from_config(str(config_path))
-    coverage_csv = project_root / "vina_postprocess_coverage.csv"
+    coverage_csv = postprocess_root / "vina_postprocess_coverage.csv"
 
     pose_rows = _read_csv(pose_csv)
     coverage_rows = _read_csv(coverage_csv)
@@ -98,9 +99,9 @@ def test_build_pose_table_writes_coverage_and_pose_provenance(tmp_path: Path) ->
 
 
 def test_compare_from_config_uses_configured_cutoffs(tmp_path: Path) -> None:
-    project_root = tmp_path / "output" / "compare_project"
+    postprocess_root = tmp_path / "output" / "workflow_a" / "phase4_vina_postprocess"
     _write_csv(
-        project_root / "vina_pocket_table.csv",
+        postprocess_root / "vina_pocket_table.csv",
         [
             "receptor_id",
             "pocket_id",
@@ -159,7 +160,7 @@ def test_compare_from_config_uses_configured_cutoffs(tmp_path: Path) -> None:
         ],
     )
     _write_csv(
-        project_root / "vina_drug_pocket_map.csv",
+        postprocess_root / "vina_drug_pocket_map.csv",
         [
             "receptor_id",
             "ligand_id",
@@ -230,9 +231,9 @@ def test_bootstrap_from_config_respects_cluster_params_and_labels_scope(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    project_root = tmp_path / "output" / "bootstrap_project"
+    postprocess_root = tmp_path / "output" / "workflow_a" / "phase4_vina_postprocess"
     _write_csv(
-        project_root / "vina_pose_table.csv",
+        postprocess_root / "vina_pose_table.csv",
         [
             "receptor_id",
             "ligand_id",

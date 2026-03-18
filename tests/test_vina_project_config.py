@@ -58,8 +58,8 @@ def test_project_config_prepares_missing_pdbqt_inputs(tmp_path: Path, monkeypatc
         output.write_text("LIGAND\n", encoding="utf-8")
         return True
 
-    monkeypatch.setattr(dock, "prepare_receptor", fake_prepare_receptor)
-    monkeypatch.setattr(dock, "prepare_ligand", fake_prepare_ligand)
+    monkeypatch.setattr(vina_executor, "prepare_receptor", fake_prepare_receptor)
+    monkeypatch.setattr(vina_executor, "prepare_ligand", fake_prepare_ligand)
 
     vina_executor.validate_project_config(config)
     vina_executor.ensure_project_config_inputs_ready(config)
@@ -140,8 +140,8 @@ def test_project_config_rebuilds_stale_pdbqt_inputs(tmp_path: Path, monkeypatch)
         output.write_text("NEW_LIGAND\n", encoding="utf-8")
         return True
 
-    monkeypatch.setattr(dock, "prepare_receptor", fake_prepare_receptor)
-    monkeypatch.setattr(dock, "prepare_ligand", fake_prepare_ligand)
+    monkeypatch.setattr(vina_executor, "prepare_receptor", fake_prepare_receptor)
+    monkeypatch.setattr(vina_executor, "prepare_ligand", fake_prepare_ligand)
 
     vina_executor.ensure_project_config_inputs_ready(config)
 
@@ -160,17 +160,20 @@ def test_derive_docking_seed_is_stable_and_job_specific() -> None:
     assert seed_a is not None
 
 
-def test_print_results_does_not_label_energy_terms_as_rmsd(capsys) -> None:
-    vina_executor.print_results(
-        "173940",
-        "blind",
-        [[-8.5, -10.1, -0.7], [-8.2, -9.9, -0.4]],
-        [0.0, 1.0, 2.0],
-        [30.0, 30.0, 30.0],
-        display_n=2,
-    )
+def test_print_results_does_not_label_energy_terms_as_rmsd(caplog) -> None:
+    import logging
 
-    out = capsys.readouterr().out
+    with caplog.at_level(logging.INFO, logger="pipeline.vina"):
+        vina_executor.print_results(
+            "173940",
+            "blind",
+            [[-8.5, -10.1, -0.7], [-8.2, -9.9, -0.4]],
+            [0.0, 1.0, 2.0],
+            [30.0, 30.0, 30.0],
+            display_n=2,
+        )
+
+    out = caplog.text
     assert "RMSD_lb" not in out
-    assert "Affinity" in out
-    assert "에너지 성분" in out
+    assert "Mode" in out
+    assert "-8.50" in out

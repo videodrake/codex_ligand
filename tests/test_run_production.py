@@ -293,7 +293,7 @@ def test_check_phase4_uses_coverage_to_flag_partial_vina_postprocess(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    project_root = tmp_path / "output" / "phase4_project"
+    postprocess_root = tmp_path / "output" / "workflow_a" / "phase4_vina_postprocess"
     config = {
         "project_name": "phase4_project",
         "output_root": str(tmp_path / "output"),
@@ -308,10 +308,10 @@ def test_check_phase4_uses_coverage_to_flag_partial_vina_postprocess(
         "vina_pocket_comparison.csv",
         "vina_pocket_bootstrap.csv",
     ):
-        _write_csv(project_root / name, ["stub"], [{"stub": "ok"}])
+        _write_csv(postprocess_root / name, ["stub"], [{"stub": "ok"}])
 
     _write_csv(
-        project_root / "vina_postprocess_coverage.csv",
+        postprocess_root / "vina_postprocess_coverage.csv",
         [
             "receptor_id",
             "ligand_id",
