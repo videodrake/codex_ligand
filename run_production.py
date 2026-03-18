@@ -1273,7 +1273,7 @@ def _lane_requested_cpus(config: dict, lane: str) -> int:
     if lane == "adv-phase1":
         return 4
     if lane == "adv-phase2":
-        return 16
+        return 32
     if lane == "adv-phase3-setup":
         return 2
     if lane == "adv-phase3-execute":
