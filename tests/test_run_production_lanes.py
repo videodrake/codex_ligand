@@ -19,7 +19,9 @@ def test_phase2_ppi_selector_runs_single_target(tmp_path: Path, monkeypatch) -> 
             {
                 "name": f"{state_name}_seed0",
                 "config_ini": str(Path("config") / "phase1" / config_path.name),
-                "docking_dir": str(Path("output") / "phase1_ppi" / state_name / "prod_seed0"),
+                "docking_dir": str(
+                    Path("output") / "workflow_a" / "phase2_ppi_docking" / state_name / "prod_seed0"
+                ),
                 "receptor_id": state_name,
                 "seed_index": 0,
                 "is_production": True,

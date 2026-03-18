@@ -14,7 +14,7 @@
 # 자동 제출합니다. 자체는 가벼운 제출 작업만 수행 (ppn=2, ~수 분).
 #
 # 전제 조건: Workflow A Phase 2 (PPI docking) 완료
-#   i.e., output/phase1_ppi/*/prod_seed*/seed_complete.json 존재
+#   i.e., output/workflow_a/phase2_ppi_docking/*/prod_seed*/seed_complete.json 존재
 #
 # Usage:
 #   qsub config/run_advanced_pipeline.pbs

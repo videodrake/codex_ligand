@@ -12,8 +12,10 @@ Algorithm — Dual-Vector Orientation Test:
   5. Dot product determines orientation: positive=PASS, negative=FAIL, near-zero=AMBIGUOUS
 
 Integration with Phase 1 pipeline:
-  - Reads PDB files from output/phase1_ppi/{state}/{run}/docking_*/final_result/
-  - Produces orientation_filter_log.csv per state
+  - Reads raw PyRosetta run outputs from
+    output/workflow_a/phase2_ppi_docking/{state}/{run}/docking_*/final_result/
+  - Produces orientation_filter_log.csv per state under
+    output/workflow_b/phase1_ppi_analysis/{state}/
   - Merges orientation columns into pyrosetta_interface_models.csv
   - Retroactive pilot validation (server-side only, requires pilot PDB files)
 
@@ -35,6 +37,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+from egfr_pipeline import paths
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -63,7 +66,9 @@ PROBE_RESIDUE_FALLBACK = 962      # Single-probe fallback
 AMBIGUOUS_BAND = 0.15  # |dot product| < this → ambiguous (edge-on)
 
 # Phase 1 output structure
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_RUNS_DIR = paths.wa_phase2_ppi_docking(DEFAULT_PATH_CONFIG)
+PHASE1_OUTPUT_DIR = paths.wb_phase1_ppi_analysis(DEFAULT_PATH_CONFIG)
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Output schema
@@ -367,6 +372,7 @@ def process_state_orientation(
     state_name: str,
     output_base: Path,
     contact_dist: float = 10.0,
+    runs_base: Optional[Path] = None,
 ) -> Optional[Path]:
     """Apply orientation filter to all final models for a receptor state.
 
@@ -375,14 +381,17 @@ def process_state_orientation(
     import pyrosetta
     pyrosetta.init("-mute all", silent=True)
 
-    state_dir = output_base / state_name
-    if not state_dir.exists():
-        print(f"  State directory not found: {state_dir}")
+    source_base = runs_base or output_base
+    source_state_dir = source_base / state_name
+    if not source_state_dir.exists():
+        print(f"  State directory not found: {source_state_dir}")
         return None
+    state_dir = output_base / state_name
+    state_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = []
 
-    for run_dir in sorted(state_dir.iterdir()):
+    for run_dir in sorted(source_state_dir.iterdir()):
         if not run_dir.is_dir():
             continue
         meta_path = run_dir / "pyrosetta_run_metadata.json"
@@ -693,9 +702,12 @@ def main():
     )
     parser.add_argument("--state", choices=RECEPTOR_STATES,
                         help="Process a single receptor state")
+    parser.add_argument("--runs_dir", type=Path,
+                        default=PHASE1_RUNS_DIR,
+                        help="Workflow A Phase 2 PyRosetta run directory")
     parser.add_argument("--output_dir", type=Path,
                         default=PHASE1_OUTPUT_DIR,
-                        help="Phase 1 output base directory")
+                        help="Workflow B Phase 1 analysis output directory")
     parser.add_argument("--contact_dist", type=float, default=10.0,
                         help="Distance cutoff for receptor contact centroid (default: 10.0 Å)")
     parser.add_argument("--merge", action="store_true",
@@ -715,6 +727,7 @@ def main():
         return 0
 
     print("Phase 1 — Task 1.2A: Orientation-Aware Filtering")
+    print(f"Runs base: {args.runs_dir}")
     print(f"Output base: {args.output_dir}")
     print(f"Contact distance: {args.contact_dist} Å")
     print(f"Ambiguous band: |dot product| < {AMBIGUOUS_BAND}")
@@ -726,7 +739,12 @@ def main():
 
     for state in states:
         print(f"\nProcessing {state}:")
-        log_path = process_state_orientation(state, args.output_dir, args.contact_dist)
+        log_path = process_state_orientation(
+            state,
+            args.output_dir,
+            args.contact_dist,
+            runs_base=args.runs_dir,
+        )
         if log_path:
             results.append((state, log_path))
 

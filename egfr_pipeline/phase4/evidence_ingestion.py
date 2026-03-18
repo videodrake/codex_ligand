@@ -11,7 +11,7 @@ Tasks:
   4.0.4 - Cross-phase consistency validation
 
 Inputs:
-  - output/phase1_ppi/phase1_downstream_patch_reference.csv
+  - output/workflow_b/phase1_ppi_analysis/phase1_downstream_patch_reference.csv
   - output/phase2_pockets/pocket_patch_relationship.csv
   - output/phase2_pockets/druggability_proposal_summary.csv
   - output/phase2_pockets/candidate_pocket_state_classes.csv
@@ -32,16 +32,19 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline import paths
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
 # Default paths
 # ---------------------------------------------------------------------------
 
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
-PHASE3_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase3_docking"
-PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_perturbation"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_OUTPUT_DIR = paths.wb_phase1_ppi_analysis(DEFAULT_PATH_CONFIG)
+PHASE2_OUTPUT_DIR = paths.wb_phase2_pocket_analysis(DEFAULT_PATH_CONFIG)
+PHASE3_OUTPUT_DIR = paths.wb_phase3_focused_docking(DEFAULT_PATH_CONFIG)
+PHASE4_OUTPUT_DIR = paths.wb_phase4_scoring(DEFAULT_PATH_CONFIG)
 
 # ---------------------------------------------------------------------------
 # Expected schemas (for validation)

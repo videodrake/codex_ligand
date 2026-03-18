@@ -42,8 +42,10 @@ from egfr_pipeline.phase1.prepare_inputs import (
 )
 from egfr_pipeline.runtime import resolve_scratch_base, sync_tree
 
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+
 # Phase 1 output base directory
-PHASE1_OUTPUT_DIR = paths.wa_phase2_ppi_docking()
+PHASE1_OUTPUT_DIR = paths.wa_phase2_ppi_docking(DEFAULT_PATH_CONFIG)
 
 # Input validation
 PHASE1_INPUT_DIR = PHASE1_RUNTIME_INPUT_DIR
@@ -100,6 +102,8 @@ def generate_run_metadata(
     construct_type, and run parameters are all recorded.
     """
     import configparser
+    config_path = _absolute_path(config_path)
+    output_dir = _absolute_path(output_dir)
     config = configparser.ConfigParser()
     config.read(config_path)
 
@@ -115,8 +119,8 @@ def generate_run_metadata(
         "construct_note": "Phase 1 v2: monomer receptor (not dimer), extended partner (955 not 960/962)",
 
         # Run parameters
-        "config_file": str(config_path.relative_to(PROJECT_ROOT)),
-        "input_pdb": config.get("Path", "input_pdb_name"),
+        "config_file": _project_relative_display(config_path),
+        "input_pdb": _normalize_input_pdb_path(config.get("Path", "input_pdb_name")),
         "total_global_models": total_models,
         "n_cpus": n_cpus,
         "random_seed": seed_raw,
@@ -134,7 +138,7 @@ def generate_run_metadata(
         # Phase 1 context
         "phase": "Phase 1: PPI-First Interface Mapping",
         "task_group": "TG 1.1: PyRosetta Global Docking Standardization",
-        "output_dir": str(output_dir.relative_to(PROJECT_ROOT)),
+        "output_dir": _project_relative_display(output_dir),
 
         # Timestamps
         "generated_at": datetime.now().isoformat(),
@@ -150,13 +154,38 @@ def generate_run_metadata(
     return metadata
 
 
+def _absolute_path(path: Path) -> Path:
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _normalize_input_pdb_path(raw_path: str) -> str:
+    input_path = Path(raw_path)
+    legacy_prefix = Path("output") / "phase1_ppi" / "runtime_inputs"
+    current_prefix = Path("output") / "workflow_a" / "phase2_ppi_docking" / "runtime_inputs"
+    if input_path.parts[: len(legacy_prefix.parts)] == legacy_prefix.parts:
+        migrated = current_prefix / input_path.name
+        migrated_path = PROJECT_ROOT / migrated
+        legacy_path = PROJECT_ROOT / input_path
+        if migrated_path.exists() or not legacy_path.exists():
+            return migrated.as_posix()
+    return input_path.as_posix()
+
+
+def _project_relative_display(path: Path) -> str:
+    absolute_path = _absolute_path(path)
+    try:
+        return absolute_path.relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return absolute_path.as_posix()
+
+
 def get_output_dir(state_name: str, seed_index: int = 0, is_production: bool = False) -> Path:
     """Compute standardized output directory for a run.
 
     Task 1.1.4: Separate outputs by receptor state and partner construct.
     """
     run_type = "prod" if is_production else "test"
-    return PHASE1_OUTPUT_DIR / state_name / f"{run_type}_seed{seed_index}"
+    return _absolute_path(PHASE1_OUTPUT_DIR / state_name / f"{run_type}_seed{seed_index}")
 
 
 def run_single(
@@ -216,7 +245,7 @@ def run_single(
         os.chdir(str(scratch_output_dir))
 
         abs_config = str(config_path.resolve())
-        abs_pdb = str((PROJECT_ROOT / meta["input_pdb"]).resolve())
+        abs_pdb = str(_absolute_path(Path(meta["input_pdb"])).resolve())
 
         from egfr_pipeline.pyrosetta_docking.pipeline_manager import PipelineManager
         pm = PipelineManager(

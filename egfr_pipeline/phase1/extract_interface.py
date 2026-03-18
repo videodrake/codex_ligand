@@ -19,7 +19,8 @@ Deliverables:
   - pyrosetta_interface_models.csv         (per-model summary)
 
 Usage:
-    python -m egfr_pipeline.phase1.extract_interface [--output_dir output/phase1_ppi]
+    python -m egfr_pipeline.phase1.extract_interface \
+        [--output_dir output/workflow_b/phase1_ppi_analysis]
 """
 
 import argparse
@@ -32,13 +33,17 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from egfr_pipeline import paths
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_RUNS_DIR = paths.wa_phase2_ppi_docking(DEFAULT_PATH_CONFIG)
+PHASE1_OUTPUT_DIR = paths.wb_phase1_ppi_analysis(DEFAULT_PATH_CONFIG)
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # N-lobe / C-lobe boundary (PDB numbering)
@@ -413,20 +418,24 @@ def _find_csv(run_dir: Path, filename: str) -> Optional[Path]:
 def process_state(
     state_name: str,
     output_base: Path,
+    runs_base: Optional[Path] = None,
 ) -> Tuple[Optional[Path], Optional[Path]]:
     """Process all runs for a receptor state.
 
     Returns (residue_table_path, model_table_path) or (None, None).
     """
-    state_dir = output_base / state_name
-    if not state_dir.exists():
-        print(f"  State directory not found: {state_dir}")
+    source_base = runs_base or output_base
+    source_state_dir = source_base / state_name
+    if not source_state_dir.exists():
+        print(f"  State directory not found: {source_state_dir}")
         return None, None
+    state_dir = output_base / state_name
+    state_dir.mkdir(parents=True, exist_ok=True)
 
     all_residue_rows = []
     all_model_rows = []
 
-    for run_dir in sorted(state_dir.iterdir()):
+    for run_dir in sorted(source_state_dir.iterdir()):
         if not run_dir.is_dir():
             continue
 
@@ -484,6 +493,21 @@ def process_state(
     return res_path, mod_path
 
 
+def run_extract_interface(
+    *,
+    output_dir: Path = PHASE1_OUTPUT_DIR,
+    runs_dir: Path = PHASE1_RUNS_DIR,
+    state: Optional[str] = None,
+) -> List[Tuple[Path, Path]]:
+    states = [state] if state else RECEPTOR_STATES
+    results: List[Tuple[Path, Path]] = []
+    for state_name in states:
+        res_path, mod_path = process_state(state_name, output_dir, runs_base=runs_dir)
+        if res_path and mod_path:
+            results.append((res_path, mod_path))
+    return results
+
+
 def _write_csv(path: Path, rows: List[dict], columns: List[str]) -> None:
     """Write rows to CSV with specified columns."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -503,12 +527,16 @@ def main():
     )
     parser.add_argument("--state", choices=RECEPTOR_STATES,
                         help="Process a single receptor state")
+    parser.add_argument("--runs_dir", type=Path,
+                        default=PHASE1_RUNS_DIR,
+                        help="Workflow A Phase 2 PyRosetta run directory")
     parser.add_argument("--output_dir", type=Path,
                         default=PHASE1_OUTPUT_DIR,
-                        help="Phase 1 output base directory")
+                        help="Workflow B Phase 1 analysis output directory")
     args = parser.parse_args()
 
     print("Phase 1 — Task 1.2: Interface Residue Extraction")
+    print(f"Runs base:   {args.runs_dir}")
     print(f"Output base: {args.output_dir}")
     print(f"\nInterface extraction rule:")
     print(f"  Method: {INTERFACE_RULE['method']}")
@@ -520,7 +548,7 @@ def main():
 
     for state in states:
         print(f"\nProcessing {state}:")
-        res_path, mod_path = process_state(state, args.output_dir)
+        res_path, mod_path = process_state(state, args.output_dir, runs_base=args.runs_dir)
         if res_path:
             results.append((state, res_path, mod_path))
 

@@ -2764,9 +2764,7 @@ def dock_one_receptor(receptor_entry, ligand_entries, config):
     center, box_size = calc_box_from_pdb(receptor_pdb, padding, min_box)
 
     # 출력 디렉토리
-    output_root = Path(config.get("output_root", "./output"))
-    project_name = config.get("project_name", "")
-    out_dir = output_root / project_name / receptor_id
+    out_dir = paths.wa_phase1_vina_receptor(config, receptor_id)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     resources_cfg, _warnings = resolve_resource_config(config)

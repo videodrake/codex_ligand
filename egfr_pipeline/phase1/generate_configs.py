@@ -20,6 +20,8 @@ import os
 import sys
 from pathlib import Path
 
+from egfr_pipeline import paths
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -40,6 +42,7 @@ KNOWN_BINDING_REGION_A = "741-756,831-859"
 PRODUCTION_MODELS_PER_SEED = 20000
 PRODUCTION_N_SEEDS = 5
 TEST_MODELS = 1000
+PHASE1_RUNTIME_INPUT_DIR = paths.wa_phase2_runtime_inputs({"output_root": "output"}).as_posix()
 
 
 def generate_config(
@@ -60,7 +63,9 @@ def generate_config(
 
     # ---- Path ----
     config["Path"] = {
-        "input_pdb_name": f"output/phase1_ppi/runtime_inputs/docking_{state_name}_ext_beta_meander.pdb",
+        "input_pdb_name": (
+            f"{PHASE1_RUNTIME_INPUT_DIR}/docking_{state_name}_ext_beta_meander.pdb"
+        ),
     }
 
     # ---- System ----

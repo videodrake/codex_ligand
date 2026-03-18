@@ -12,7 +12,8 @@ The patch reference CSV includes construct_type and orientation_validation_statu
 fields required by Phase 2 Task Group 2.0 (Patch Reference Ingestion).
 
 Usage:
-    python -m egfr_pipeline.phase1.review_report [--output_dir output/phase1_ppi]
+    python -m egfr_pipeline.phase1.review_report \
+        [--output_dir output/workflow_b/phase1_ppi_analysis]
 """
 
 import argparse
@@ -23,13 +24,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from egfr_pipeline import paths
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_OUTPUT_DIR = paths.wb_phase1_ppi_analysis(DEFAULT_PATH_CONFIG)
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 NLOBE_CLOBE_BOUNDARY = 838
 
@@ -125,9 +129,12 @@ def generate_review_report(output_base: Path) -> tuple:
 
 
 def _phase1_metadata_dir() -> Path:
-    runtime_dir = PROJECT_ROOT / "output" / "phase1_ppi" / "runtime_inputs"
+    runtime_dir = paths.wa_phase2_runtime_inputs(DEFAULT_PATH_CONFIG)
     if runtime_dir.exists():
         return runtime_dir
+    legacy_runtime_dir = PROJECT_ROOT / "output" / "phase1_ppi" / "runtime_inputs"
+    if legacy_runtime_dir.exists():
+        return legacy_runtime_dir
     return PROJECT_ROOT / "input" / "PPI" / "phase1"
 
 
@@ -631,7 +638,7 @@ def main():
     )
     parser.add_argument("--output_dir", type=Path,
                         default=PHASE1_OUTPUT_DIR,
-                        help="Phase 1 output base directory")
+                        help="Workflow B Phase 1 analysis output directory")
     args = parser.parse_args()
 
     print("Phase 1 — Task 1.6: Review Report & Phase 2 Handoff")
