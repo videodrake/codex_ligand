@@ -22,7 +22,8 @@ Usage:
     python -m egfr_pipeline.phase1.standardize_scores --state 3GT8_raw
 
     # Custom output directory
-    python -m egfr_pipeline.phase1.standardize_scores --output_dir output/phase1_ppi
+    python -m egfr_pipeline.phase1.standardize_scores \
+        --output_dir output/workflow_b/phase1_ppi_analysis
 """
 
 import argparse
@@ -33,8 +34,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from egfr_pipeline import paths
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_RUNS_DIR = paths.wa_phase2_ppi_docking(DEFAULT_PATH_CONFIG)
+PHASE1_OUTPUT_DIR = paths.wb_phase1_ppi_analysis(DEFAULT_PATH_CONFIG)
 
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
@@ -166,19 +171,26 @@ def standardize_final_ranking(
     return rows
 
 
-def consolidate_state(state_name: str, output_dir: Path) -> Optional[Path]:
+def consolidate_state(
+    state_name: str,
+    output_dir: Path,
+    runs_dir: Optional[Path] = None,
+) -> Optional[Path]:
     """Consolidate all runs for a receptor state into one standardized CSV.
 
     Merges test + production + multi-seed outputs.
     """
-    state_dir = output_dir / state_name
-    if not state_dir.exists():
+    source_base = runs_dir or output_dir
+    source_state_dir = source_base / state_name
+    if not source_state_dir.exists():
         return None
+    state_dir = output_dir / state_name
+    state_dir.mkdir(parents=True, exist_ok=True)
 
     all_rows = []
 
     # Scan all run directories
-    for run_dir in sorted(state_dir.iterdir()):
+    for run_dir in sorted(source_state_dir.iterdir()):
         if not run_dir.is_dir():
             continue
 
@@ -215,18 +227,37 @@ def consolidate_state(state_name: str, output_dir: Path) -> Optional[Path]:
     return out_path
 
 
+def run_standardize_scores(
+    *,
+    output_dir: Path = PHASE1_OUTPUT_DIR,
+    runs_dir: Path = PHASE1_RUNS_DIR,
+    state: Optional[str] = None,
+) -> List[Path]:
+    states = [state] if state else RECEPTOR_STATES
+    results: List[Path] = []
+    for state_name in states:
+        path = consolidate_state(state_name, output_dir, runs_dir=runs_dir)
+        if path:
+            results.append(path)
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Phase 1 TG 1.1.5: Standardize PyRosetta score extraction"
     )
     parser.add_argument("--state", choices=RECEPTOR_STATES,
                         help="Process a single receptor state")
+    parser.add_argument("--runs_dir", type=Path,
+                        default=PHASE1_RUNS_DIR,
+                        help="Workflow A Phase 2 PyRosetta run directory")
     parser.add_argument("--output_dir", type=Path,
                         default=PHASE1_OUTPUT_DIR,
-                        help="Phase 1 output base directory")
+                        help="Workflow B Phase 1 analysis output directory")
     args = parser.parse_args()
 
     print("Phase 1 — Task 1.1.5: Score Standardization")
+    print(f"Runs base:   {args.runs_dir}")
     print(f"Output base: {args.output_dir}")
 
     states = [args.state] if args.state else RECEPTOR_STATES
@@ -234,7 +265,7 @@ def main():
 
     for state in states:
         print(f"\nProcessing {state}:")
-        path = consolidate_state(state, args.output_dir)
+        path = consolidate_state(state, args.output_dir, runs_dir=args.runs_dir)
         if path:
             results.append((state, path))
 

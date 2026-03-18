@@ -31,12 +31,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from egfr_pipeline import paths
 from egfr_pipeline.pyrosetta_docking.run_metadata import build_output_root_name
 
 PROJECT_CONFIG = REPO_ROOT / "config" / "example-project.yaml"
 # Legacy PPI configs removed — Phase 1 인프라로 전환 완료 (config/phase1/*.ini)
 PPI_CONFIGS = ()
 PHASE_OUTPUT_DIRS = (
+    REPO_ROOT / "output" / "workflow_a",
+    REPO_ROOT / "output" / "workflow_b",
+    REPO_ROOT / "output" / "precheck",
     REPO_ROOT / "output" / "phase1_ppi",
     REPO_ROOT / "output" / "phase2_pockets",
     REPO_ROOT / "output" / "phase3_docking",
@@ -63,8 +67,7 @@ def _project_output_dir() -> Path:
     output_root = Path(output_root_raw)
     if not output_root.is_absolute():
         output_root = (REPO_ROOT / output_root).resolve()
-    project_name = payload.get("project_name", "").strip()
-    return output_root / project_name if project_name else output_root
+    return paths.workflow_a_root({"output_root": str(output_root)}).resolve()
 
 
 def _ppi_output_dirs() -> Set[Path]:

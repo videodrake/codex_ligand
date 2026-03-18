@@ -163,12 +163,63 @@ def test_ppi_docking_dir_prefers_explicit_directory(tmp_path, monkeypatch) -> No
 
     target = {
         "name": "3GT8_raw_seed0",
-        "docking_dir": "output/phase1_ppi/3GT8_raw/prod_seed0",
+        "docking_dir": "output/workflow_a/phase2_ppi_docking/3GT8_raw/prod_seed0",
     }
 
     assert run_production._ppi_docking_dir(target) == (
-        tmp_path / "output" / "phase1_ppi" / "3GT8_raw" / "prod_seed0"
+        tmp_path / "output" / "workflow_a" / "phase2_ppi_docking" / "3GT8_raw" / "prod_seed0"
     )
+
+
+def test_launch_docking_run_single_handles_relative_phase2_output_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path
+    config_path = project_root / "config" / "phase1" / "phase1_prod_3GT8_raw_seed0.ini"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        "\n".join(
+            [
+                "[Path]",
+                "input_pdb_name = input/receptors/3GT8_raw.pdb",
+                "[Docking]",
+                "total_global_models = 20000",
+                "[System]",
+                "n_cpus = 16",
+                "random_seed = 123",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(launch_module, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(
+        launch_module,
+        "PHASE1_OUTPUT_DIR",
+        Path("output") / "workflow_a" / "phase2_ppi_docking",
+    )
+
+    metadata = launch_module.run_single(
+        config_path,
+        "3GT8_raw",
+        seed_index=0,
+        is_production=True,
+        dry_run=True,
+    )
+
+    output_dir = (
+        project_root
+        / "output"
+        / "workflow_a"
+        / "phase2_ppi_docking"
+        / "3GT8_raw"
+        / "prod_seed0"
+    )
+
+    assert metadata["config_file"] == "config/phase1/phase1_prod_3GT8_raw_seed0.ini"
+    assert metadata["output_dir"] == "output/workflow_a/phase2_ppi_docking/3GT8_raw/prod_seed0"
+    assert (output_dir / "pyrosetta_run_metadata.json").exists()
 
 
 def test_phase2_ppi_prepares_runtime_inputs_and_dispatches_targets(
@@ -186,7 +237,9 @@ def test_phase2_ppi_prepares_runtime_inputs_and_dispatches_targets(
             {
                 "name": f"{state_name}_seed0",
                 "config_ini": str(Path("config") / "phase1" / config_path.name),
-                "docking_dir": str(Path("output") / "phase1_ppi" / state_name / "prod_seed0"),
+                "docking_dir": str(
+                    Path("output") / "workflow_a" / "phase2_ppi_docking" / state_name / "prod_seed0"
+                ),
                 "mapping_csv": "",
                 "receptor_id": state_name,
                 "partner_name": "ext_beta_meander",

@@ -11,6 +11,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline import paths
 from egfr_pipeline.residue_utils import normalize_residue_id, extract_resnum
 from egfr_pipeline.config import load_config
 
@@ -151,10 +152,7 @@ def extract_afm_batch(
             EGFR_160-185: path/to/model.pdb
     """
     config = load_config(config_path)
-    out_root = Path(output_dir) if output_dir else Path(config.get("output_root", "./output"))
-    project_name = config.get("project_name", "")
-    if project_name:
-        out_root = out_root / project_name
+    out_root = Path(output_dir) if output_dir else paths.wa_phase3_ppi_postprocess(config)
 
     ppi_config = config.get("ppi", {})
     afm_models = ppi_config.get("afm_models", {})

@@ -61,7 +61,7 @@ generate_lightdock_setup('${STATE}', PHASE1_OUTPUT_DIR, params)
 # Execute
 echo ""
 echo "[Phase 2] Executing LightDock (test)..."
-bash "output/phase1_ppi/${STATE}/lightdock/run_lightdock_${STATE}.sh"
+bash "output/workflow_b/phase1_ppi_analysis/${STATE}/lightdock/run_lightdock_${STATE}.sh"
 
 # Extract + convergence
 echo ""

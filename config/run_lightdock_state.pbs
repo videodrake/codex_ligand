@@ -16,7 +16,7 @@ conda activate pyrosetta
 STATE="${STATE:?STATE is required, e.g. 3GT8_raw}"
 
 python -m egfr_pipeline.phase1.lightdock_validation --setup --state "$STATE" --n-cpus "${PBS_NP:-16}"
-bash "output/phase1_ppi/${STATE}/lightdock/run_lightdock_${STATE}.sh"
+bash "output/workflow_b/phase1_ppi_analysis/${STATE}/lightdock/run_lightdock_${STATE}.sh"
 python -m egfr_pipeline.phase1.lightdock_validation --extract --state "$STATE"
 python -m egfr_pipeline.phase1.lightdock_validation --convergence --state "$STATE"
 python -m egfr_pipeline.phase1.lightdock_validation --note

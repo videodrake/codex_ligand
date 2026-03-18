@@ -75,6 +75,10 @@ def wa_phase2_ppi_seed(
     return wa_phase2_ppi_docking(config) / state / f"{run_type}_seed{seed}"
 
 
+def wa_phase2_runtime_inputs(config: Optional[dict] = None) -> Path:
+    return wa_phase2_ppi_docking(config) / "runtime_inputs"
+
+
 def wa_phase3_ppi_postprocess(config: Optional[dict] = None) -> Path:
     return workflow_a_root(config) / "phase3_ppi_postprocess"
 

@@ -19,7 +19,8 @@ Tasks:
   1.7.3 - N-terminal artifact resolution check (VAL962)
 
 Usage:
-    python -m egfr_pipeline.phase1.pilot_comparison [--output_dir output/phase1_ppi]
+    python -m egfr_pipeline.phase1.pilot_comparison \
+        [--output_dir output/workflow_b/phase1_ppi_analysis]
 """
 
 import argparse
@@ -29,14 +30,17 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from egfr_pipeline import paths
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_OUTPUT_DIR = paths.wb_phase1_ppi_analysis(DEFAULT_PATH_CONFIG)
+PHASE1_INPUT_DIR = paths.wa_phase2_runtime_inputs(DEFAULT_PATH_CONFIG)
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Known pilot artifacts
@@ -90,9 +94,13 @@ def generate_pilot_comparison(
 
     # Load pilot reference
     pilot_ref_path = PHASE1_INPUT_DIR / "pilot_data_reference.csv"
+    legacy_pilot_ref_path = PROJECT_ROOT / "input" / "PPI" / "phase1" / "pilot_data_reference.csv"
     pilot_entries = []
     if pilot_ref_path.exists():
         with open(pilot_ref_path, encoding="utf-8") as f:
+            pilot_entries = list(csv.DictReader(f))
+    elif legacy_pilot_ref_path.exists():
+        with open(legacy_pilot_ref_path, encoding="utf-8") as f:
             pilot_entries = list(csv.DictReader(f))
 
     # Load new results per state
@@ -364,7 +372,7 @@ def main():
     )
     parser.add_argument("--output_dir", type=Path,
                         default=PHASE1_OUTPUT_DIR,
-                        help="Phase 1 output base directory")
+                        help="Workflow B Phase 1 analysis output directory")
     args = parser.parse_args()
 
     print("Phase 1 — Task 1.7: Pilot Data Comparison Layer")

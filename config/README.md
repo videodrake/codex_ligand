@@ -52,7 +52,7 @@ Do not assume that the whole repository already shares one unified config schema
 
 | Field | Meaning |
 |------|------|
-| `project_name` | Names the output namespace for the routine project run |
+| `project_name` | Labels reports/run metadata; canonical outputs now live under `workflow_a` and `workflow_b` |
 | `output_root` | Root directory under which the project output tree is created |
 | `mode` | Current Vina operating mode for the routine lane |
 | `max_workers` | Parallel worker ceiling; treat `16` as the routine safe bound |

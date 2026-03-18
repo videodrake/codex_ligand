@@ -53,10 +53,10 @@ if [ "$STATE" = "all" ]; then
     for state in 3GT8_raw EGFR_160-185 EGFR_170-200; do
         echo ""
         echo "--- $state ---"
-        bash "output/phase1_ppi/${state}/lightdock/run_lightdock_${state}.sh"
+        bash "output/workflow_b/phase1_ppi_analysis/${state}/lightdock/run_lightdock_${state}.sh"
     done
 else
-    bash "output/phase1_ppi/${STATE}/lightdock/run_lightdock_${STATE}.sh"
+    bash "output/workflow_b/phase1_ppi_analysis/${STATE}/lightdock/run_lightdock_${STATE}.sh"
 fi
 
 # Step 3: Extract interfaces + orientation filter

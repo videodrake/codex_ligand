@@ -25,16 +25,20 @@ import csv
 import json
 import os
 import sys
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
+
+from egfr_pipeline import paths
 
 # ---------------------------------------------------------------------------
 # Project root
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-PHASE1_RUNTIME_INPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi" / "runtime_inputs"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_RUNTIME_INPUT_DIR = paths.wa_phase2_runtime_inputs(DEFAULT_PATH_CONFIG)
 
 
 def _display_path(path: Path) -> str:
@@ -152,6 +156,192 @@ def set_chain(line: str, chain: str) -> str:
 def set_atom_serial(line: str, serial: int) -> str:
     """Set atom serial number in PDB ATOM line."""
     return line[:6] + f"{serial:5d}" + line[11:]
+
+
+def set_resname(line: str, resname: str) -> str:
+    """Set residue name in PDB ATOM line."""
+    return line[:17] + f"{resname:>3}" + line[20:]
+
+
+def set_atom_name(line: str, atom_name: str) -> str:
+    """Set atom name in PDB ATOM line."""
+    return line[:12] + f"{atom_name:>4}" + line[16:]
+
+
+def set_altloc(line: str, altloc: str = " ") -> str:
+    """Set alternate-location code in PDB ATOM line."""
+    return line[:16] + altloc[:1] + line[17:]
+
+
+def get_altloc(line: str) -> str:
+    """Extract alternate-location code from PDB ATOM line."""
+    return line[16].strip()
+
+
+def get_occupancy(line: str) -> float:
+    """Extract occupancy from PDB ATOM line."""
+    field = line[54:60].strip()
+    if not field:
+        return 1.0
+    try:
+        return float(field)
+    except ValueError:
+        return 0.0
+
+
+def get_element(line: str) -> str:
+    """Extract element symbol from PDB ATOM line."""
+    return line[76:78].strip().upper()
+
+
+# Rosetta/PyRosetta is stricter than many CHARMM-derived PDB producers.
+_ROSETTA_RESNAME_NORMALIZE = {
+    "HSD": "HIS",
+    "HSE": "HIS",
+    "HSP": "HIS",
+    "HID": "HIS",
+    "HIE": "HIS",
+    "HIP": "HIS",
+    "CYX": "CYS",
+}
+_ROSETTA_ATOM_NAME_NORMALIZE = {
+    ("ILE", "CD"): "CD1",
+}
+_ROSETTA_ALTLOC_KEEP = {"", "A"}
+
+
+def _new_rosetta_input_stats() -> dict:
+    return {
+        "atoms_in": 0,
+        "atoms_out": 0,
+        "hydrogens_removed": 0,
+        "zero_occupancy_removed": 0,
+        "alternate_location_removed": 0,
+        "alternate_locations_collapsed": 0,
+        "residue_renames": Counter(),
+        "atom_renames": Counter(),
+    }
+
+
+def _is_hydrogen_atom(line: str) -> bool:
+    element = get_element(line)
+    if element:
+        return element == "H"
+    atom_name = get_atom_name(line).lstrip("0123456789").upper()
+    return atom_name.startswith("H")
+
+
+def _format_counter(counter: Counter) -> str:
+    if not counter:
+        return ""
+    return "; ".join(f"{key}:{counter[key]}" for key in sorted(counter))
+
+
+def _rosetta_stats_summary(stats: dict) -> str:
+    parts: List[str] = []
+    if stats["hydrogens_removed"]:
+        parts.append(f"removed_h={stats['hydrogens_removed']}")
+    if stats["zero_occupancy_removed"]:
+        parts.append(f"removed_zero_occ={stats['zero_occupancy_removed']}")
+    if stats["alternate_location_removed"]:
+        parts.append(f"dropped_altloc={stats['alternate_location_removed']}")
+    if stats["alternate_locations_collapsed"]:
+        parts.append(f"collapsed_altloc={stats['alternate_locations_collapsed']}")
+    residue_summary = _format_counter(stats["residue_renames"])
+    if residue_summary:
+        parts.append(f"residue_aliases[{residue_summary}]")
+    atom_summary = _format_counter(stats["atom_renames"])
+    if atom_summary:
+        parts.append(f"atom_aliases[{atom_summary}]")
+    return ", ".join(parts) if parts else "no adjustments needed"
+
+
+def _remaining_rosetta_issues(atom_lines: List[str]) -> List[str]:
+    issues: List[str] = []
+    for line in atom_lines:
+        resname = get_resname(line)
+        atom_name = get_atom_name(line)
+        if _is_hydrogen_atom(line):
+            issues.append(f"hydrogen atom retained: {resname}{get_resnum(line)} {atom_name}")
+        elif get_occupancy(line) <= 0.0:
+            issues.append(f"zero occupancy atom retained: {resname}{get_resnum(line)} {atom_name}")
+        elif get_altloc(line) not in {"", "A"}:
+            issues.append(f"unsupported altloc retained: {resname}{get_resnum(line)} {atom_name}")
+        elif resname in _ROSETTA_RESNAME_NORMALIZE:
+            issues.append(f"unsupported residue alias retained: {resname}{get_resnum(line)}")
+        elif (resname, atom_name) in _ROSETTA_ATOM_NAME_NORMALIZE:
+            issues.append(f"unsupported atom alias retained: {resname}{get_resnum(line)} {atom_name}")
+        if len(issues) >= 10:
+            break
+    return issues
+
+
+def normalize_rosetta_input_lines(atom_lines: List[str]) -> Tuple[List[str], dict]:
+    """Normalize source ATOM records into a Rosetta-friendly protein-only PDB subset."""
+    stats = _new_rosetta_input_stats()
+    normalized: List[str] = []
+
+    for line in atom_lines:
+        stats["atoms_in"] += 1
+
+        altloc = get_altloc(line)
+        if altloc and altloc not in _ROSETTA_ALTLOC_KEEP:
+            stats["alternate_location_removed"] += 1
+            continue
+        if altloc:
+            stats["alternate_locations_collapsed"] += 1
+            line = set_altloc(line)
+
+        if get_occupancy(line) <= 0.0:
+            stats["zero_occupancy_removed"] += 1
+            continue
+
+        if _is_hydrogen_atom(line):
+            stats["hydrogens_removed"] += 1
+            continue
+
+        resname = get_resname(line)
+        normalized_resname = _ROSETTA_RESNAME_NORMALIZE.get(resname, resname)
+        if normalized_resname != resname:
+            stats["residue_renames"][f"{resname}->{normalized_resname}"] += 1
+            line = set_resname(line, normalized_resname)
+            resname = normalized_resname
+
+        atom_name = get_atom_name(line)
+        normalized_atom_name = _ROSETTA_ATOM_NAME_NORMALIZE.get((resname, atom_name), atom_name)
+        if normalized_atom_name != atom_name:
+            stats["atom_renames"][f"{resname}:{atom_name}->{normalized_atom_name}"] += 1
+            line = set_atom_name(line, normalized_atom_name)
+
+        normalized.append(line)
+
+    issues = _remaining_rosetta_issues(normalized)
+    if issues:
+        raise ValueError(
+            "Rosetta input normalization left unresolved PDB compatibility issues: "
+            + "; ".join(issues)
+        )
+
+    stats["atoms_out"] = len(normalized)
+    return normalized, stats
+
+
+def _apply_rosetta_stats(metadata: dict, stats: dict) -> None:
+    metadata.update(
+        {
+            "rosetta_atoms_in": stats["atoms_in"],
+            "rosetta_atoms_out": stats["atoms_out"],
+            "rosetta_removed_hydrogens": stats["hydrogens_removed"],
+            "rosetta_removed_zero_occupancy": stats["zero_occupancy_removed"],
+            "rosetta_removed_altloc_atoms": stats["alternate_location_removed"],
+            "rosetta_collapsed_altloc_atoms": stats["alternate_locations_collapsed"],
+            "rosetta_residue_rename_count": sum(stats["residue_renames"].values()),
+            "rosetta_atom_rename_count": sum(stats["atom_renames"].values()),
+            "rosetta_residue_renames": _format_counter(stats["residue_renames"]),
+            "rosetta_atom_renames": _format_counter(stats["atom_renames"]),
+            "rosetta_normalization_summary": _rosetta_stats_summary(stats),
+        }
+    )
 
 
 # Required backbone atoms for PyRosetta pose loading
@@ -325,6 +515,9 @@ def prepare_receptor(
             f"range {KINASE_DOMAIN_START}-{KINASE_DOMAIN_END}"
         )
 
+    lines, rosetta_stats = normalize_rosetta_input_lines(lines)
+    print(f"  Rosetta normalization: {_rosetta_stats_summary(rosetta_stats)}")
+
     # --- Backbone completeness check ---
     incomplete, missing_bb = check_backbone_completeness(lines)
     stripped_resnums: List[int] = []
@@ -391,6 +584,7 @@ def prepare_receptor(
         "numbering_system": "PDB (3GT8-consistent)",
         "membrane_proximal_excluded": MEMBRANE_PROXIMAL,
     }
+    _apply_rosetta_stats(metadata, rosetta_stats)
 
     return metadata
 
@@ -425,6 +619,9 @@ def prepare_extended_beta_meander(output_dir: Path) -> dict:
             f"No residues found in {th1_path} chain {BETA_MEANDER_SOURCE_CHAIN} "
             f"range {BETA_MEANDER_START}-{BETA_MEANDER_END}"
         )
+
+    lines, rosetta_stats = normalize_rosetta_input_lines(lines)
+    print(f"  Rosetta normalization: {_rosetta_stats_summary(rosetta_stats)}")
 
     # --- Backbone completeness check ---
     incomplete, missing_bb = check_backbone_completeness(lines)
@@ -497,6 +694,16 @@ def prepare_extended_beta_meander(output_dir: Path) -> dict:
         status = "COMPLETE" if sinfo["complete"] else f"INCOMPLETE ({sinfo['present_count']}/{sinfo['total_count']})"
         print(f"    {sname}: {sinfo['residues']} [{sinfo['role']}] — {status}")
 
+    active_face_residues: List[int] = []
+    structural_support_residues: List[int] = []
+    for info in SHEET_DEFINITIONS.values():
+        role = str(info.get("role", ""))
+        residues = list(info.get("residues", []))
+        if role == "active_face_primary":
+            active_face_residues.extend(residues)
+        if role == "structural_support":
+            structural_support_residues.extend(residues)
+
     metadata = {
         "construct_type": "extended_beta_meander",
         "source_pdb": BETA_MEANDER_SOURCE,
@@ -512,9 +719,10 @@ def prepare_extended_beta_meander(output_dir: Path) -> dict:
         "missing_residues": format_ranges(missing) if missing else "",
         "sheet_annotations": sheet_annotations,
         "numbering_system": "MYO1D PDB numbering",
-        "active_face_residues": SHEET_DEFINITIONS["sheet_8"]["residues"] + SHEET_DEFINITIONS["sheet_9"]["residues"],
-        "structural_support_residues": SHEET_DEFINITIONS["sheet_12"]["residues"],
+        "active_face_residues": active_face_residues,
+        "structural_support_residues": structural_support_residues,
     }
+    _apply_rosetta_stats(metadata, rosetta_stats)
 
     return metadata
 
@@ -720,6 +928,12 @@ def write_receptor_metadata(receptor_metas: List[dict], output_dir: Path) -> Pat
         "residue_start", "residue_end", "n_residues", "n_atoms",
         "n_nlobe_residues", "n_clobe_residues", "nlobe_clobe_boundary",
         "missing_residues", "numbering_system", "membrane_proximal_excluded",
+        "rosetta_atoms_in", "rosetta_atoms_out",
+        "rosetta_removed_hydrogens", "rosetta_removed_zero_occupancy",
+        "rosetta_removed_altloc_atoms", "rosetta_collapsed_altloc_atoms",
+        "rosetta_residue_rename_count", "rosetta_atom_rename_count",
+        "rosetta_residue_renames", "rosetta_atom_renames",
+        "rosetta_normalization_summary",
     ]
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -857,6 +1071,23 @@ def write_validation_report(
         lines.append(
             f"| {m['state_name']} | {m['residue_start']}-{m['residue_end']} | "
             f"{m['n_residues']} | {m['n_nlobe_residues']} | {m['n_clobe_residues']} | {gaps} |"
+        )
+
+    lines.extend([
+        "",
+        "## Rosetta Compatibility Normalization",
+        "",
+        "| Structure | Atoms In | Atoms Out | H Removed | Zero-Occ Removed | AltLoc Dropped | Residue Renames | Atom Renames |",
+        "|-----------|----------|-----------|-----------|------------------|----------------|-----------------|--------------|",
+    ])
+
+    normalization_rows = receptor_metas + [dict(partner_meta, state_name="partner_extended_beta_meander")]
+    for entry in normalization_rows:
+        lines.append(
+            f"| {entry['state_name']} | {entry['rosetta_atoms_in']} | {entry['rosetta_atoms_out']} | "
+            f"{entry['rosetta_removed_hydrogens']} | {entry['rosetta_removed_zero_occupancy']} | "
+            f"{entry['rosetta_removed_altloc_atoms']} | "
+            f"{entry['rosetta_residue_renames'] or 'None'} | {entry['rosetta_atom_renames'] or 'None'} |"
         )
 
     lines.extend([
@@ -1051,7 +1282,8 @@ def main():
     parser.add_argument(
         "--output_dir", type=Path,
         default=PHASE1_RUNTIME_INPUT_DIR,
-        help="Output directory for prepared runtime inputs (default: output/phase1_ppi/runtime_inputs/)",
+        help="Output directory for prepared runtime inputs "
+             "(default: output/workflow_a/phase2_ppi_docking/runtime_inputs/)",
     )
     args = parser.parse_args()
 

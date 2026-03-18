@@ -53,6 +53,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from egfr_pipeline import paths
+
 try:
     import numpy as np
     _HAS_NUMPY = True
@@ -83,8 +85,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # Constants
 # ---------------------------------------------------------------------------
 
-PHASE1_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase1_ppi"
-PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
+DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
+PHASE1_OUTPUT_DIR = paths.wb_phase1_ppi_analysis(DEFAULT_PATH_CONFIG)
+PHASE1_INPUT_DIR = paths.wa_phase2_runtime_inputs(DEFAULT_PATH_CONFIG)
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # LightDock parameters
@@ -1233,7 +1236,7 @@ def main():
                         help="Process a single receptor state")
     parser.add_argument("--output_dir", type=Path,
                         default=PHASE1_OUTPUT_DIR,
-                        help="Phase 1 output base directory")
+                        help="Workflow B Phase 1 analysis output directory")
     parser.add_argument("--setup", action="store_true",
                         help="Generate LightDock setup and run script")
     parser.add_argument("--run", action="store_true",
