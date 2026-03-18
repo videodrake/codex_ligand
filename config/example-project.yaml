@@ -13,7 +13,7 @@ ligands:
 - id: VAX-C12_0
   pdbqt: input/ligands/VAX-C12_0_ligand.pdbqt
   sdf: input/ligands/VAX-C12_0_ligand.sdf
-max_workers: 16
+max_workers: 32
 mode: blind
 output_root: ./output
 resources:

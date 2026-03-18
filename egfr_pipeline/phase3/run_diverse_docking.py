@@ -51,7 +51,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # ---------------------------------------------------------------------------
 
 PHASE3_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase3_docking"
-MAX_WORKERS_DEFAULT = 16  # Server-side default (Task 3.3.4)
+MAX_WORKERS_DEFAULT = 32  # Server-side default (Task 3.3.4)
 
 # Round log schema
 ROUND_LOG_COLUMNS = [

@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q workq
 #PBS -N adv_phase3_exec
-#PBS -l nodes=node05:ppn=16
+#PBS -l nodes=node05:ppn=32
 #PBS -l walltime=08:00:00
 #PBS -V
 #PBS -o ${PBS_O_WORKDIR}/adv_phase3_execute.o
@@ -31,4 +31,4 @@ ROUND="${ROUND:?ROUND is required, e.g. 0}"
 python run_production.py \
   --lane adv-phase3-execute \
   --seed "$ROUND" \
-  --allocated-cpus "${PBS_NP:-16}"
+  --allocated-cpus "${PBS_NP:-32}"
