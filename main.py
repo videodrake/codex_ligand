@@ -768,7 +768,7 @@ def run_full(config_path: str = None):
     config = load_config(config_path)
     project_root = project_root_from_config(config)
     receptor_ids = [r["id"] for r in config.get("receptors", [])]
-    for step in ["parse", "contacts", "cluster", "summarize", "compare", "ppi", "phase3_bridge"]:
+    for step in ["parse", "contacts", "cluster", "summarize", "compare", "bootstrap", "ppi", "phase3_bridge"]:
         try:
             _run_postprocess_step(step, config_path, config, project_root, receptor_ids)
         except Exception as e:

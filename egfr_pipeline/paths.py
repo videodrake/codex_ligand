@@ -183,3 +183,68 @@ def ensure_wb_dirs(config: Optional[dict] = None) -> None:
         wb_phase4_scoring,
     ]:
         fn(config).mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Log index — symlinks to scattered PPI logs for discoverability
+# ---------------------------------------------------------------------------
+
+_RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
+_N_SEEDS = 5
+
+
+def create_log_index(config: Optional[dict] = None) -> Path:
+    """Create workflow_a/logs/ with symlinks to PPI per-seed logs + LOG_INDEX.txt."""
+    import os
+    import shutil
+
+    logs = wa_logs(config)
+    logs.mkdir(parents=True, exist_ok=True)
+
+    # PPI seed log symlinks
+    ppi_seed_dir = logs / "ppi_seeds"
+    if ppi_seed_dir.exists():
+        shutil.rmtree(ppi_seed_dir)
+    ppi_seed_dir.mkdir(parents=True, exist_ok=True)
+
+    ppi_root = wa_phase2_ppi_docking(config)
+    for state in _RECEPTOR_STATES:
+        for seed in range(_N_SEEDS):
+            seed_dir = ppi_root / state / f"prod_seed{seed}"
+            for log_name in ["logs/pipeline.log", "logs/workers.log", "PROGRESS.log"]:
+                src = seed_dir / log_name
+                link_name = f"{state}_seed{seed}_{log_name.replace('logs/', '').replace('/', '_')}"
+                link_path = ppi_seed_dir / link_name
+                try:
+                    rel = os.path.relpath(src, ppi_seed_dir)
+                    if link_path.exists() or link_path.is_symlink():
+                        link_path.unlink()
+                    os.symlink(rel, link_path)
+                except OSError:
+                    pass
+
+    # LOG_INDEX.txt
+    index_path = logs / "LOG_INDEX.txt"
+    lines = [
+        "=== EGFR-MYO1D Pipeline Log Index ===",
+        "",
+        "Central logs:",
+        "  logs/lanes/              Lane manifests (start/complete markers)",
+        "",
+        "PPI docking logs (symlinked):",
+        "  logs/ppi_seeds/          Symlinks to per-seed pipeline/worker logs",
+        "",
+        "Original locations:",
+        "  phase2_ppi_docking/{state}/prod_seed{n}/logs/pipeline.log",
+        "  phase2_ppi_docking/{state}/prod_seed{n}/logs/workers.log",
+        "  phase2_ppi_docking/{state}/prod_seed{n}/PROGRESS.log",
+        "",
+        "Reading guide:",
+        "  Real-time:  tail -f phase2_ppi_docking/{state}/prod_seed{n}/PROGRESS.log",
+        "  Errors:     grep 'ERROR\\|CRITICAL' logs/ppi_seeds/*_workers.log",
+        "  Filters:    grep 'FilterStage' logs/ppi_seeds/*_pipeline.log",
+        "",
+    ]
+    index_path.write_text("\n".join(lines), encoding="utf-8")
+
+    return index_path

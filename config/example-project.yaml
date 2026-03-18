@@ -53,7 +53,7 @@ postprocess:
   same_patch_centroid_cutoff: 8.0
   same_patch_jaccard: 0.3
   same_patch_overlap: 0.5
-  max_poses_per_pocket: 5
+  max_poses_per_pocket: 100
   phase3_bridge: true
   phase3_primary_cutoff: -7.0
   phase3_secondary_cutoff: -5.0
@@ -74,6 +74,16 @@ ppi:
     - partner: MYO1D_beta
       path: /work4/hwang/onepack/codex_ligand/EGFR_dimer_beta_meander_wt/restored
 project_name: egfr_myo1d_vina
+# verdict 섹션: 아래 값은 모두 기본값. 필요한 키만 오버라이드하면 됨.
+# verdict:
+#   # Vina sub-score 최대 점수 배분 (sensitivity analysis 용)
+#   vina_affinity_max: 20.0
+#   vina_convergence_max: 15.0
+#   vina_stability_max: 10.0
+#   vina_diversity_max: 15.0
+#   # Threshold 예시 (전체 목록은 verdict.py DEFAULT_THRESHOLDS 참조)
+#   # affinity_great: -8.0
+#   # valid_min: 55
 receptors:
 - chain: A
   id: 3GT8_raw
@@ -97,7 +107,7 @@ vina:
   exhaustiveness: 384
   min_box: 70.0
   mode: blind
-  n_poses: 500
+  n_poses: 2000
   parallel_receptors: 3
   padding: 5.0
   seed: 20260316

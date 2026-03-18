@@ -20,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import glob
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -28,6 +29,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+
+logger = logging.getLogger("pipeline.vina")
+
+# standalone 실행 시 handler가 없으면 StreamHandler 자동 추가
+if not logging.getLogger("pipeline").handlers and not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 from egfr_pipeline import paths
 from egfr_pipeline.config import resolve_resource_config
 from egfr_pipeline.runtime import cap_worker_count, resolve_runtime_resources
@@ -78,14 +88,14 @@ def save_config(config: dict, path: Path):
         json_path = path.with_suffix(".json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
-        print(f"[Config] pyyaml 미설치 → JSON으로 저장: {json_path}")
+        logger.info("pyyaml 미설치 → JSON으로 저장: %s", json_path)
 
 
 def load_config(path: str) -> dict:
     path = Path(path)
     if path.suffix in (".yaml", ".yml"):
         if not HAS_YAML:
-            print("[ERROR] YAML config를 로드하려면 pyyaml 설치 필요: pip install pyyaml")
+            logger.error("YAML config를 로드하려면 pyyaml 설치 필요: pip install pyyaml")
             sys.exit(1)
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f)
@@ -187,9 +197,9 @@ def ensure_project_config_inputs_ready(config: dict) -> None:
 
         pdbqt_path.parent.mkdir(parents=True, exist_ok=True)
         action = "Rebuilding stale receptor PDBQT" if pdbqt_path.exists() else "Preparing receptor PDBQT"
-        print(
-            f"[Config] {action} for {receptor.get('id')}: "
-            f"{source_path} -> {pdbqt_path}"
+        logger.info(
+            "%s for %s: %s -> %s",
+            action, receptor.get('id'), source_path, pdbqt_path,
         )
         if not prepare_receptor(source_path, pdbqt_path):
             raise RuntimeError(
@@ -210,9 +220,9 @@ def ensure_project_config_inputs_ready(config: dict) -> None:
 
         pdbqt_path.parent.mkdir(parents=True, exist_ok=True)
         action = "Rebuilding stale ligand PDBQT" if pdbqt_path.exists() else "Preparing ligand PDBQT"
-        print(
-            f"[Config] {action} for {ligand.get('id')}: "
-            f"{source_path} -> {pdbqt_path}"
+        logger.info(
+            "%s for %s: %s -> %s",
+            action, ligand.get('id'), source_path, pdbqt_path,
         )
         if not prepare_ligand(source_path, pdbqt_path):
             raise RuntimeError(
@@ -374,8 +384,8 @@ def resolve_ligand_worker_count(
 
     if cpu_per_job <= 0:
         if worker_count > 1:
-            print(
-                "[WARN] cpu=0 allows each Vina ligand job to use all visible cores; "
+            logger.warning(
+                "cpu=0 allows each Vina ligand job to use all visible cores; "
                 "forcing ligand-level parallelism to 1."
             )
         return 1
@@ -387,10 +397,10 @@ def resolve_ligand_worker_count(
         available_cpus=max(1, int(visible_cores or 1)),
     )
     if capped < worker_count:
-        print(
-            f"[WARN] Requested ligand CPU budget exceeds visible cores: "
-            f"{worker_count * cpu_per_job} > {visible_cores}. "
-            f"Capping ligand workers {worker_count} -> {capped}."
+        logger.warning(
+            "Requested ligand CPU budget exceeds visible cores: "
+            "%d > %s. Capping ligand workers %d -> %d.",
+            worker_count * cpu_per_job, visible_cores, worker_count, capped,
         )
         worker_count = capped
 
@@ -531,16 +541,16 @@ def auto_detect_receptor(input_dir: Path):
     """input/에서 *_receptor.pdbqt 자동 감지. 복수일 경우 리스트 반환."""
     receptors = sorted(input_dir.glob("*_receptor.pdbqt"))
     if len(receptors) == 1:
-        print(f"[Auto] Receptor: {receptors[0].name}")
+        logger.info("Receptor: %s", receptors[0].name)
         return receptors
     elif len(receptors) > 1:
-        print(f"[Auto] Receptor {len(receptors)}개 감지:")
+        logger.info("Receptor %d개 감지:", len(receptors))
         for r in receptors:
-            print(f"  > {r.name}")
+            logger.info("  > %s", r.name)
         return receptors
     else:
-        print("[ERROR] input/에서 *_receptor.pdbqt를 찾을 수 없습니다.")
-        print("  --receptor로 직접 지정하거나 --prepare-receptor로 변환하세요.")
+        logger.error("input/에서 *_receptor.pdbqt를 찾을 수 없습니다.")
+        logger.error("  --receptor로 직접 지정하거나 --prepare-receptor로 변환하세요.")
         sys.exit(1)
 
 
@@ -549,31 +559,31 @@ def auto_detect_receptor_pdb(receptor_pdbqt: Path, input_dir: Path):
     stem = receptor_pdbqt.name.replace("_receptor.pdbqt", "")
     pdb_candidate = input_dir / f"{stem}.pdb"
     if pdb_candidate.exists():
-        print(f"[Auto] Receptor PDB: {pdb_candidate.name}")
+        logger.info("Receptor PDB: %s", pdb_candidate.name)
         return pdb_candidate
 
     # 단일 PDB 파일이면 사용
     pdbs = sorted(input_dir.glob("*.pdb"))
     if len(pdbs) == 1:
-        print(f"[Auto] Receptor PDB: {pdbs[0].name}")
+        logger.info("Receptor PDB: %s", pdbs[0].name)
         return pdbs[0]
 
-    print(f"[WARNING] {receptor_pdbqt.name}에 대응하는 PDB를 찾을 수 없습니다.")
+    logger.warning("%s에 대응하는 PDB를 찾을 수 없습니다.", receptor_pdbqt.name)
     if pdbs:
-        print("  후보 파일:")
+        logger.warning("  후보 파일:")
         for p in pdbs:
-            print(f"    {p}")
+            logger.warning("    %s", p)
     return None
 
 
 def auto_detect_ligands(input_dir: Path):
     ligands = sorted(input_dir.glob("*_ligand.pdbqt"))
     if not ligands:
-        print("[ERROR] input/에서 *_ligand.pdbqt를 찾을 수 없습니다.")
+        logger.error("input/에서 *_ligand.pdbqt를 찾을 수 없습니다.")
         sys.exit(1)
-    print(f"[Auto] Ligands ({len(ligands)}):")
+    logger.info("Ligands (%d):", len(ligands))
     for lig in ligands:
-        print(f"  {lig.name}")
+        logger.info("  %s", lig.name)
     return ligands
 
 
@@ -591,15 +601,15 @@ def prepare_receptor(pdb_file: Path, pdbqt_file: Path):
     ]
 
     for label, cmd in commands:
-        print(f"[Receptor] {label} 시도: {cmd}")
+        logger.debug("Receptor %s 시도: %s", label, cmd)
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         if result.returncode == 0 and pdbqt_file.exists():
-            print(f"[Receptor] {label}로 변환 성공 → {pdbqt_file.name}")
+            logger.info("Receptor %s로 변환 성공 → %s", label, pdbqt_file.name)
             return True
         else:
-            print(f"[Receptor] {label} 실패: {result.stderr.strip()[:200]}")
+            logger.debug("Receptor %s 실패: %s", label, result.stderr.strip()[:200])
 
-    print("[ERROR] receptor PDBQT 변환 실패. prepare_receptor 또는 obabel 설치 확인.")
+    logger.error("receptor PDBQT 변환 실패. prepare_receptor 또는 obabel 설치 확인.")
     return False
 
 
@@ -618,16 +628,16 @@ def prepare_ligand(input_file: Path, pdbqt_file: Path):
     ]
 
     for label, cmd in commands:
-        print(f"[Ligand] {label} 시도: {cmd}")
+        logger.debug("Ligand %s 시도: %s", label, cmd)
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         if result.returncode == 0 and pdbqt_file.exists():
-            print(f"[Ligand] {label}로 변환 성공 → {pdbqt_file.name}")
+            logger.info("Ligand %s로 변환 성공 → %s", label, pdbqt_file.name)
             return True
         else:
-            print(f"[Ligand] {label} 실패: {result.stderr.strip()[:200]}")
+            logger.debug("Ligand %s 실패: %s", label, result.stderr.strip()[:200])
 
-    print(f"[ERROR] ligand PDBQT 변환 실패: {input_file.name}")
-    print("  mk_prepare_ligand (meeko), prepare_ligand, 또는 obabel 설치 확인.")
+    logger.error("ligand PDBQT 변환 실패: %s", input_file.name)
+    logger.error("  mk_prepare_ligand (meeko), prepare_ligand, 또는 obabel 설치 확인.")
     return False
 
 
@@ -657,24 +667,24 @@ def smiles_to_sdf(smiles: str, sdf_file: Path, name: str = "ligand"):
         writer = Chem.SDWriter(str(sdf_file))
         writer.write(mol)
         writer.close()
-        print(f"[SMILES] RDKit으로 3D 구조 생성 → {sdf_file.name}")
+        logger.info("SMILES RDKit으로 3D 구조 생성 → %s", sdf_file.name)
         return True
     except ImportError:
         pass
     except Exception as e:
-        print(f"[SMILES] RDKit 실패: {e}")
+        logger.debug("SMILES RDKit 실패: %s", e)
 
     # 방법 2: OpenBabel
     cmd = f'obabel -:"{smiles}" -O "{sdf_file}" --gen3d --minimize --ff MMFF94'
-    print(f"[SMILES] OpenBabel 시도: {cmd}")
+    logger.debug("SMILES OpenBabel 시도: %s", cmd)
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if result.returncode == 0 and sdf_file.exists() and sdf_file.stat().st_size > 0:
-        print(f"[SMILES] OpenBabel로 3D 구조 생성 → {sdf_file.name}")
+        logger.info("SMILES OpenBabel로 3D 구조 생성 → %s", sdf_file.name)
         return True
     else:
-        print(f"[SMILES] OpenBabel 실패: {result.stderr.strip()[:200]}")
+        logger.debug("SMILES OpenBabel 실패: %s", result.stderr.strip()[:200])
 
-    print(f"[ERROR] SMILES→SDF 변환 실패. RDKit 또는 OpenBabel 설치 필요.")
+    logger.error("SMILES→SDF 변환 실패. RDKit 또는 OpenBabel 설치 필요.")
     return False
 
 
@@ -712,18 +722,18 @@ def auto_convert_smiles_file(input_dir: Path, smi_file: Path):
         sdf_file = input_dir / f"{name}_ligand.sdf"
 
         if pdbqt_file.exists():
-            print(f"[Skip] {name} → {pdbqt_file.name} (이미 존재)")
+            logger.debug("Skip %s → %s (이미 존재)", name, pdbqt_file.name)
             continue
 
         # Step 1: SMILES → SDF (3D 좌표 생성)
         if not sdf_file.exists():
-            print(f"[SMILES→SDF] {name}: {smiles}")
+            logger.debug("SMILES→SDF %s: %s", name, smiles)
             if not smiles_to_sdf(smiles, sdf_file, name):
                 failed += 1
                 continue
 
         # Step 2: SDF → PDBQT (기존 prepare_ligand 재사용)
-        print(f"[SDF→PDBQT] {sdf_file.name} → {pdbqt_file.name}")
+        logger.debug("SDF→PDBQT %s → %s", sdf_file.name, pdbqt_file.name)
         if prepare_ligand(sdf_file, pdbqt_file):
             converted += 1
         else:
@@ -737,18 +747,16 @@ def auto_convert_smiles(input_dir: Path):
     smi_files = sorted(input_dir.glob("*.smi"))
     if not smi_files:
         return
-    print("[SMILES] .smi 파일 감지, 자동 변환 시작...")
+    logger.info("SMILES .smi 파일 감지, 자동 변환 시작...")
     total_c, total_f = 0, 0
     for smi_file in smi_files:
         c, f = auto_convert_smiles_file(input_dir, smi_file)
         total_c += c
         total_f += f
     if total_c:
-        print(f"[SMILES] {total_c}개 변환 완료")
+        logger.info("SMILES %d개 변환 완료", total_c)
     if total_f:
-        print(f"[WARNING] {total_f}개 변환 실패")
-    if total_c or total_f:
-        print()
+        logger.warning("SMILES %d개 변환 실패", total_f)
 
 
 # ============================================================
@@ -764,16 +772,16 @@ def auto_convert_receptors(input_dir: Path):
     for pdb in pdb_files:
         pdbqt = input_dir / f"{pdb.stem}_receptor.pdbqt"
         if pdbqt.exists():
-            print(f"[Skip] {pdb.name} → {pdbqt.name} (이미 존재)")
+            logger.debug("Skip %s → %s (이미 존재)", pdb.name, pdbqt.name)
         else:
-            print(f"[변환] {pdb.name} → {pdbqt.name}")
+            logger.debug("변환 %s → %s", pdb.name, pdbqt.name)
             if prepare_receptor(pdb, pdbqt):
                 converted += 1
             else:
-                print(f"[WARNING] receptor 변환 실패: {pdb.name}")
+                logger.warning("receptor 변환 실패: %s", pdb.name)
 
     if converted:
-        print(f"[Receptor] {converted}개 변환 완료\n")
+        logger.info("Receptor %d개 변환 완료", converted)
 
 
 def auto_convert_ligands(input_dir: Path):
@@ -797,20 +805,18 @@ def auto_convert_ligands(input_dir: Path):
         # 97806_ligand.sdf → 97806_ligand.pdbqt
         pdbqt = src.with_suffix(".pdbqt")
         if pdbqt.exists():
-            print(f"[Skip] {src.name} → {pdbqt.name} (이미 존재)")
+            logger.debug("Skip %s → %s (이미 존재)", src.name, pdbqt.name)
         else:
-            print(f"[변환] {src.name} → {pdbqt.name}")
+            logger.debug("변환 %s → %s", src.name, pdbqt.name)
             if prepare_ligand(src, pdbqt):
                 converted += 1
             else:
                 failed += 1
 
     if converted:
-        print(f"[Ligand] {converted}개 변환 완료")
+        logger.info("Ligand %d개 변환 완료", converted)
     if failed:
-        print(f"[WARNING] {failed}개 변환 실패")
-    if converted or failed:
-        print()
+        logger.warning("Ligand %d개 변환 실패", failed)
 
 
 # ============================================================
@@ -860,7 +866,7 @@ def preprocess_inputs(input_dir: Path):
 
     # ── 2단계: SMILES → SDF → PDBQT ──
     for smi_file in smiles_files:
-        print(f"[SMILES] {smi_file.name} 변환 중...")
+        logger.debug("SMILES %s 변환 중...", smi_file.name)
         auto_convert_smiles_file(input_dir, smi_file)
 
     # ── 3단계: Receptor 변환 (PDB/MOL2/CIF → PDBQT) ──
@@ -869,15 +875,15 @@ def preprocess_inputs(input_dir: Path):
         stem = src.stem.replace("_receptor", "")
         pdbqt = input_dir / f"{stem}_receptor.pdbqt"
         if pdbqt.exists():
-            print(f"[Skip] {src.name} → {pdbqt.name} (이미 존재)")
+            logger.debug("Skip %s → %s (이미 존재)", src.name, pdbqt.name)
             ready_receptors.append(pdbqt)
         else:
-            print(f"[변환] {src.name} → {pdbqt.name}")
+            logger.debug("변환 %s → %s", src.name, pdbqt.name)
             if prepare_receptor(src, pdbqt):
                 ready_receptors.append(pdbqt)
                 converted_r += 1
             else:
-                print(f"[WARNING] receptor 변환 실패: {src.name}")
+                logger.warning("receptor 변환 실패: %s", src.name)
 
     # ── 4단계: Ligand 변환 (SDF/MOL2/PDB → PDBQT) ──
     converted_l = 0
@@ -886,10 +892,10 @@ def preprocess_inputs(input_dir: Path):
         stem = src.stem.replace("_ligand", "")
         pdbqt = input_dir / f"{stem}_ligand.pdbqt"
         if pdbqt.exists():
-            print(f"[Skip] {src.name} → {pdbqt.name} (이미 존재)")
+            logger.debug("Skip %s → %s (이미 존재)", src.name, pdbqt.name)
             ready_ligands.append(pdbqt)
         else:
-            print(f"[변환] {src.name} → {pdbqt.name}")
+            logger.debug("변환 %s → %s", src.name, pdbqt.name)
             if prepare_ligand(src, pdbqt):
                 ready_ligands.append(pdbqt)
                 converted_l += 1
@@ -902,28 +908,22 @@ def preprocess_inputs(input_dir: Path):
     ready_receptors = sorted(set(ready_receptors))
 
     # ── 5단계: 전처리 요약 ──
-    print(f"\n{'='*50}")
-    print(f"  전처리 완료 — input/ 현황")
-    print(f"{'='*50}")
-    print(f"  Receptor: {len(ready_receptors)}개")
-    for r in ready_receptors:
-        print(f"    > {r.name}")
-    print(f"  Ligand:   {len(ready_ligands)}개")
-    for l in ready_ligands:
-        print(f"    > {l.name}")
-    if style_files:
-        print(f"  Style:    {len(style_files)}개 (.pml)")
-        for sf in style_files:
-            print(f"    > {sf.name}")
-    if skipped:
-        print(f"  미인식:   {len(skipped)}개")
-        for s in skipped:
-            print(f"    ? {s.name}")
+    summary_lines = [
+        f"전처리 완료 — Receptor: {len(ready_receptors)}개, Ligand: {len(ready_ligands)}개",
+    ]
     if converted_r or converted_l:
-        print(f"  변환:     receptor {converted_r}개, ligand {converted_l}개")
+        summary_lines.append(f"  변환: receptor {converted_r}개, ligand {converted_l}개")
     if failed_l:
-        print(f"  실패:     ligand {failed_l}개")
-    print(f"{'='*50}\n")
+        summary_lines.append(f"  실패: ligand {failed_l}개")
+    logger.info("\n".join(summary_lines))
+    for r in ready_receptors:
+        logger.debug("  Receptor > %s", r.name)
+    for l in ready_ligands:
+        logger.debug("  Ligand   > %s", l.name)
+    for sf in style_files:
+        logger.debug("  Style    > %s", sf.name)
+    for s in skipped:
+        logger.debug("  미인식   ? %s", s.name)
 
     return ready_receptors, ready_ligands
 
@@ -937,9 +937,9 @@ def check_anp(pdb_file: Path):
         for line in f:
             if line.startswith(("ATOM", "HETATM")) and "ANP" in line:
                 anp_count += 1
-    print(f"[ANP] receptor에 ANP 원자 {anp_count}개 포함")
+    logger.info("ANP receptor에 ANP 원자 %d개 포함", anp_count)
     if anp_count == 0:
-        print("[WARNING] ANP가 없습니다! ATP 포켓 차단 안 됨.")
+        logger.warning("ANP가 없습니다! ATP 포켓 차단 안 됨.")
 
 
 # ============================================================
@@ -959,7 +959,7 @@ def calc_box_from_pdb(pdb_file: Path, padding: float = 5.0, min_box: float = 70.
                     continue
 
     if not coords:
-        print("[ERROR] PDB에서 좌표를 읽을 수 없습니다.")
+        logger.error("PDB에서 좌표를 읽을 수 없습니다.")
         sys.exit(1)
 
     coords = np.array(coords)
@@ -968,9 +968,9 @@ def calc_box_from_pdb(pdb_file: Path, padding: float = 5.0, min_box: float = 70.
     box_size = (span + 2 * padding).tolist()
     box_size = [max(s, min_box) for s in box_size]
 
-    print(f"[Box] 좌표 범위: {span}")
-    print(f"[Box] 중심: [{center[0]:.1f}, {center[1]:.1f}, {center[2]:.1f}]")
-    print(f"[Box] 크기: [{box_size[0]:.1f}, {box_size[1]:.1f}, {box_size[2]:.1f}]")
+    logger.debug("Box 좌표 범위: %s", span)
+    logger.info("Box 중심: [%.1f, %.1f, %.1f]", center[0], center[1], center[2])
+    logger.info("Box 크기: [%.1f, %.1f, %.1f]", box_size[0], box_size[1], box_size[2])
 
     return center, box_size
 
@@ -1053,8 +1053,8 @@ def discover_pockets(poses, cluster_radius=5.0, max_per_pocket=3, n_pockets=5):
     pockets = []  # [{"center": np.array, "pose_indices": [], "closed": bool}]
     skipped = 0
 
-    print(f"\n  [Pocket Discovery] 포켓 탐색 (목표 {n_pockets}개, "
-          f"포켓당 {max_per_pocket}개, 반경 {cluster_radius}Å)")
+    logger.info("Pocket Discovery 포켓 탐색 (목표 %d개, 포켓당 %d개, 반경 %.1fÅ)",
+                n_pockets, max_per_pocket, cluster_radius)
 
     for i, pose in enumerate(poses):
         centroid = pose["centroid"]
@@ -1082,13 +1082,13 @@ def discover_pockets(poses, cluster_radius=5.0, max_per_pocket=3, n_pockets=5):
             if len(pocket["pose_indices"]) >= max_per_pocket:
                 pocket["closed"] = True
                 c = pocket["center"]
-                print(f"    Pocket #{assigned+1} 완성 "
-                      f"({max_per_pocket}개, center=[{c[0]:.1f}, {c[1]:.1f}, {c[2]:.1f}])")
+                logger.debug("Pocket #%d 완성 (%d개, center=[%.1f, %.1f, %.1f])",
+                             assigned+1, max_per_pocket, c[0], c[1], c[2])
 
                 # 완성된 포켓이 목표 수에 도달하면 종료
                 completed_count = sum(1 for p in pockets if p["closed"])
                 if completed_count >= n_pockets:
-                    print(f"\n  → 목표 {n_pockets}개 포켓 모두 완성!")
+                    logger.info("목표 %d개 포켓 모두 완성!", n_pockets)
                     break
         else:
             # 새 포켓 발견 (목표 수 이내만 허용)
@@ -1103,32 +1103,29 @@ def discover_pockets(poses, cluster_radius=5.0, max_per_pocket=3, n_pockets=5):
             }
             pockets.append(new_pocket)
             num = len(pockets)
-            print(f"    Pocket #{num} 발견! "
-                  f"(pose #{i+1}, center=[{centroid[0]:.1f}, {centroid[1]:.1f}, {centroid[2]:.1f}])")
+            logger.debug("Pocket #%d 발견! (pose #%d, center=[%.1f, %.1f, %.1f])",
+                         num, i+1, centroid[0], centroid[1], centroid[2])
 
             if new_pocket["closed"]:
-                print(f"    Pocket #{num} 즉시 완성 ({max_per_pocket}개)")
+                logger.debug("Pocket #%d 즉시 완성 (%d개)", num, max_per_pocket)
                 completed_count = sum(1 for p in pockets if p["closed"])
                 if completed_count >= n_pockets:
-                    print(f"\n  → 목표 {n_pockets}개 포켓 모두 완성!")
+                    logger.info("목표 %d개 포켓 모두 완성!", n_pockets)
                     break
 
     # 결과 요약
     completed = [p for p in pockets if p["closed"]]
     partial = [p for p in pockets if not p["closed"]]
 
-    print(f"\n  {'='*50}")
-    print(f"  Pocket Discovery 결과")
-    print(f"  {'='*50}")
-    print(f"  총 포즈: {len(poses)}개 | 스킵: {skipped}개")
-    print(f"  발견 포켓: {len(pockets)}개 (완성 {len(completed)}, 미완성 {len(partial)})")
+    logger.info("Pocket Discovery 결과: 총 포즈 %d개 | 스킵 %d개 | "
+                "발견 포켓 %d개 (완성 %d, 미완성 %d)",
+                len(poses), skipped, len(pockets), len(completed), len(partial))
     for pi, pocket in enumerate(pockets):
         c = pocket["center"]
         status = "완성" if pocket["closed"] else f"미완성({len(pocket['pose_indices'])}개)"
         best_idx = pocket["pose_indices"][0]
-        print(f"    Pocket #{pi+1}: [{c[0]:.1f}, {c[1]:.1f}, {c[2]:.1f}] "
-              f"| {status} | best pose #{best_idx+1}")
-    print(f"  {'='*50}")
+        logger.info("  Pocket #%d: [%.1f, %.1f, %.1f] | %s | best pose #%d",
+                     pi+1, c[0], c[1], c[2], status, best_idx+1)
 
     return pockets
 
@@ -1228,15 +1225,17 @@ def filter_poses_by_exclusion(poses, exclude_zones):
             dist = np.linalg.norm(centroid - zc)
             if dist <= zr:
                 in_zone = True
-                print(f"  [Exclude] pose {i+1}: centroid [{centroid[0]:.1f}, {centroid[1]:.1f}, {centroid[2]:.1f}], "
-                      f"zone center [{zc[0]:.1f}, {zc[1]:.1f}, {zc[2]:.1f}]까지 {dist:.1f}Å (반경 {zr:.0f}Å 이내)")
+                logger.debug("Exclude pose %d: centroid [%.1f, %.1f, %.1f], "
+                             "zone center [%.1f, %.1f, %.1f]까지 %.1fÅ (반경 %.0fÅ 이내)",
+                             i+1, centroid[0], centroid[1], centroid[2],
+                             zc[0], zc[1], zc[2], dist, zr)
                 break
         if in_zone:
             excluded += 1
         else:
             kept.append(pose)
 
-    print(f"  [Filter] {len(poses)}개 포즈 중 {excluded}개 제외 → {len(kept)}개 남음")
+    logger.info("Filter %d개 포즈 중 %d개 제외 → %d개 남음", len(poses), excluded, len(kept))
     return kept
 
 
@@ -1279,8 +1278,8 @@ def run_docking(
         v = Vina(**vina_kwargs)
     except TypeError:
         if (cpu is not None or seed is not None) and not _VINA_CONSTRUCTOR_FALLBACK_WARNED:
-            print(
-                "[WARNING] Installed vina Python API does not expose cpu/seed constructor arguments; "
+            logger.warning(
+                "Installed vina Python API does not expose cpu/seed constructor arguments; "
                 "falling back to default Vina runtime settings."
             )
             _VINA_CONSTRUCTOR_FALLBACK_WARNED = True
@@ -1299,8 +1298,8 @@ def run_docking(
         )
     except TypeError:
         if energy_range is not None and not _VINA_WRITE_POSES_FALLBACK_WARNED:
-            print(
-                "[WARNING] Installed vina Python API does not expose energy_range on write_poses; "
+            logger.warning(
+                "Installed vina Python API does not expose energy_range on write_poses; "
                 "falling back to the library default pose filtering."
             )
             _VINA_WRITE_POSES_FALLBACK_WARNED = True
@@ -1310,8 +1309,8 @@ def run_docking(
         energies = v.energies(n_poses=n_poses, energy_range=energy_range)
     except TypeError:
         if energy_range is not None and not _VINA_ENERGIES_FALLBACK_WARNED:
-            print(
-                "[WARNING] Installed vina Python API does not expose energy_range on energies(); "
+            logger.warning(
+                "Installed vina Python API does not expose energy_range on energies(); "
                 "returned pose metadata may reflect the library default filtering."
             )
             _VINA_ENERGIES_FALLBACK_WARNED = True
@@ -1323,31 +1322,27 @@ def run_docking(
 # 결과 출력
 # ============================================================
 def print_results(name, mode, energies, center, box_size, display_n=None):
-    print(f"\n{'='*60}")
-    print(f"  {name} {mode.capitalize()} Docking Results")
-    print(f"  Center: [{center[0]:.1f}, {center[1]:.1f}, {center[2]:.1f}]")
-    print(f"  Box: [{box_size[0]:.1f}, {box_size[1]:.1f}, {box_size[2]:.1f}]")
-    print(f"{'='*60}")
-    print(f"{'Mode':>5} {'Affinity':>10}")
     show_n = min(display_n or len(energies), len(energies))
+    lines = [
+        f"{name} {mode.capitalize()} Docking Results "
+        f"Center=[{center[0]:.1f}, {center[1]:.1f}, {center[2]:.1f}] "
+        f"Box=[{box_size[0]:.1f}, {box_size[1]:.1f}, {box_size[2]:.1f}]",
+    ]
     for i in range(show_n):
         row = energies[i]
-        print(f"{i+1:>5} {row[0]:>10.2f}")
+        lines.append(f"  Mode {i+1:>3}: {row[0]:>10.2f}")
     if show_n < len(energies):
-        print(f"  ... (총 {len(energies)}개 포즈 중 상위 {show_n}개 표시)")
-    if len(energies) > 0 and len(energies[0]) > 1:
-        print("  Note: Vina Python API energies() 추가 열은 RMSD가 아니라 에너지 성분입니다.")
+        lines.append(f"  ... (총 {len(energies)}개 포즈 중 상위 {show_n}개 표시)")
+    logger.info("\n".join(lines))
 
 
 def print_summary(all_results, out_dir):
-    print(f"\n{'='*60}")
-    print("  Summary - Best Affinity per Ligand")
-    print(f"{'='*60}")
-    print(f"{'Ligand':>12} {'Best (kcal/mol)':>18}")
+    lines = ["Summary - Best Affinity per Ligand"]
     for name, energies in all_results.items():
         best = energies[0][0]
-        print(f"{name:>12} {best:>18.2f}")
-    print(f"\n[완료] 결과 저장: {out_dir}")
+        lines.append(f"  {name:>12} {best:>15.2f} kcal/mol")
+    lines.append(f"결과 저장: {out_dir}")
+    logger.info("\n".join(lines))
 
 
 # ============================================================
@@ -1517,8 +1512,7 @@ def generate_pymol_script(out_dir, receptor_pdb, receptor_pdbqt,
     with open(pml_out, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
-    print(f"[PyMOL] 시각화 스크립트 생성: {pml_out.name}")
-    print(f"        PyMOL에서 실행: @{pml_out}")
+    logger.info("PyMOL 시각화 스크립트 생성: %s", pml_out.name)
 
 
 # ============================================================
@@ -2153,21 +2147,20 @@ def main():
 
     # mode 필수 확인
     if args.mode is None:
-        print("[ERROR] --mode (blind/focused) 지정 필수")
+        logger.error("--mode (blind/focused) 지정 필수")
         sys.exit(1)
 
     # 헤더 출력
-    print("=" * 60)
-    print(f"  AutoDock Vina {args.mode.capitalize()} Docking Pipeline")
-    print(
-        f"  exhaustiveness={args.exhaustiveness} | poses={args.n_poses} | "
-        f"energy_range={args.energy_range} | cpu={args.cpu} | seed={args.seed}"
+    logger.info(
+        "AutoDock Vina %s Docking Pipeline | exhaustiveness=%d | poses=%d | "
+        "energy_range=%s | cpu=%s | seed=%s",
+        args.mode.capitalize(), args.exhaustiveness, args.n_poses,
+        args.energy_range, args.cpu, args.seed,
     )
-    print("=" * 60)
 
     # --smiles CLI 입력 처리 (SMILES → SDF → PDBQT)
     if hasattr(args, "smiles") and args.smiles:
-        print(f"\n[SMILES] CLI에서 {len(args.smiles)}개 SMILES 입력 처리...")
+        logger.info("SMILES CLI에서 %d개 SMILES 입력 처리...", len(args.smiles))
         for i, smi in enumerate(args.smiles):
             name = f"cli_smiles_{i}"
             sdf_file = INPUT_DIR / f"{name}_ligand.sdf"
@@ -2177,7 +2170,6 @@ def main():
                     smiles_to_sdf(smi, sdf_file, name)
                 if sdf_file.exists():
                     prepare_ligand(sdf_file, pdbqt_file)
-        print()
 
     # ── Receptor / Ligand 감지 ──
     input_dir = INPUT_DIR
@@ -2204,7 +2196,7 @@ def main():
     # 파일 존재 확인 (ligands)
     for lig in args.ligands:
         if not lig.exists():
-            print(f"[ERROR] Ligand 파일 없음: {lig}")
+            logger.error("Ligand 파일 없음: %s", lig)
             sys.exit(1)
 
     # Region 프리셋 적용
@@ -2212,7 +2204,7 @@ def main():
         preset = REGION_PRESETS[args.region]
         args.center = preset["center"]
         args.box_size = preset["box_size"]
-        print(f"[Region] {args.region}: {preset['description']}")
+        logger.info("Region %s: %s", args.region, preset['description'])
 
     # 필터링 설정 (모든 receptor에 공통)
     exclude_zones = getattr(args, "exclude_zone", None) or []
@@ -2221,12 +2213,12 @@ def main():
     c_radius = getattr(args, "cluster_radius", 5.0)
 
     if exclude_zones:
-        print(f"\n[Exclusion] 수동 제외 영역 {len(exclude_zones)}개:")
+        logger.info("Exclusion 수동 제외 영역 %d개:", len(exclude_zones))
         for ez in exclude_zones:
-            print(f"  center=[{ez[0]:.1f}, {ez[1]:.1f}, {ez[2]:.1f}], radius={ez[3]:.0f}Å")
+            logger.info("  center=[%.1f, %.1f, %.1f], radius=%.0fÅ", ez[0], ez[1], ez[2], ez[3])
     if n_pockets_val:
-        print(f"\n[Pocket Discovery] {n_pockets_val}개 포켓 탐색 "
-              f"(포켓당 {max_per_pocket}개, 반경 {c_radius}Å)")
+        logger.info("Pocket Discovery %d개 포켓 탐색 (포켓당 %d개, 반경 %.1fÅ)",
+                    n_pockets_val, max_per_pocket, c_radius)
 
     # 다중 포켓 탐색 시 포즈 수 자동 증가
     dock_n_poses = args.n_poses
@@ -2234,27 +2226,23 @@ def main():
         min_needed = n_pockets_val * max_per_pocket * 5
         dock_n_poses = max(args.n_poses, min_needed)
         if dock_n_poses > args.n_poses:
-            print(f"[Pocket Discovery] 포즈 수 자동 증가: {args.n_poses} → {dock_n_poses}")
+            logger.info("Pocket Discovery 포즈 수 자동 증가: %d → %d", args.n_poses, dock_n_poses)
 
     if len(all_receptors) > 1:
-        print(f"\n{'='*60}")
-        print(f"  다중 Receptor 도킹: {len(all_receptors)}개 × {len(args.ligands)}개 ligand")
-        print(f"{'='*60}")
+        logger.info("다중 Receptor 도킹: %d개 × %d개 ligand", len(all_receptors), len(args.ligands))
 
     # ══════════════════════════════════════════════════════════
     # Receptor 루프: 각 receptor에 대해 전체 ligand 도킹
     # ══════════════════════════════════════════════════════════
     for ri, receptor_path in enumerate(all_receptors):
         if len(all_receptors) > 1:
-            print(f"\n{'#'*60}")
-            print(f"  Receptor [{ri+1}/{len(all_receptors)}]: {receptor_path.name}")
-            print(f"{'#'*60}")
+            logger.info("Receptor [%d/%d]: %s", ri+1, len(all_receptors), receptor_path.name)
 
         args.receptor = receptor_path
 
         # 파일 존재 확인
         if not receptor_path.exists():
-            print(f"[ERROR] Receptor 파일 없음: {receptor_path}")
+            logger.error("Receptor 파일 없음: %s", receptor_path)
             continue
 
         # Receptor PDB 감지 (per-receptor)
@@ -2270,7 +2258,7 @@ def main():
             else:
                 receptor_pdb = auto_detect_receptor_pdb(receptor_path, input_dir)
             if receptor_pdb is None:
-                print(f"[ERROR] Blind 모드에는 receptor PDB가 필요합니다. {receptor_path.name} 건너뜁니다.")
+                logger.error("Blind 모드에는 receptor PDB가 필요합니다. %s 건너뜁니다.", receptor_path.name)
                 continue
             center, box_size = calc_box_from_pdb(receptor_pdb, args.padding, args.min_box)
             if "anp" in receptor_pdb.name.lower():
@@ -2278,7 +2266,7 @@ def main():
         else:
             # focused mode
             if args.center is None:
-                print("[ERROR] Focused 모드에는 --center X Y Z 또는 --region 지정 필수")
+                logger.error("Focused 모드에는 --center X Y Z 또는 --region 지정 필수")
                 sys.exit(1)
             if args.box_size is None:
                 args.box_size = [30.0, 30.0, 30.0]
@@ -2300,11 +2288,11 @@ def main():
             if receptor_pdb is None:
                 receptor_pdb = auto_detect_receptor_pdb(receptor_path, input_dir)
             if receptor_pdb is None:
-                print(f"[ERROR] --prepare-receptor: PDB 파일을 찾을 수 없습니다.")
+                logger.error("--prepare-receptor: PDB 파일을 찾을 수 없습니다.")
                 continue
             pdbqt_out = input_dir / (receptor_pdb.stem + "_receptor.pdbqt")
             if not prepare_receptor(receptor_pdb, pdbqt_out):
-                print(f"[ERROR] Receptor 변환 실패: {receptor_pdb}")
+                logger.error("Receptor 변환 실패: %s", receptor_pdb)
                 continue
             args.receptor = pdbqt_out
             receptor_path = pdbqt_out
@@ -2325,7 +2313,7 @@ def main():
             lig_name = lig_path.name.replace("_ligand.pdbqt", "")
             output_file = out_dir / f"{lig_name}_{args.mode}.pdbqt"
 
-            print(f"\n>>> {lig_name} {args.mode} docking 시작...")
+            logger.info("%s %s docking 시작...", lig_name, args.mode)
             energies = run_docking(
                 receptor_path, lig_path, output_file,
                 center, box_size,
@@ -2337,7 +2325,7 @@ def main():
 
             # 다중 포켓 탐색
             if n_pockets_val:
-                print(f"\n[Pocket Discovery] {lig_name} 포켓 탐색 중...")
+                logger.info("Pocket Discovery %s 포켓 탐색 중...", lig_name)
                 poses = parse_poses(output_file)
                 pockets = discover_pockets(
                     poses, cluster_radius=c_radius,
@@ -2357,7 +2345,7 @@ def main():
                 if best_poses:
                     pockets_file = out_dir / f"{lig_name}_{args.mode}_pockets.pdbqt"
                     write_filtered_poses(best_poses, pockets_file)
-                    print(f"\n  → 완성 포켓 best pose: {pockets_file.name} ({len(best_poses)}개)")
+                    logger.info("완성 포켓 best pose: %s (%d개)", pockets_file.name, len(best_poses))
 
                 all_pocket_poses = []
                 for pocket in completed_pockets:
@@ -2366,7 +2354,7 @@ def main():
                 if all_pocket_poses:
                     all_file = out_dir / f"{lig_name}_{args.mode}_all_pockets.pdbqt"
                     write_filtered_poses(all_pocket_poses, all_file)
-                    print(f"  → 완성 포켓 전체 포즈: {all_file.name} ({len(all_pocket_poses)}개)")
+                    logger.info("완성 포켓 전체 포즈: %s (%d개)", all_file.name, len(all_pocket_poses))
 
                 if partial_pockets:
                     partial_poses = []
@@ -2375,17 +2363,18 @@ def main():
                         partial_poses.append(poses[best_idx])
                     partial_file = out_dir / f"{lig_name}_{args.mode}_partial_pockets.pdbqt"
                     write_filtered_poses(partial_poses, partial_file)
-                    print(f"  → 미완성 포켓 (참고): {partial_file.name} ({len(partial_poses)}개, "
-                          f"각 {[len(p['pose_indices']) for p in partial_pockets]}개 포즈)")
+                    logger.info("미완성 포켓 (참고): %s (%d개, 각 %s개 포즈)",
+                               partial_file.name, len(partial_poses),
+                               [len(p['pose_indices']) for p in partial_pockets])
 
             elif exclude_zones:
-                print(f"\n[Filter] {lig_name} 포즈 필터링 중...")
+                logger.info("Filter %s 포즈 필터링 중...", lig_name)
                 poses = parse_poses(output_file)
                 filtered = filter_poses_by_exclusion(poses, exclude_zones)
                 if filtered:
                     filtered_file = out_dir / f"{lig_name}_{args.mode}_filtered.pdbqt"
                     write_filtered_poses(filtered, filtered_file)
-                    print(f"  → 필터링 결과: {filtered_file.name} ({len(filtered)}개 포즈)")
+                    logger.info("필터링 결과: %s (%d개 포즈)", filtered_file.name, len(filtered))
 
         # 요약
         print_summary(all_results, out_dir)
@@ -2414,19 +2403,18 @@ def run_taskgroup12_main():
             ensure_project_config_inputs_ready(config)
 
     if args.mode is None:
-        print("[ERROR] --mode (blind/focused) is required")
+        logger.error("--mode (blind/focused) is required")
         sys.exit(1)
 
-    print("=" * 60)
-    print(f"  AutoDock Vina {args.mode.capitalize()} Docking Pipeline")
-    print(
-        f"  exhaustiveness={args.exhaustiveness} | poses={args.n_poses} | "
-        f"energy_range={args.energy_range} | cpu={args.cpu} | max_workers={args.max_workers}"
+    logger.info(
+        "AutoDock Vina %s Docking Pipeline | exhaustiveness=%d | poses=%d | "
+        "energy_range=%s | cpu=%s | max_workers=%s",
+        args.mode.capitalize(), args.exhaustiveness, args.n_poses,
+        args.energy_range, args.cpu, args.max_workers,
     )
-    print("=" * 60)
 
     if hasattr(args, "smiles") and args.smiles:
-        print(f"\n[SMILES] Processing {len(args.smiles)} CLI SMILES entries...")
+        logger.info("SMILES Processing %d CLI SMILES entries...", len(args.smiles))
         for i, smi in enumerate(args.smiles):
             name = f"cli_smiles_{i}"
             sdf_file = INPUT_DIR / f"{name}_ligand.sdf"
@@ -2436,7 +2424,6 @@ def run_taskgroup12_main():
                     smiles_to_sdf(smi, sdf_file, name)
                 if sdf_file.exists():
                     prepare_ligand(sdf_file, pdbqt_file)
-        print()
 
     preprocess_inputs(INPUT_DIR)
     input_dir = INPUT_DIR
@@ -2455,14 +2442,14 @@ def run_taskgroup12_main():
 
     for lig in args.ligands:
         if not lig.exists():
-            print(f"[ERROR] Ligand file not found: {lig}")
+            logger.error("Ligand file not found: %s", lig)
             sys.exit(1)
 
     if args.region:
         preset = REGION_PRESETS[args.region]
         args.center = preset["center"]
         args.box_size = preset["box_size"]
-        print(f"[Region] {args.region}: {preset['description']}")
+        logger.info("Region %s: %s", args.region, preset['description'])
 
     exclude_zones = getattr(args, "exclude_zone", None) or []
     n_pockets_val = getattr(args, "n_pockets", None)
@@ -2475,15 +2462,11 @@ def run_taskgroup12_main():
         dock_n_poses = max(args.n_poses, min_needed)
 
     if len(all_receptors) > 1:
-        print(f"\n{'='*60}")
-        print(f"  Multi-receptor docking: {len(all_receptors)} x {len(args.ligands)} ligands")
-        print(f"{'='*60}")
+        logger.info("Multi-receptor docking: %d x %d ligands", len(all_receptors), len(args.ligands))
 
     for ri, receptor_path in enumerate(all_receptors):
         if len(all_receptors) > 1:
-            print(f"\n{'#'*60}")
-            print(f"  Receptor [{ri+1}/{len(all_receptors)}]: {receptor_path.name}")
-            print(f"{'#'*60}")
+            logger.info("Receptor [%d/%d]: %s", ri+1, len(all_receptors), receptor_path.name)
 
         args.receptor = receptor_path
         receptor_id = resolve_receptor_id(args, receptor_path)
@@ -2491,7 +2474,7 @@ def run_taskgroup12_main():
         args.receptor_source_type = (getattr(args, "receptor_source_types", {}) or {}).get(str(receptor_path))
 
         if not receptor_path.exists():
-            print(f"[ERROR] Receptor file not found: {receptor_path}")
+            logger.error("Receptor file not found: %s", receptor_path)
             continue
 
         receptor_pdb = None
@@ -2504,14 +2487,14 @@ def run_taskgroup12_main():
             else:
                 receptor_pdb = auto_detect_receptor_pdb(receptor_path, input_dir)
             if receptor_pdb is None:
-                print(f"[ERROR] Blind mode requires receptor PDB: {receptor_path.name}")
+                logger.error("Blind mode requires receptor PDB: %s", receptor_path.name)
                 continue
             center, box_size = calc_box_from_pdb(receptor_pdb, args.padding, args.min_box)
             if "anp" in receptor_pdb.name.lower():
                 check_anp(receptor_pdb)
         else:
             if args.center is None:
-                print("[ERROR] Focused mode requires --center or --region")
+                logger.error("Focused mode requires --center or --region")
                 sys.exit(1)
             if args.box_size is None:
                 args.box_size = [30.0, 30.0, 30.0]
@@ -2533,11 +2516,11 @@ def run_taskgroup12_main():
             if receptor_pdb is None:
                 receptor_pdb = auto_detect_receptor_pdb(receptor_path, input_dir)
             if receptor_pdb is None:
-                print("[ERROR] --prepare-receptor requires receptor PDB")
+                logger.error("--prepare-receptor requires receptor PDB")
                 continue
             pdbqt_out = input_dir / (receptor_pdb.stem + "_receptor.pdbqt")
             if not prepare_receptor(receptor_pdb, pdbqt_out):
-                print(f"[ERROR] Receptor preparation failed: {receptor_pdb}")
+                logger.error("Receptor preparation failed: %s", receptor_pdb)
                 continue
             args.receptor = pdbqt_out
             receptor_path = pdbqt_out
@@ -2574,7 +2557,7 @@ def run_taskgroup12_main():
             len(ligand_jobs),
             cpu_per_job=args.cpu,
         )
-        print(f"\n[Dispatch] receptor={receptor_id} ligands={len(ligand_jobs)} workers={worker_count}")
+        logger.info("Dispatch receptor=%s ligands=%d workers=%d", receptor_id, len(ligand_jobs), worker_count)
 
         if len(ligand_jobs) == 1 or worker_count <= 1:
             job_results = [execute_ligand_job(job) for job in ligand_jobs]
@@ -2589,21 +2572,22 @@ def run_taskgroup12_main():
         for result in job_results:
             append_job_status(out_dir, result)
             if result["status"] != "ok":
-                print(
-                    f"[ERROR] receptor={result['receptor_id']} ligand={result['ligand_id']} "
-                    f"output={result['output_file']} error={result['error']}"
+                logger.error(
+                    "receptor=%s ligand=%s output=%s error=%s",
+                    result['receptor_id'], result['ligand_id'],
+                    result['output_file'], result['error'],
                 )
                 continue
 
             lig_name = result["ligand_name"]
             output_file = Path(result["output_file"])
             energies = result["energies"]
-            print(f"\n>>> receptor={result['receptor_id']} ligand={result['ligand_id']} output={output_file.name}")
+            logger.info("receptor=%s ligand=%s output=%s", result['receptor_id'], result['ligand_id'], output_file.name)
             all_results[lig_name] = energies
             print_results(lig_name, args.mode, energies, center, box_size, display_n=args.n_poses)
 
             if n_pockets_val:
-                print(f"\n[Pocket Discovery] {lig_name} pocket scan...")
+                logger.info("Pocket Discovery %s pocket scan...", lig_name)
                 poses = parse_poses(output_file)
                 pockets = discover_pockets(
                     poses, cluster_radius=c_radius,
@@ -2621,7 +2605,7 @@ def run_taskgroup12_main():
                 if best_poses:
                     pockets_file = out_dir / f"{lig_name}_{args.mode}_pockets.pdbqt"
                     write_filtered_poses(best_poses, pockets_file)
-                    print(f"  Saved best pocket poses: {pockets_file.name} ({len(best_poses)})")
+                    logger.info("Saved best pocket poses: %s (%d)", pockets_file.name, len(best_poses))
 
                 all_pocket_poses = []
                 for pocket in completed_pockets:
@@ -2630,7 +2614,7 @@ def run_taskgroup12_main():
                 if all_pocket_poses:
                     all_file = out_dir / f"{lig_name}_{args.mode}_all_pockets.pdbqt"
                     write_filtered_poses(all_pocket_poses, all_file)
-                    print(f"  Saved all completed pocket poses: {all_file.name} ({len(all_pocket_poses)})")
+                    logger.info("Saved all completed pocket poses: %s (%d)", all_file.name, len(all_pocket_poses))
 
                 if partial_pockets:
                     partial_poses = []
@@ -2639,21 +2623,21 @@ def run_taskgroup12_main():
                         partial_poses.append(poses[best_idx])
                     partial_file = out_dir / f"{lig_name}_{args.mode}_partial_pockets.pdbqt"
                     write_filtered_poses(partial_poses, partial_file)
-                    print(f"  Saved partial pocket poses: {partial_file.name} ({len(partial_poses)})")
+                    logger.info("Saved partial pocket poses: %s (%d)", partial_file.name, len(partial_poses))
 
             elif exclude_zones:
-                print(f"\n[Filter] {lig_name} exclusion filtering...")
+                logger.info("Filter %s exclusion filtering...", lig_name)
                 poses = parse_poses(output_file)
                 filtered = filter_poses_by_exclusion(poses, exclude_zones)
                 if filtered:
                     filtered_file = out_dir / f"{lig_name}_{args.mode}_filtered.pdbqt"
                     write_filtered_poses(filtered, filtered_file)
-                    print(f"  Saved filtered poses: {filtered_file.name} ({len(filtered)})")
+                    logger.info("Saved filtered poses: %s (%d)", filtered_file.name, len(filtered))
 
         if all_results:
             print_summary(all_results, out_dir)
         else:
-            print(f"[WARNING] No successful docking results for receptor={receptor_id}")
+            logger.warning("No successful docking results for receptor=%s", receptor_id)
 
         style_pml = find_style_pml(INPUT_DIR, receptor_path)
         ligand_outputs = {name: out_dir / f"{name}_{args.mode}.pdbqt" for name in all_results}
@@ -2668,7 +2652,7 @@ def run_taskgroup12_main():
         from egfr_pipeline.vina.parse_poses import build_pose_table_from_config
 
         pose_table = build_pose_table_from_config(args.config)
-        print(f"[Parse] Wrote pose table: {pose_table}")
+        logger.info("Parse Wrote pose table: %s", pose_table)
 
         if args.extract_contacts:
             from egfr_pipeline.vina.pose_contacts import enrich_pose_table_with_contacts
@@ -2678,7 +2662,7 @@ def run_taskgroup12_main():
                 str(pose_table),
                 args.contact_cutoff,
             )
-            print(f"[Contacts] Updated pose table: {pose_table}")
+            logger.info("Contacts Updated pose table: %s", pose_table)
 
         if args.cluster_pockets:
             from egfr_pipeline.vina.pocket_cluster import cluster_pose_table
@@ -2688,15 +2672,15 @@ def run_taskgroup12_main():
                 str(pose_table),
                 cutoff=args.pocket_cutoff,
             )
-            print(f"[Cluster] Updated pose table with pocket ids: {pose_table}")
+            logger.info("Cluster Updated pose table with pocket ids: %s", pose_table)
 
         if args.summarize_pockets:
             from egfr_pipeline.vina.pocket_summary import summarize_from_config
 
             pocket_csv, drug_csv, occupancy_csv = summarize_from_config(args.config, str(pose_table))
-            print(f"[Summary] Wrote pocket table: {pocket_csv}")
-            print(f"[Summary] Wrote drug pocket map: {drug_csv}")
-            print(f"[Summary] Wrote residue occupancy: {occupancy_csv}")
+            logger.info("Summary Wrote pocket table: %s", pocket_csv)
+            logger.info("Summary Wrote drug pocket map: %s", drug_csv)
+            logger.info("Summary Wrote residue occupancy: %s", occupancy_csv)
 
         if args.compare_pockets:
             from egfr_pipeline.vina.cross_receptor import compare_from_config
@@ -2705,7 +2689,7 @@ def run_taskgroup12_main():
                 args.config,
                 centroid_cutoff=args.comparison_centroid_cutoff,
             )
-            print(f"[Compare] Wrote pocket comparison: {comparison_csv}")
+            logger.info("Compare Wrote pocket comparison: %s", comparison_csv)
 
         if args.extract_ppi_residues:
             from egfr_pipeline.ppi.pyrosetta_extract import extract_pyrosetta_batch
@@ -2713,29 +2697,29 @@ def run_taskgroup12_main():
 
             try:
                 r, s = extract_pyrosetta_batch(args.config)
-                print(f"[PPI] PyRosetta residues: {r}")
-                print(f"[PPI] PyRosetta summary: {s}")
+                logger.info("PPI PyRosetta residues: %s", r)
+                logger.info("PPI PyRosetta summary: %s", s)
             except Exception as e:
-                print(f"[PPI] PyRosetta extraction skipped: {e}")
+                logger.warning("PPI PyRosetta extraction skipped: %s", e)
             try:
                 r, s = extract_afm_batch(args.config)
-                print(f"[PPI] AFM residues: {r}")
-                print(f"[PPI] AFM summary: {s}")
+                logger.info("PPI AFM residues: %s", r)
+                logger.info("PPI AFM summary: %s", s)
             except Exception as e:
-                print(f"[PPI] AFM extraction skipped: {e}")
+                logger.warning("PPI AFM extraction skipped: %s", e)
 
         if args.generate_report:
             from egfr_pipeline.report import generate_report
 
             report_path, combined_csv = generate_report(args.config)
-            print(f"[Report] Project report: {report_path}")
-            print(f"[Report] Combined residue evidence: {combined_csv}")
+            logger.info("Report Project report: %s", report_path)
+            logger.info("Report Combined residue evidence: %s", combined_csv)
 
         if args.validate_outputs:
             from egfr_pipeline.validate import run_validation
 
             vresult = run_validation(args.config)
-            print(vresult.summary())
+            logger.info(vresult.summary())
 
 
 # ============================================================
@@ -2783,9 +2767,9 @@ def dock_one_receptor(receptor_entry, ligand_entries, config):
         ligand_id = lig_entry.get("id", lig_name)
         job_seed = derive_docking_seed(base_seed, receptor_id, ligand_id)
 
-        print(
-            f"\n>>> [{receptor_id}] {lig_name} {mode} docking "
-            f"(cpu={cpu}, seed={job_seed}, energy_range={energy_range}) ..."
+        logger.info(
+            "[%s] %s %s docking (cpu=%s, seed=%s, energy_range=%s) ...",
+            receptor_id, lig_name, mode, cpu, job_seed, energy_range,
         )
         energies = run_docking(
             receptor_pdbqt, lig_path, output_file,
@@ -2798,12 +2782,11 @@ def dock_one_receptor(receptor_entry, ligand_entries, config):
         print_results(lig_name, mode, energies, center, box_size, display_n=n_poses)
 
     # 요약
-    print(f"\n{'='*60}")
-    print(f"  [{receptor_id}] Summary - Best Affinity per Ligand")
-    print(f"{'='*60}")
+    lines = [f"[{receptor_id}] Summary - Best Affinity per Ligand"]
     for lig_name, energies in results.items():
         best = energies[0][0] if energies is not None and len(energies) > 0 else float("nan")
-        print(f"  {lig_name:>12}  {best:>15.2f}")
-    print(f"\n[done] {receptor_id} results: {out_dir}")
+        lines.append(f"  {lig_name:>12}  {best:>15.2f} kcal/mol")
+    lines.append(f"[done] {receptor_id} results: {out_dir}")
+    logger.info("\n".join(lines))
     return receptor_id, results
 
