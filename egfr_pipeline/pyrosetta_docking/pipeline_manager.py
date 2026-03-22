@@ -212,7 +212,7 @@ class PipelineManager:
             self.excluded_residues_A = pyrosetta_init.parse_residue_ranges(excl_str)
             self.key_residues_B = pyrosetta_init.parse_residue_ranges(key_str)
             self.exclusion_contact_dist = self.config.getfloat(
-                'Constraints', 'exclusion_contact_dist', fallback=10.0)
+                'Constraints', 'exclusion_contact_dist', fallback=8.0)
             self.enable_early_rejection = self.config.getboolean(
                 'Constraints', 'enable_early_rejection', fallback=False)
             self.max_excluded_contacts = self.config.getint(
@@ -273,6 +273,8 @@ class PipelineManager:
                     'FilterStage2', 'min_nres_int', fallback=15)
                 self.stage2_min_hbonds = self.config.getint(
                     'FilterStage2', 'min_hbonds_int', fallback=1)
+                self.stage2_dg_density_dsasa_cap = self.config.getfloat(
+                    'FilterStage2', 'dg_density_dsasa_cap', fallback=0.0)
                 self.stage2_expensive = self.config.getboolean(
                     'FilterStage2', 'enable_expensive_metrics', fallback=True)
                 self.stage2_min_survivors = self.config.getint(
@@ -734,8 +736,8 @@ class PipelineManager:
         df['id'] = df['id'].astype(str)
         df['filter_status'] = df['id'].map(filter_status_map).fillna('')
         df.to_csv(csv_path, index=False)
-        n_pass = (df['filter_status'] == 'pass').sum()
-        n_reject = (df['filter_status'] != 'pass').sum()
+        n_pass = df['filter_status'].str.startswith('pass').sum()
+        n_reject = (~df['filter_status'].str.startswith('pass')).sum()
         self.logger.info(
             f"    > [Output] Updated filter_status in scored_all_models.csv "
             f"(pass={n_pass}, reject={n_reject})")
@@ -2932,6 +2934,7 @@ function sortTable(th) {
         stage2_cheap = []
         _s2_rej_dSASA = 0
         _s2_rej_dG_density = 0
+        _s2_bypass_dg_density = 0
         _s2_rej_sc = 0
         for d in stage1_pool:
             dSASA = d.get('dSASA', 0)
@@ -2948,10 +2951,13 @@ function sortTable(th) {
             else:
                 dG_density = 0.0
             d['dG_density'] = dG_density
-            if dG_density > self.stage2_max_dG_density:
-                _s2_rej_dG_density += 1
-                _filter_status_map[_did] = 'reject_stage2'
-                continue
+            if dSASA < self.stage2_dg_density_dsasa_cap:
+                if dG_density > self.stage2_max_dG_density:
+                    _s2_rej_dG_density += 1
+                    _filter_status_map[_did] = 'reject_stage2'
+                    continue
+            else:
+                _s2_bypass_dg_density += 1
             if sc < self.stage2_min_sc:
                 _s2_rej_sc += 1
                 _filter_status_map[_did] = 'reject_stage2'
@@ -2960,7 +2966,9 @@ function sortTable(th) {
 
         self.logger.info(
             f"    > [S2-Cheap] dSASA>={self.stage2_min_dSASA} & "
-            f"dG_density<={self.stage2_max_dG_density} & "
+            f"dG_density<={self.stage2_max_dG_density} "
+            f"(cap={self.stage2_dg_density_dsasa_cap}, "
+            f"bypassed={_s2_bypass_dg_density}) & "
             f"sc>={self.stage2_min_sc}  "
             f"Passed={len(stage2_cheap)}/{stage1_count}")
 
@@ -2983,6 +2991,15 @@ function sortTable(th) {
             'n_input': _s2c_input - _s2_rej_dSASA,
             'n_passed': _s2c_input - _s2_rej_dSASA - _s2_rej_dG_density,
             'n_rejected': _s2_rej_dG_density,
+        })
+        _thresh_records.append({
+            'filter_name': 'stage2_dg_density_dsasa_cap',
+            'threshold_value': self.stage2_dg_density_dsasa_cap,
+            'source': 'config',
+            'stage': 'stage2_cheap',
+            'n_input': _s2c_input - _s2_rej_dSASA,
+            'n_passed': _s2_bypass_dg_density,
+            'n_rejected': 0,
         })
         _thresh_records.append({
             'filter_name': 'stage2_min_sc_value',
@@ -3175,26 +3192,56 @@ function sortTable(th) {
             'stage2_survivors': stage2_count,
         })
 
-        # Record fallback information
-        if fallback_level > 0:
-            _thresh_records.append({
-                'filter_name': f'graduated_fallback_level_{fallback_level}',
-                'threshold_value': fallback_level,
-                'source': 'fallback',
-                'stage': 'fallback',
-                'n_input': stage2_count if fallback_level == 1 else stage1_count,
-                'n_passed': len(cluster_candidates),
-                'n_rejected': 0,
-            })
+        # Record fallback information (always, even level 0 for post-hoc analysis)
+        _thresh_records.append({
+            'filter_name': 'graduated_fallback_level',
+            'threshold_value': fallback_level,
+            'source': 'fallback',
+            'stage': 'fallback',
+            'n_input': stage2_count if fallback_level == 1 else stage1_count,
+            'n_passed': len(cluster_candidates),
+            'n_rejected': 0,
+        })
+        _thresh_records.append({
+            'filter_name': 'summary_stage1_survivors',
+            'threshold_value': stage1_count,
+            'source': 'summary',
+            'stage': 'summary',
+            'n_input': total_scored,
+            'n_passed': stage1_count,
+            'n_rejected': total_scored - stage1_count,
+        })
+        _thresh_records.append({
+            'filter_name': 'summary_stage2_cheap_survivors',
+            'threshold_value': len(stage2_cheap),
+            'source': 'summary',
+            'stage': 'summary',
+            'n_input': stage1_count,
+            'n_passed': len(stage2_cheap),
+            'n_rejected': stage1_count - len(stage2_cheap),
+        })
+        _thresh_records.append({
+            'filter_name': 'summary_stage2_full_survivors',
+            'threshold_value': stage2_count,
+            'source': 'summary',
+            'stage': 'summary',
+            'n_input': len(stage2_cheap),
+            'n_passed': stage2_count,
+            'n_rejected': len(stage2_cheap) - stage2_count,
+        })
 
         # Save filter thresholds to CSV
         self._save_filter_thresholds_csv(_thresh_records)
 
-        # Mark final candidates as "pass" in the filter status map
-        # (overrides any prior rejection if rescued via fallback)
+        # Mark final candidates in the filter status map
+        # genuine pass vs fallback-rescued distinction
+        _genuine_pass_ids = {str(d.get('id', '')) for d in stage2_full}
         for d in cluster_candidates:
             _did = str(d.get('id', ''))
-            _filter_status_map[_did] = 'pass'
+            if fallback_level == 0 or _did in _genuine_pass_ids:
+                _filter_status_map[_did] = 'pass'
+            else:
+                _filter_status_map[_did] = f'pass_fallback_{fallback_level}'
 
         # Update scored_all_models.csv with filter_status column
         self._update_scored_all_models_filter_status(_filter_status_map)
@@ -3363,10 +3410,14 @@ function sortTable(th) {
 
         cluster_candidates.sort(key=lambda x: x['dG_separated'])
 
-        # Mark final candidates as "pass" in the filter status map
+        # Mark final candidates in the filter status map
+        _genuine_pass_ids = {str(d.get('id', '')) for d in sc_passed}
         for d in cluster_candidates:
             _did = str(d.get('id', ''))
-            _filter_status_map[_did] = 'pass'
+            if fallback_level == 0 or _did in _genuine_pass_ids:
+                _filter_status_map[_did] = 'pass'
+            else:
+                _filter_status_map[_did] = f'pass_fallback_{fallback_level}'
 
         pass_rate = len(cluster_candidates) / total_scored * 100
         self.logger.info(
@@ -3388,18 +3439,44 @@ function sortTable(th) {
             'filter_version': 'v1.0',
         })
 
-        # Record fallback information
-        if fallback_level > 0:
-            _thresh_records.append({
-                'filter_name': f'graduated_fallback_level_{fallback_level}',
-                'threshold_value': fallback_level,
-                'source': 'fallback',
-                'stage': 'fallback',
-                'n_input': len(sc_passed) if fallback_level == 1 else (
-                    len(dG_passed) if fallback_level == 2 else total_scored),
-                'n_passed': len(cluster_candidates),
-                'n_rejected': 0,
-            })
+        # Record fallback information (always, even level 0 for post-hoc analysis)
+        _thresh_records.append({
+            'filter_name': 'graduated_fallback_level',
+            'threshold_value': fallback_level,
+            'source': 'fallback',
+            'stage': 'fallback',
+            'n_input': len(sc_passed) if fallback_level == 1 else (
+                len(dG_passed) if fallback_level == 2 else total_scored),
+            'n_passed': len(cluster_candidates),
+            'n_rejected': 0,
+        })
+        _thresh_records.append({
+            'filter_name': 'summary_dSASA_survivors',
+            'threshold_value': len(dSASA_passed),
+            'source': 'summary',
+            'stage': 'summary',
+            'n_input': total_scored,
+            'n_passed': len(dSASA_passed),
+            'n_rejected': total_scored - len(dSASA_passed),
+        })
+        _thresh_records.append({
+            'filter_name': 'summary_dG_survivors',
+            'threshold_value': len(dG_passed),
+            'source': 'summary',
+            'stage': 'summary',
+            'n_input': len(dSASA_passed),
+            'n_passed': len(dG_passed),
+            'n_rejected': len(dSASA_passed) - len(dG_passed),
+        })
+        _thresh_records.append({
+            'filter_name': 'summary_sc_survivors',
+            'threshold_value': len(sc_passed),
+            'source': 'summary',
+            'stage': 'summary',
+            'n_input': len(dG_passed),
+            'n_passed': len(sc_passed),
+            'n_rejected': len(dG_passed) - len(sc_passed),
+        })
 
         # Save filter thresholds to CSV
         self._save_filter_thresholds_csv(_thresh_records)

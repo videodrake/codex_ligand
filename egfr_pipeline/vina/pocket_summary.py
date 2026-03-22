@@ -8,6 +8,13 @@ from typing import Dict, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.region_definitions import (
+    ATP_SITE_RESIDUES,
+    KO_SHEET_8_9,
+    KO_SHEET_10_11,
+    KO_SHEET_12,
+)
+from egfr_pipeline.residue_utils import extract_resnum
 
 
 def load_pose_table(path: Path) -> List[dict]:
@@ -87,6 +94,14 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[
                 if fraction > 0:
                     ligand_pose_entropy -= fraction * math.log(fraction)
 
+        # ATP site false positive detection (AC-1.2)
+        resnums = [extract_resnum(r) for r in union_contact_residues]
+        resnums = [n for n in resnums if n is not None]
+        atp_overlap = sum(1 for n in resnums if n in ATP_SITE_RESIDUES)
+        atp_frac = atp_overlap / len(resnums) if resnums else 0.0
+        is_atp_site = atp_frac > 0.5
+        is_atp_site_borderline = 0.4 <= atp_frac <= 0.6
+
         pocket_rows.append({
             "receptor_id": receptor_id,
             "pocket_id": pocket_id,
@@ -104,6 +119,12 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[
             "affinity_iqr": aff_iqr,
             "dominant_ligand_fraction": round(dominant_ligand_fraction, 4),
             "ligand_pose_entropy": round(ligand_pose_entropy, 4),
+            "is_atp_site": is_atp_site,
+            "is_atp_site_borderline": is_atp_site_borderline,
+            # Ko et al. sheet contact counts (AC-1.5)
+            "contacts_sheet_8_9": sum(1 for n in resnums if n in KO_SHEET_8_9),
+            "contacts_sheet_10_11": sum(1 for n in resnums if n in KO_SHEET_10_11),
+            "contacts_sheet_12": sum(1 for n in resnums if n in KO_SHEET_12),
         })
 
         # Build full per-residue occupancy rows for this pocket
@@ -194,6 +215,11 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
             "affinity_iqr",
             "dominant_ligand_fraction",
             "ligand_pose_entropy",
+            "is_atp_site",
+            "is_atp_site_borderline",
+            "contacts_sheet_8_9",
+            "contacts_sheet_10_11",
+            "contacts_sheet_12",
         ],
     )
     drug_csv = write_csv(

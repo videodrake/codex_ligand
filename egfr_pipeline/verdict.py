@@ -106,10 +106,13 @@ VERDICT_FIELDS = [
     "exp_enrichment",
     "exp_rank_impact",
     "pocket_stability",
+    "bootstrap_confidence",
     "evidence_profile",
     "reason_tags",
     "decision_trace",
     "reasons",
+    "is_atp_site",
+    "exclusion_reason",
 ]
 
 CONSENSUS_FIELDS = [
@@ -200,6 +203,24 @@ def _get_thresholds(config: dict) -> dict:
         if key in user:
             thresholds[key] = user[key]
     return thresholds
+
+
+def _bootstrap_confidence(pocket_exists_frac: object) -> str:
+    """Map bootstrap pocket_exists_frac to a categorical confidence level.
+
+    AC-2.3: high (>= 0.80), medium (0.50-0.80), low (< 0.50), not_assessed.
+    """
+    if pocket_exists_frac in ("", None):
+        return "not_assessed"
+    try:
+        frac = float(pocket_exists_frac)
+    except (TypeError, ValueError):
+        return "not_assessed"
+    if frac >= 0.80:
+        return "high"
+    if frac >= 0.50:
+        return "medium"
+    return "low"
 
 
 # ---------------------------------------------------------------------------
@@ -1686,10 +1707,17 @@ def generate_verdict(
             "exp_rank_impact": _compute_exp_rank_impact(exp_corr) if exp_corr else "",
             "pocket_stability": bootstrap_index[key]["pocket_exists_frac"]
                 if key in bootstrap_index else "",
+            "bootstrap_confidence": _bootstrap_confidence(
+                bootstrap_index.get(key, {}).get("pocket_exists_frac", "")
+            ),
             "evidence_profile": raw_comp["evidence_profile"],
             "reason_tags": raw_comp["reason_tags"],
             "decision_trace": raw_comp["decision_trace"],
             "reasons": "; ".join(reasons),
+            "is_atp_site": pocket.get("is_atp_site", False),
+            "exclusion_reason": "ATP_site_experimental"
+                if pocket.get("is_atp_site") in (True, "True", "true")
+                else "",
         })
 
     # Sort: VALID first, then by score descending

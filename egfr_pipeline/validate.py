@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.region_definitions import get_region
 
 
 # ---------------------------------------------------------------------------
@@ -457,13 +458,35 @@ def _detect_offset(
     return 0 if direct_match / min_len > 0.3 else None
 
 
-def check_residue_numbering(config: dict, result: ValidationResult):
+ALIGNMENT_FIELDS = [
+    "state_a", "state_b", "resnum", "resname_a", "resname_b", "region", "status",
+]
+
+
+def _write_alignment_csv(output_dir: Path, rows: List[dict]):
+    """Write residue_alignment_check.csv for cross-receptor mismatches (AC-2.2)."""
+    out_path = output_dir / "residue_alignment_check.csv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=ALIGNMENT_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def check_residue_numbering(
+    config: dict,
+    result: ValidationResult,
+    alignment_rows: Optional[List[dict]] = None,
+):
     """8.3: Compare residue numbering and identity across receptor PDBs.
 
     Three-level check:
       1. Number overlap (do the same residue numbers appear?)
       2. Identity match (same number = same amino acid?)
       3. Offset detection (systematic shift in numbering?)
+
+    When *alignment_rows* is provided, mismatch details (with region info)
+    are appended to it for CSV output (AC-2.2).
     """
     receptors = config.get("receptors", [])
     pdb_nums: Dict[str, Dict[str, Set[int]]] = {}
@@ -552,6 +575,21 @@ def check_residue_numbering(config: dict, result: ValidationResult):
                     known = [(r, a, b) for r, a, b in mismatches if r in KNOWN_MUTATIONS]
                     unknown = [(r, a, b) for r, a, b in mismatches if r not in KNOWN_MUTATIONS]
 
+                    # Collect alignment rows for CSV output (AC-2.2)
+                    if alignment_rows is not None:
+                        for resnum, name_a, name_b in mismatches:
+                            region = get_region(resnum) or "outside_kinase"
+                            status = "known_mutation" if resnum in KNOWN_MUTATIONS else "unexpected"
+                            alignment_rows.append({
+                                "state_a": rec_a,
+                                "state_b": rec_b,
+                                "resnum": resnum,
+                                "resname_a": name_a,
+                                "resname_b": name_b,
+                                "region": region,
+                                "status": status,
+                            })
+
                     if known:
                         kn_str = ", ".join(f"{r}:{a}≠{b}(known mutation)" for r, a, b in known)
                         result.warn(
@@ -563,10 +601,18 @@ def check_residue_numbering(config: dict, result: ValidationResult):
                         ex_str = ", ".join(f"{r}:{a}≠{b}" for r, a, b in examples)
                         if n_mm > 5:
                             ex_str += f" ...+{n_mm - 5} more"
-                        result.fail(
-                            f"{rec_a} vs {rec_b}: {n_mm} UNEXPECTED identity mismatches! "
-                            f"Same number, different amino acid: {ex_str}"
-                        )
+                        # EC-2.2: >= 10 unknown mismatches -> FAIL, < 10 -> WARNING
+                        if n_mm >= 10:
+                            result.fail(
+                                f"{rec_a} vs {rec_b}: {n_mm} UNEXPECTED identity mismatches! "
+                                f"Same number, different amino acid: {ex_str}. "
+                                f"Manual PDB file verification required."
+                            )
+                        else:
+                            result.warn(
+                                f"{rec_a} vs {rec_b}: {n_mm} unexpected identity "
+                                f"mismatch(es): {ex_str}"
+                            )
                 elif matched > 0:
                     result.ok(
                         f"{rec_a} vs {rec_b}: {matched}/{len(overlap)} "
@@ -792,7 +838,10 @@ def run_validation(
 
     # 8.3
     print("[8.3] Residue numbering consistency...")
-    check_residue_numbering(config, result)
+    alignment_rows: List[dict] = []
+    check_residue_numbering(config, result, alignment_rows=alignment_rows)
+    if alignment_rows:
+        _write_alignment_csv(project_root.vina, alignment_rows)
 
     # 8.3b
     print("[8.3b] Known mutations check...")

@@ -1138,6 +1138,68 @@ def _finalize_lane() -> object:
 # Advanced PPI-First pipeline lane functions (Workflow B)
 # ---------------------------------------------------------------------------
 
+def _validate_ko_consistency(patch_csv_path) -> None:
+    """Ko et al. active face consistency check (AC-1.3).
+
+    Verifies that Phase 1 hotspot residues include sufficient active face
+    (sheet 8/9) residues from Ko et al. experimental data.
+    """
+    import csv
+    import logging
+    from pathlib import Path
+    from egfr_pipeline.region_definitions import KO_SHEET_8_9, KO_SHEET_10_11, KO_SHEET_12
+
+    log = logging.getLogger(__name__)
+    patch_path = Path(patch_csv_path)
+    if not patch_path.exists():
+        return  # File existence already checked by caller
+
+    with open(patch_path, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+
+    if not rows:
+        return
+
+    # Collect hotspot residue numbers (partner-side, i.e. chain B / MYO1D)
+    hotspot_resnums = set()
+    for row in rows:
+        if row.get("is_hotspot_any_state", "").lower() in ("true", "1", "yes"):
+            try:
+                hotspot_resnums.add(int(row["residue_num"]))
+            except (ValueError, KeyError):
+                continue
+
+    if not hotspot_resnums:
+        return  # No hotspot residues — separate quality guard (Task 3.5)
+
+    active_face_in_hotspot = hotspot_resnums & KO_SHEET_8_9
+    sheet_10_11_in_hotspot = hotspot_resnums & KO_SHEET_10_11
+    sheet_12_in_hotspot = hotspot_resnums & KO_SHEET_12
+
+    if len(active_face_in_hotspot) < 3:
+        raise ValueError(
+            f"Ko et al. FAIL: hotspot에 active face (sheet 8/9) 잔기가 "
+            f"{len(active_face_in_hotspot)}개뿐입니다 (최소 3개 필요).\n"
+            f"Active face 잔기: {sorted(KO_SHEET_8_9)}\n"
+            f"Hotspot 잔기: {sorted(hotspot_resnums)}\n"
+            f"PPI 예측이 Ko et al. 실험 결과와 괴리됩니다. Workflow B를 중단합니다."
+        )
+
+    if sheet_10_11_in_hotspot:
+        log.warning(
+            "Ko et al. WARNING: hotspot에 sheet 10/11 잔기 감지 (%s). "
+            "이 잔기들은 실험적으로 WT-level 기능 유지 — 결합 기여도 낮음.",
+            sorted(sheet_10_11_in_hotspot),
+        )
+
+    if sheet_12_in_hotspot:
+        log.info(
+            "Ko et al. INFO: hotspot에 sheet 12 잔기 감지 (%s). "
+            "Structural support 영역 — 모니터링 대상.",
+            sorted(sheet_12_in_hotspot),
+        )
+
+
 def _validate_adv_handoff(lane: str) -> None:
     """Advanced lane 사전 조건 파일 존재 검증. defense-in-depth."""
     from egfr_pipeline.paths import (
@@ -1191,6 +1253,10 @@ def _validate_adv_handoff(lane: str) -> None:
     missing = check_fn()
     if missing:
         raise FileNotFoundError(msg)
+
+    # Ko et al. consistency check for Phase 1 → Phase 2 handoff (AC-1.3)
+    if lane == "adv-phase2":
+        _validate_ko_consistency(wb_p1 / "phase1_downstream_patch_reference.csv")
 
 
 def _adv_phase1():

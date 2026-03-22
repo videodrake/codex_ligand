@@ -529,6 +529,74 @@ def format_verdict_section(
 
 
 # ---------------------------------------------------------------------------
+# Pose region distribution (AC-2.1)
+# ---------------------------------------------------------------------------
+
+def format_pose_region_section(distribution_rows: List[dict]) -> str:
+    """Format pose region distribution as a text summary table."""
+    if not distribution_rows:
+        return "  No pose region distribution data available.\n"
+
+    lines: List[str] = []
+    by_receptor: Dict[str, List[dict]] = defaultdict(list)
+    for row in distribution_rows:
+        by_receptor[row["receptor_id"]].append(row)
+
+    for receptor_id in sorted(by_receptor):
+        lines.append(f"  Receptor: {receptor_id}")
+        lines.append(
+            f"  {'Ligand':<20} {'n_lobe':>8} {'atp_site':>10} "
+            f"{'c_lobe_srf':>12} {'c_lobe_core':>12} {'mixed':>8}"
+        )
+        lines.append(
+            f"  {'------':<20} {'------':>8} {'--------':>10} "
+            f"{'----------':>12} {'-----------':>12} {'-----':>8}"
+        )
+
+        by_ligand: Dict[str, Dict[str, str]] = defaultdict(dict)
+        for row in by_receptor[receptor_id]:
+            frac = row.get("fraction", "0")
+            try:
+                by_ligand[row["ligand_id"]][row["region"]] = f"{float(frac):.0%}"
+            except (TypeError, ValueError):
+                by_ligand[row["ligand_id"]][row["region"]] = str(frac)
+
+        for ligand_id in sorted(by_ligand):
+            fracs = by_ligand[ligand_id]
+            lines.append(
+                f"  {ligand_id:<20} "
+                f"{fracs.get('n_lobe', '-'):>8} "
+                f"{fracs.get('atp_site', '-'):>10} "
+                f"{fracs.get('c_lobe_surface', '-'):>12} "
+                f"{fracs.get('c_lobe_core', '-'):>12} "
+                f"{fracs.get('mixed', '-'):>8}"
+            )
+        lines.append("")
+
+    # Collect warnings
+    warn_receptors = set()
+    for row in distribution_rows:
+        if row.get("region") == "c_lobe_surface":
+            try:
+                frac = float(row.get("fraction", 0))
+            except (TypeError, ValueError):
+                frac = 0.0
+            if frac < 0.10:
+                warn_receptors.add((row["receptor_id"], row["ligand_id"]))
+
+    if warn_receptors:
+        lines.append("  Alerts:")
+        for receptor_id, ligand_id in sorted(warn_receptors):
+            lines.append(
+                f"    WARNING: {receptor_id}/{ligand_id} — C-lobe surface "
+                f"poses below 10% threshold."
+            )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Main report generator
 # ---------------------------------------------------------------------------
 
@@ -576,6 +644,12 @@ def generate_report(
     else:
         report_lines.append("  No Vina pocket data available.\n")
 
+    # Section 1.5: Pose Region Distribution (AC-2.1)
+    region_dist_rows = load_csv(vina_post / "vina_pose_distribution_by_region.csv")
+    if region_dist_rows:
+        report_lines.append(section_header("1.5 Pose Region Distribution", 2))
+        report_lines.append(format_pose_region_section(region_dist_rows))
+
     # Section 2: Cross-receptor comparison
     report_lines.append(section_header("2. Cross-Receptor Pocket Comparison"))
     report_lines.append(format_comparison_highlights(comparison_rows))
@@ -607,6 +681,22 @@ def generate_report(
                 f"{sens:>6} {r.get('exp_specificity',''):>6} "
                 f"{r.get('exp_enrichment',''):>7} {r.get('exp_rank_impact',''):<12} "
                 f"{r.get('reasons','').split('exp_hit=')[1].split(';')[0] if 'exp_hit=' in r.get('reasons','') else '-'}"
+            )
+        report_lines.append("")
+
+    # Section 4.6: Experimentally excluded pockets (AC-1.2)
+    excluded_pockets = [r for r in verdict_rows
+                        if r.get("exclusion_reason") not in ("", None)]
+    if excluded_pockets:
+        report_lines.append(section_header("4.6 Experimentally Excluded Pockets", 2))
+        report_lines.append("  Pockets excluded based on experimental evidence "
+                            "(ATP binding maintained under drug treatment).\n")
+        report_lines.append(f"  {'Receptor':<20} {'Pocket':<7} {'Reason':<28} {'Affinity':>8}")
+        report_lines.append(f"  {'--------':<20} {'------':<7} {'------':<28} {'--------':>8}")
+        for r in excluded_pockets:
+            report_lines.append(
+                f"  {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
+                f"{r.get('exclusion_reason',''):<28} {r.get('best_affinity',''):>8}"
             )
         report_lines.append("")
 
