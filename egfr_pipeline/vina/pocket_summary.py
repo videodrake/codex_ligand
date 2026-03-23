@@ -28,6 +28,58 @@ def split_contact_residues(value: str) -> List[str]:
     return [item for item in value.split(";") if item]
 
 
+def compute_pocket_depth(
+    centroid: Tuple[float, float, float],
+    contact_resnums: set,
+    receptor_pdb: Path,
+    chain: str = "A",
+) -> Optional[float]:
+    """Compute pocket depth: centroid → nearest non-contact surface Cα (AC-4.2).
+
+    Pocket depth measures how "buried" the centroid is below the receptor
+    surface. Contact residues are excluded so that the distance reflects
+    the distance to the actual surface, not to the pocket lining.
+
+    Returns distance in Å, or None if PDB not found or no surface atoms.
+    """
+    if not receptor_pdb.exists():
+        return None
+
+    min_dist = float("inf")
+    with open(receptor_pdb, encoding="utf-8") as f:
+        for line in f:
+            if not line.startswith("ATOM"):
+                continue
+            atom_name = line[12:16].strip()
+            if atom_name != "CA":
+                continue
+            pdb_chain = line[21].strip()
+            if pdb_chain and pdb_chain != chain:
+                continue
+            try:
+                resnum = int(line[22:26].strip())
+            except (ValueError, IndexError):
+                continue
+            # Skip contact residues — we want the surface, not pocket lining
+            if resnum in contact_resnums:
+                continue
+            try:
+                x = float(line[30:38])
+                y = float(line[38:46])
+                z = float(line[46:54])
+            except (ValueError, IndexError):
+                continue
+            dist = math.sqrt(
+                (x - centroid[0]) ** 2
+                + (y - centroid[1]) ** 2
+                + (z - centroid[2]) ** 2
+            )
+            if dist < min_dist:
+                min_dist = dist
+
+    return round(min_dist, 2) if min_dist < float("inf") else None
+
+
 def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[dict]]:
     # Exclude capped poses when pocket cap was applied
     if rows and "cap_status" in rows[0]:
@@ -125,6 +177,7 @@ def summarize_pose_rows(rows: List[dict]) -> Tuple[List[dict], List[dict], List[
             "contacts_sheet_8_9": sum(1 for n in resnums if n in KO_SHEET_8_9),
             "contacts_sheet_10_11": sum(1 for n in resnums if n in KO_SHEET_10_11),
             "contacts_sheet_12": sum(1 for n in resnums if n in KO_SHEET_12),
+            "pocket_depth_A": "",  # Computed in summarize_from_config when PDB available
         })
 
         # Build full per-residue occupancy rows for this pocket
@@ -195,6 +248,29 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
     # Cross-receptor comparison is not implemented yet; residue numbering consistency
     # should be verified on the real server before Task Group 5 uses these summaries.
     pocket_rows, drug_map_rows, residue_occupancy_rows = summarize_pose_rows(rows)
+
+    # AC-4.2: Compute pocket_depth_A from receptor PDBs when available
+    receptors = config.get("receptors", [])
+    receptor_pdbs = {r["id"]: Path(r.get("pdb", "")) for r in receptors}
+    for pocket in pocket_rows:
+        rid = pocket["receptor_id"]
+        pdb_path = receptor_pdbs.get(rid)
+        if pdb_path and pdb_path.exists():
+            centroid = (
+                float(pocket["centroid_x"]),
+                float(pocket["centroid_y"]),
+                float(pocket["centroid_z"]),
+            )
+            contact_str = pocket.get("union_contact_residues", "")
+            contact_resnums = set()
+            for res_id in contact_str.split(";"):
+                try:
+                    contact_resnums.add(extract_resnum(res_id.strip()))
+                except (ValueError, TypeError):
+                    pass
+            depth = compute_pocket_depth(centroid, contact_resnums, pdb_path)
+            pocket["pocket_depth_A"] = depth if depth is not None else ""
+
     pocket_csv = write_csv(
         postprocess_root / "vina_pocket_table.csv",
         pocket_rows,
@@ -220,6 +296,7 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
             "contacts_sheet_8_9",
             "contacts_sheet_10_11",
             "contacts_sheet_12",
+            "pocket_depth_A",
         ],
     )
     drug_csv = write_csv(

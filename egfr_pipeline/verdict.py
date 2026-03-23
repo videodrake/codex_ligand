@@ -186,6 +186,17 @@ DEFAULT_THRESHOLDS = {
     "cross_receptor_centroid_cutoff": 8.0,
     "cross_support_good": 0.50,
     "cross_support_great": 0.75,
+    # Coverage differentiation (AC-4.3): 3/3 vs 2/3 vs 1/3 states
+    # n_cross = len(cross_receptor_matches): 0=1/3, 1=2/3, 2=3/3
+    # Total cross_receptor_pts = coverage + support(max 10):
+    #   3/3: 20 + [0-10] = 20-30 (PRD target: 30)
+    #   2/3: 14 + [0-10] = 14-24 (PRD target: 22-24)
+    #   1/3:  0 + [0-10] =  0-10 (PRD baseline: 10-15)
+    # 1/3 coverage set to 0 (not PRD's 10): single-state pockets should earn
+    # cross points only through support quality, not mere existence.
+    "cross_coverage_3of3": 20.0,     # pocket found in all 3 states
+    "cross_coverage_2of3": 14.0,     # pocket found in 2 of 3 states
+    "cross_coverage_1of3": 0.0,      # pocket found in only 1 state (coverage via support only)
 
     # --- Evidence level thresholds (always out of 100) ---
     # NOT a validity judgment — an evidence strength classification.
@@ -1355,7 +1366,7 @@ def score_pocket(
     # ---- Axis 3: Cross-Receptor Consistency ----
     # 2-tier 스코어링:
     #   (1) Coverage (n_cross): 몇 개 receptor state에서 동일 포켓이 발견되었는가
-    #       - 3/3 states → 20 pts, 2/3 states → 10 pts
+    #       AC-4.3 차등: 3/3 → 20 pts, 2/3 → 14 pts, 1/3 → 0 pts (configurable)
     #   (2) Support quality (support_frac): 매칭 품질 (centroid 근접도 + 잔기
     #       Jaccard/overlap + 공유 리간드 수로 산출된 pair_strength의 합, 0-1 정규화)
     #       - great(≥0.75) → 10 pts, good(≥0.50) → 6 pts, >0 → 3 pts
@@ -1369,12 +1380,13 @@ def score_pocket(
         0.0,
     )
 
+    # AC-4.3: Differentiated coverage scoring (3/3 > 2/3 > 1/3)
     if n_cross >= 2:
-        cross_coverage_pts = 20.0
+        cross_coverage_pts = T["cross_coverage_3of3"]
         reasons.append(f"cross={n_cross + 1}/3")
         reason_tags.append("cross_state_recurrent")
     elif n_cross >= 1:
-        cross_coverage_pts = 10.0
+        cross_coverage_pts = T["cross_coverage_2of3"]
         reasons.append("cross=2/3")
         reason_tags.append("cross_state_partial")
 

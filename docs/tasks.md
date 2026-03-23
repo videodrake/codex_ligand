@@ -233,37 +233,37 @@ docs/                               [신규 다수]
 
 ### 4. Verdict 메트릭 체계 검증 및 교정 (F-4) 🟡
 
-- [ ] **4.1** — Verdict 가중치 민감도 시뮬레이션
+- [x] **4.1** — Verdict 가중치 민감도 시뮬레이션
   - **What:** (D-1.1) 기존 valid_sites.csv를 입력으로 6개 가중치 조합(50/20/30, 40/30/30, 35/35/30, 30/40/30, 33/33/34 + 1개 추가)에서 포켓별 총점·판정 재계산. 조합 간 판정 변화 목록 + PPI 승격 포켓 식별 → `verdict_weight_sensitivity.csv`. (D-1.2 🔧바이브코딩→사람) 안정·민감·승격 포켓 분석 + 권장안 → `verdict_weight_sensitivity_report.md`.
   - **Files:** `scripts/verdict_weight_sensitivity.py` [신규]
   - **AC:** AC-4.1
   - **Test:** 6개 조합 결과 포함 CSV, 판정 변화 포켓 목록 비어 있지 않음 (또는 "변화 없음" 기록)
 
-- [ ] **4.2** — 포켓 깊이 지표 + centroid 오프셋 보정 시뮬레이션
+- [x] **4.2** — 포켓 깊이 지표 + centroid 오프셋 보정 시뮬레이션
   - **What:** (D-2.1) pocket_summary.py에 `pocket_depth_A` 계산 추가 (centroid → 가장 가까운 비접촉 수용체 표면 Cα 거리). pocket_table.csv에 컬럼 추가. (D-2.2) 보정 거리(raw - alpha × depth, alpha 0.5~1.0)에서 ppi_spatial_pts 변화 비교.
   - **Files:** `egfr_pipeline/vina/pocket_summary.py` [수정], `scripts/centroid_offset_analysis.py` [신규]
   - **AC:** AC-4.2
   - **Test:** pocket_depth_A 값이 양수, 보정 전후 점수 비교 테이블 생성
 
-- [ ] **4.3** — Cross-receptor pts 2/3 vs 3/3 차등 도입
+- [x] **4.3** — Cross-receptor pts 2/3 vs 3/3 차등 도입
   - **What:** (D-3.1) verdict.py의 cross_receptor_pts에 차등 구현: 1/3 → 10-15점, 2/3 → 22-24점, 3/3 → 30점 (변경안 2개 시뮬레이션). 차등 전후 STRONG 경계(55점)에 걸친 포켓 순위 변화 확인.
   - **Files:** `egfr_pipeline/verdict.py` [수정]
   - **AC:** AC-4.3
   - **Test:** 2/3 포켓과 3/3 포켓의 점수가 다름, 기존 동점이었던 포켓 쌍에서 차등 발생
 
-- [ ] **4.4** — PPI spatial pts 실효 범위 분석
+- [x] **4.4** — PPI spatial pts 실효 범위 분석
   - **What:** (D-4.1) Vina-PPI centroid 간 거리 분포 추출, 현재 임계값(8/15/25Å)의 분포 분할 적절성 확인. (D-4.2 🔧바이브코딩→사람) 구간별 포켓 집중도 분석, 차별력 부족 시 새 임계값 제안, centroid 오프셋(3-5Å) 감안한 실질 범위 보고.
   - **Files:** `scripts/verdict_weight_sensitivity.py`에 통합 또는 별도 스크립트
   - **AC:** AC-4.4
   - **Test:** 거리 분포 히스토그램 또는 percentile 테이블 생성, 구간별 포켓 수 기록
 
-- [ ] **4.5** — Phase 4 A3 축 정의 추출 및 문서화
+- [x] **4.5** — Phase 4 A3 축 정의 추출 및 문서화
   - **What:** (D-5.1 🔧바이브코딩) `egfr_pipeline/phase4/` 모듈을 읽어 A3(Perturbation relevance) 계산 로직 추적: 입력 데이터, 메커니즘 분류→점수 변환, sub-score 가중치, 출력 범위 추출. (D-5.2) `phase4_A3_axis_specification.md` 작성, PIPELINE_ARCHITECTURE_REPORT.md 업데이트.
   - **Files:** `egfr_pipeline/phase4/` [읽기], `docs/phase4_A3_axis_specification.md` [신규]
   - **AC:** AC-4.5
   - **Test:** A3 스펙 문서에 입력/임계값/가중치/출력범위 4가지 항목 명시
 
-- [ ] **4.T** — Tests for Verdict 메트릭 교정
+- [x] **4.T** — Tests for Verdict 메트릭 교정
   - **What:** (1) 가중치 시뮬레이션 결과 6개 조합 검증, (2) pocket_depth_A 양수 검증, (3) 차등 점수 로직 단위 테스트 (n_receptors=1,2,3별 점수), (4) 거리 분포 통계 유효성, (5) 기존 valid_sites.csv와 비교하여 변경 사항 추적
   - **Files:** 테스트 파일
   - **AC:** AC-4.1 ~ AC-4.5

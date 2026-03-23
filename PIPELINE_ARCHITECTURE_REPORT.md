@@ -736,6 +736,11 @@ Phase 2 전체 결과를 요약한 Markdown 리포트 생성
 
 **역할**: 4축 점수를 가중 합산하여 최종 순위 생성
 
+**A3 축 (Perturbation Relevance) 상세**: `docs/phase4_A3_axis_specification.md` 참조.
+- 계산: `A3 = 0.45×relationship + 0.25×overlap_norm + 0.20×support + 0.10×pose_norm`
+- 가중치: 전체의 30% (A1과 합산 시 60% — MYO1D 교란 관련 축 과반)
+- 입력: Phase 2 관계 분류 + Phase 3 도킹 증거
+
 **Affinity Cap**: affinity 유래 신호의 최대 기여를 35%로 제한 -> 무관한 사이트의 높은 affinity가 순위를 지배하는 것 방지
 
 ### TG 4.4: State Interpretation (`state_interpretation.py`)

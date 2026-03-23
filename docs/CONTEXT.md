@@ -99,6 +99,27 @@
 - Group 3 전체 완료: 425 passed (ligand_diversity 2건 제외 — output CSV 미존재, Group 3 무관)
 - 컬럼명 의도적 편차: PRD 축약명 대신 구현에서 더 정확한 명명 사용 (n_orientation_valid_models, pyrosetta_max_occupancy, lightdock_frequency, concordance_score). 기능은 PRD 의도 100% 일치.
 
+### Group 4 — Verdict 메트릭 체계 검증 및 교정 F-4 (2026-03-23)
+
+**실행 순서:** 4.5 (문서) → 4.1 → 4.3 (verdict 시뮬레이션) → 4.4 (거리 분포) → 4.2 (pocket_depth) → 4.T
+
+**기술 결정:**
+- output/ 디렉토리에 실제 파이프라인 결과 없음 (서버 미실행) → 합성 데이터 + score_pocket() 직접 호출로 what-if 시뮬레이션
+- 4.5 먼저: phase4/ 코드 읽기 전용, 의존 없음. A3 축 정의 추출 + 문서화
+- 4.1 가중치 시뮬레이션: score_pocket() 래핑하여 6개 조합 what-if. 실제 valid_sites.csv 없이도 동작
+- 4.3 cross_receptor_pts 차등: 시뮬레이션 스크립트에서 what-if (verdict.py 직접 수정 아님)
+- 4.2 pocket_depth: pocket_summary.py에 함수 추가, PDB 존재 시에만 실행. 오프셋 시뮬레이션은 합성 데이터
+- Phase 4 A3 축: 이미 perturbation_scoring.py + score_framework.py에 완전 구현됨 (A1=0.30, A2=0.25, A3=0.30, A4=0.15)
+
+**완료 (2026-03-23):**
+- 4.5: phase4_A3_axis_specification.md — A3 계산로직 4항목 추출 (입력/임계값/가중치/출력범위)
+- 4.1: verdict_weight_sensitivity.py — 6개 가중치 조합 시뮬레이션, 합성 데이터 + score_pocket 래핑
+- 4.3: verdict.py cross_coverage 차등 (20/14/0), 시뮬레이션 3안 비교. 1/3 coverage=0 (PRD 10 대비 의도적 하향)
+- 4.2: pocket_depth_A 컬럼 + compute_pocket_depth() + centroid_offset_analysis.py alpha 0.5-1.0
+- 4.4: PPI 거리 분포 분석 — 4구간, 70% 집중 경고, percentile, 오프셋 실질 범위
+- 4.T: test_verdict_group4.py 43건 — AC-4.1~4.5 + EC-4.1~4.3 + adversarial 12건
+- Group 4 전체 완료: 468 passed (ligand_diversity 2건 제외)
+
 ## 발견된 이슈
 
 (범위 밖 버그, 기술 부채, 추후 개선 사항을 여기에 기록)
