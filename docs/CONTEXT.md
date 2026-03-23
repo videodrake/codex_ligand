@@ -141,6 +141,22 @@
 - 5.T: test_workflow_group5.py 39건 — AC-5.1~5.6 + EC-5.1~5.3 + adversarial 9건
 - Group 5 전체 완료: 507 passed (ligand_diversity 2건 제외)
 
+### Group 6 — 인프라 및 장기 개선 F-6 (2026-03-24)
+
+**실행 순서:** 6.1 → 6.3 → 6.2 → 6.T
+
+**기술 결정:**
+- 6.1: pipeline_manager.py (4156줄, 순환 참조 없음, 500줄+ 함수 없음), vina_executor.py (2792줄, 43함수, 순환 참조 없음) → "현재 구조 유지" 결정 예상
+- 6.3: Phase 3 ThreadPoolExecutor 이미 구현 (run_diverse_docking.py line 304-308) → EC-6.3 문서화만
+- 6.2: precheck에 fpocket/P2Rank/LightDock 체크 추가 + run_advanced_pipeline.pbs 연결
+
+**완료 (2026-03-24):**
+- 6.1: module_separation_analysis.md — "현재 구조 유지" 결정. pipeline_manager 500줄+ 2개(보고서), vina_executor 없음, 순환 참조 없음
+- 6.3: Phase 3 ThreadPoolExecutor 확인 → EC-6.3 문서화만 (이미 구현)
+- 6.2: run_pre_qsub_checks.sh에 CHECK_WORKFLOW_B 플래그 추가 (fpocket critical, P2Rank/LightDock warning) + run_advanced_pipeline.pbs 연결
+- 6.T: test_infra_group6.py 17건
+- Group 6 전체 완료: 524 passed
+
 ## 발견된 이슈
 
 (범위 밖 버그, 기술 부채, 추후 개선 사항을 여기에 기록)

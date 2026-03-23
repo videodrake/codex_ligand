@@ -53,6 +53,14 @@ echo ""
 
 PREV_JOB=""
 
+# AC-6.2: Run precheck with Workflow B tool validation before pipeline
+echo "--- Precheck: Workflow B tool validation ---"
+CHECK_WORKFLOW_B=1 bash "${PBS_O_WORKDIR}/scripts/run_pre_qsub_checks.sh" || {
+    echo "PRECHECK FAILED — aborting pipeline submission."
+    exit 1
+}
+echo ""
+
 # Helper: extract numeric job ID from qsub output
 get_job_id() {
     echo "$1" | grep -oP '^\d+(\.\S+)?' | head -1

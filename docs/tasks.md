@@ -323,25 +323,25 @@ docs/                               [신규 다수]
 
 ### 6. 인프라 및 장기 개선 (F-6) (Optional) 🟢
 
-- [ ] **6.1** — 대규모 파일 모듈 분리 검토
+- [x] **6.1** — 대규모 파일 모듈 분리 검토
   - **What:** (F-1.1) pipeline_manager.py(4079줄)와 vina_executor.py(2813줄)의 내부 함수/클래스 경계를 분석. 단일 함수 500줄 이상, 순환 참조 여부 확인. 분리 필요 시 구체적 분리 계획 문서화. 불필요 시 "현재 구조 유지" 결정 + 근거 기록.
   - **Files:** `egfr_pipeline/pyrosetta_docking/pipeline_manager.py` [읽기], `egfr_pipeline/vina/vina_executor.py` [읽기]
   - **AC:** AC-6.1
   - **Test:** 분석 결과 문서 존재, 결정(분리/유지) 근거 포함
 
-- [ ] **6.2** — fpocket/P2Rank/LightDock 설치 검증 precheck
+- [x] **6.2** — fpocket/P2Rank/LightDock 설치 검증 precheck
   - **What:** (F-2.1) precheck에 `--check-workflow-b` 플래그 추가, fpocket/P2Rank/LightDock 가용성 체크. (F-2.2) run_advanced_pipeline.pbs의 Phase 2 시작 전 자동 검증 연결.
   - **Files:** `config/run_pre_qsub_checks.pbs` 또는 `scripts/run_pre_qsub_checks.sh` [수정], `config/run_advanced_pipeline.pbs` [수정]
   - **AC:** AC-6.2
   - **Test:** `--check-workflow-b` 플래그로 실행 시 fpocket/P2Rank 경로 체크 출력
 
-- [ ] **6.3** — Phase 3 라운드 내 병렬화 검토
+- [x] **6.3** — Phase 3 라운드 내 병렬화 검토
   - **What:** (F-3.1) `run_diverse_docking.py`에서 각 라운드 내 open 포켓 도킹이 순차인지 병렬인지 확인. (F-3.2) 순차인 경우 PBS job array 또는 ThreadPoolExecutor 기반 라운드 내 병렬화 구현.
   - **Files:** `egfr_pipeline/phase3/run_diverse_docking.py` [읽기/수정]
   - **AC:** AC-6.3
   - **Test:** 이미 병렬이면 확인 문서화, 병렬화 추가 시 순차 대비 실행 시간 단축 확인
 
-- [ ] **6.T** — Tests for 인프라 개선
+- [x] **6.T** — Tests for 인프라 개선
   - **What:** (1) precheck 플래그 동작 확인, (2) 모듈 분리 시 기존 import 호환 테스트, (3) 병렬화 시 결과 일관성 확인
   - **Files:** 테스트 파일
   - **AC:** AC-6.1 ~ AC-6.3
