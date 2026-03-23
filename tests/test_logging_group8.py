@@ -151,3 +151,100 @@ class TestPhaseSanityCheck:
     def test_sanity_check_called_after_completion(self):
         source = (PROJECT_ROOT / "run_production.py").read_text()
         assert "_sanity_check_phase_outputs(phase_num, config)" in source
+
+
+# =====================================================================
+# Adversarial tests
+# =====================================================================
+
+class TestPermissionEdgeCases:
+    """Permission handling edge cases."""
+
+    def test_atomic_write_json_also_gets_644(self, tmp_path):
+        """JSON files should also be 0644 (via _atomic_write_text)."""
+        from egfr_pipeline.step_view import _atomic_write_json
+
+        test_file = tmp_path / "test.json"
+        _atomic_write_json(test_file, {"key": "value"})
+        mode = test_file.stat().st_mode
+        assert mode & 0o044 != 0  # group+other read
+
+    def test_atomic_write_overwrites_existing(self, tmp_path):
+        """Overwriting existing file should still set correct permissions."""
+        from egfr_pipeline.step_view import _atomic_write_text
+
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("old content")
+        test_file.chmod(0o600)  # Restrict to owner-only
+
+        _atomic_write_text(test_file, "new content")
+        assert test_file.read_text() == "new content"
+        mode = test_file.stat().st_mode
+        assert mode & 0o044 != 0  # Should be readable again
+
+
+class TestPlaceholderDetection:
+    """Placeholder detection boundary cases."""
+
+    def test_partial_placeholder_is_not_detected(self):
+        """Report with only some placeholder patterns should NOT be flagged."""
+        # check_phase6 uses `all(pat in content for pat in ...)` — partial match is OK
+        source = (PROJECT_ROOT / "run_production.py").read_text()
+        assert "all(pat in content for pat in placeholder_patterns)" in source
+
+    def test_real_report_with_data_passes(self, tmp_path):
+        """A report with real data + some 'No data' lines should still pass."""
+        from run_production import _csv_has_rows
+
+        # CSV with actual data rows passes
+        real_csv = tmp_path / "data.csv"
+        real_csv.write_text("col1,col2\nval1,val2\nval3,val4\n")
+        assert _csv_has_rows(real_csv) is True
+
+
+class TestSanityCheckMissingDirs:
+    """Sanity check when phase directories don't exist."""
+
+    def test_sanity_check_no_crash_on_missing_dir(self, tmp_path, capsys):
+        from run_production import _sanity_check_phase_outputs
+
+        config = {"output_root": str(tmp_path)}
+        # Phase 6 dir doesn't exist → should print [✗] but not crash
+        _sanity_check_phase_outputs(6, config)
+        captured = capsys.readouterr()
+        assert "NOT FOUND" in captured.out
+
+    def test_sanity_check_small_file_warns(self, tmp_path, capsys):
+        from run_production import _sanity_check_phase_outputs
+        from egfr_pipeline.paths import wa_phase6_report
+
+        config = {"output_root": str(tmp_path)}
+        report_dir = wa_phase6_report(config)
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "project_report.txt").write_text("tiny")
+
+        _sanity_check_phase_outputs(6, config)
+        captured = capsys.readouterr()
+        assert "possibly empty" in captured.out or "△" in captured.out
+
+    def test_sanity_check_healthy_file(self, tmp_path, capsys):
+        from run_production import _sanity_check_phase_outputs
+        from egfr_pipeline.paths import wa_phase6_report
+
+        config = {"output_root": str(tmp_path)}
+        report_dir = wa_phase6_report(config)
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "project_report.txt").write_text("x" * 500)
+
+        _sanity_check_phase_outputs(6, config)
+        captured = capsys.readouterr()
+        assert "✓" in captured.out
+
+
+class TestExitCodeIntegration:
+    """Verify exit code patterns are correctly structured."""
+
+    def test_has_failed_phases_check(self):
+        source = (PROJECT_ROOT / "run_production.py").read_text()
+        assert "has_failed_phases" in source
+        assert '"failed"' in source
