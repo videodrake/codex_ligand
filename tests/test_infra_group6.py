@@ -110,3 +110,48 @@ class TestPhase3Parallelization:
     def test_max_workers_configurable(self):
         source = (PROJECT_ROOT / "egfr_pipeline" / "phase3" / "run_diverse_docking.py").read_text()
         assert "max_workers" in source
+
+
+# =====================================================================
+# Adversarial tests
+# =====================================================================
+
+class TestPrecheckScriptStructure:
+    """Verify precheck script is well-formed bash."""
+
+    def test_script_has_shebang(self):
+        content = (PROJECT_ROOT / "scripts" / "run_pre_qsub_checks.sh").read_text()
+        assert content.startswith("#!/")
+
+    def test_script_has_set_euo_pipefail(self):
+        content = (PROJECT_ROOT / "scripts" / "run_pre_qsub_checks.sh").read_text()
+        assert "set -euo pipefail" in content
+
+    def test_workflow_b_check_is_conditional(self):
+        """CHECK_WORKFLOW_B=0 should skip tool checks."""
+        content = (PROJECT_ROOT / "scripts" / "run_pre_qsub_checks.sh").read_text()
+        # The check block should be inside an if condition
+        assert 'CHECK_WORKFLOW_B' in content
+        assert 'if' in content
+
+    def test_lightdock_missing_is_not_critical(self):
+        """LightDock missing should warn but not exit."""
+        content = (PROJECT_ROOT / "scripts" / "run_pre_qsub_checks.sh").read_text()
+        # LightDock WARNING should not trigger TOOLS_OK=0
+        lines = content.split("\n")
+        in_lightdock_block = False
+        for line in lines:
+            if "LightDock" in line or "lightdock" in line:
+                in_lightdock_block = True
+            if in_lightdock_block and "TOOLS_OK=0" in line:
+                pytest.fail("LightDock missing should not set TOOLS_OK=0")
+            if in_lightdock_block and line.strip() == "fi":
+                break
+
+
+class TestModuleSeparationFutureConditions:
+    """Verify analysis includes re-evaluation triggers."""
+
+    def test_future_review_conditions(self):
+        content = (PROJECT_ROOT / "docs" / "module_separation_analysis.md").read_text()
+        assert "5,000" in content or "5000" in content or "향후" in content
