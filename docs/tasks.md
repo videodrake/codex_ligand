@@ -378,3 +378,43 @@ docs/                               [신규 다수]
   - **Test:** 모든 테스트 통과, SC 체크리스트 전체 확인
 
 **Definition of Done:** 모든 Must-Have AC가 충족되고, 기존 파이프라인이 회귀 없이 동작하며, 최종 결과가 baseline과 비교 문서화되어 프로젝트가 완결된다.
+
+---
+
+### 8. 파이프라인 로깅 및 관찰성 개선 (F-4 Logging) 🔴
+
+- [x] **8.1** — `organize_outputs()` signature mismatch 수정 (F-4.4)
+  - **What:** run_production.py에서 `repo_root=REPO_ROOT` kwarg 전달하나 output_organizer.py가 미수용 → TypeError. 호출부 또는 시그니처 수정.
+  - **Files:** `run_production.py`, `egfr_pipeline/output_organizer.py`
+  - **Test:** organize_outputs 호출 시 TypeError 미발생
+
+- [x] **8.2** — Derived step view 파일 permission 수정 (F-4.7)
+  - **What:** step_view.py의 `_atomic_write_json/text()`가 NamedTemporaryFile 기본 0600 permission 사용 → 0644로 수정. _staged_step_dir 디렉토리도 0755.
+  - **Files:** `egfr_pipeline/step_view.py`
+  - **Test:** 생성 파일 permission 0644, 디렉토리 0755
+
+- [x] **8.3** — Phase skip 조건에 내용 검증 추가 (F-4.1)
+  - **What:** `_canonical_output_valid()` 함수 추가: 파일 존재 + 최소 크기(100B) + CSV header+data 확인. Phase 4~6 skip 조건에 적용.
+  - **Files:** `run_production.py`
+  - **Test:** 빈 파일 → skip 안됨, 정상 파일 → skip됨
+
+- [x] **8.4** — 후처리 실패 시 exit code 반영 (F-4.3)
+  - **What:** organize_outputs/step view 실패를 `post_run_warnings` 리스트에 수집, 최종 요약 후 `sys.exit(1)`.
+  - **Files:** `run_production.py`
+  - **Test:** 후처리 warning 존재 시 exit code 1
+
+- [x] **8.5** — 완료 요약에 derived step health 표시 (F-4.2)
+  - **What:** `_print_completion_summary()`에 step view generated/not_generated 카운트 추가.
+  - **Files:** `run_production.py`
+  - **Test:** 요약 출력에 "step view" 문자열 포함
+
+- [x] **8.6** — Phase 완료 시 핵심 output sanity check 로깅 (F-4.5)
+  - **What:** Phase 4~7 완료 후 핵심 output 파일 존재/크기 확인 → [✓]/[△]/[✗] 터미널 출력.
+  - **Files:** `run_production.py`
+  - **Test:** sanity check 함수 존재, 빈 파일에 [△] 출력
+
+- [x] **8.T** — Tests for 로깅 및 관찰성
+  - **Files:** 테스트 파일
+  - **Test:** pytest 전체 통과
+
+**Definition of Done:** 빈 파일 skip 방지, 후처리 실패 시 exit code 반영, 완료 요약에 step health 표시, permission 수정으로 파이프라인 관찰성이 확보된다.

@@ -165,6 +165,7 @@ def _print_completion_summary(
 ) -> None:
     """프로덕션 완료 후 결과 요약 블록 출력."""
     from egfr_pipeline.paths import (
+        output_root,
         wa_phase4_vina_postprocess, wa_phase5_verdict,
         wa_phase6_report, wa_phase7_validation, wa_logs,
         create_log_index,
@@ -224,6 +225,22 @@ def _print_completion_summary(
         exists = "✓" if path.exists() else "✗"
         print(f"║    {exists} {label}: {path}  ║")
 
+    # F-4.2: Derived step view health
+    print("║" + " " * w + "║")
+    step_view_dir = output_root(config)
+    n_generated = 0
+    n_total_steps = 7
+    for i in range(1, n_total_steps + 1):
+        step_dir = step_view_dir / f"step{i}_*"
+        import glob as _glob
+        matches = _glob.glob(str(step_view_dir / f"step{i}_*"))
+        if matches and Path(matches[0]).is_dir():
+            n_generated += 1
+    step_icon = "✓" if n_generated == n_total_steps else "✗"
+    print(f"║  Derived Step View: {step_icon} {n_generated}/{n_total_steps} generated  ║")
+    if n_generated < n_total_steps:
+        print(f"║    → python scripts/rebuild_step_views.py  ║")
+
     print("║" + " " * w + "║")
     print(f"║  {'로그:':<{w - 2}}║")
     print(f"║    {wa_logs(config) / 'LOG_INDEX.txt'}  ║")
@@ -280,6 +297,53 @@ def _project_root() -> Path:
     """Workflow A root directory."""
     from egfr_pipeline.paths import workflow_a_root
     return workflow_a_root(_load_config())
+
+
+# F-4.5: Phase completion sanity check — core output file health
+PHASE_CORE_OUTPUTS = {
+    4: [
+        ("Pocket table", "vina_pocket_table.csv"),
+        ("Pose table", "vina_pose_table.csv"),
+    ],
+    5: [
+        ("Verdict", "valid_sites.csv"),
+        ("Agreement", "cross_method_agreement.csv"),
+    ],
+    6: [
+        ("Report", "project_report.txt"),
+    ],
+    7: [
+        ("Validation", "validation_summary.txt"),
+    ],
+}
+
+
+def _sanity_check_phase_outputs(phase_num: int, config: dict) -> None:
+    """Print health of core output files after phase completion (F-4.5)."""
+    from egfr_pipeline.paths import (
+        wa_phase4_vina_postprocess, wa_phase5_verdict,
+        wa_phase6_report, wa_phase7_validation,
+    )
+    phase_dirs = {
+        4: wa_phase4_vina_postprocess(config),
+        5: wa_phase5_verdict(config),
+        6: wa_phase6_report(config),
+        7: wa_phase7_validation(config),
+    }
+    outputs = PHASE_CORE_OUTPUTS.get(phase_num, [])
+    base_dir = phase_dirs.get(phase_num)
+    if not outputs or not base_dir:
+        return
+
+    for label, filename in outputs:
+        path = base_dir / filename
+        if not path.exists():
+            print(f"    [✗] {label}: NOT FOUND")
+        elif path.stat().st_size < 100:
+            print(f"    [△] {label}: {path.stat().st_size}B (possibly empty)")
+        else:
+            size = path.stat().st_size
+            print(f"    [✓] {label}: {size:,}B")
 
 
 def _csv_has_rows(path: Path) -> bool:
@@ -656,13 +720,24 @@ def check_phase5() -> List[str]:
 
 
 def check_phase6() -> List[str]:
-    """Phase 6 (Report): project_report.txt 존재."""
+    """Phase 6 (Report): project_report.txt 존재 + 내용 검증 (F-4.1)."""
     from egfr_pipeline.paths import wa_phase6_report
     project_root = wa_phase6_report(_load_config())
     missing = []
     report = project_root / "project_report.txt"
     if not report.exists() or report.stat().st_size < 100:
         missing.append("project_report.txt")
+    elif report.exists():
+        # F-4.1: Detect placeholder reports that look "complete" but are empty shells
+        content = report.read_text(encoding="utf-8")
+        placeholder_patterns = [
+            "No Vina pocket data available",
+            "No cross-receptor comparison data available",
+            "No PPI auxiliary data available",
+            "No verdict data available",
+        ]
+        if all(pat in content for pat in placeholder_patterns):
+            missing.append("project_report.txt (placeholder only)")
     return missing
 
 
@@ -1852,6 +1927,9 @@ def main():
         phase_state["status"] = "completed" if phase_success else "failed"
         if phase_error is not None:
             phase_state["last_error"] = str(phase_error)
+        # F-4.5: Sanity check core outputs after completion
+        if phase_success and phase_num in PHASE_CORE_OUTPUTS:
+            _sanity_check_phase_outputs(phase_num, config)
         if step_view_enabled_flag and (phase_success or phase_num == 7):
             pending_stale_steps.discard(phase_num)
             _refresh_step_view_outputs(
@@ -1897,15 +1975,29 @@ def main():
             last_error=next((error for error in failed_errors if error), ""),
         )
 
-    # Step-based output organization
+    # Step-based output organization (F-4.3: collect post-run warnings)
+    post_run_warnings: List[str] = []
+
     try:
         from egfr_pipeline.output_organizer import organize_outputs
 
-        organize_outputs(str(CONFIG_PATH), repo_root=REPO_ROOT)
+        organize_outputs(str(CONFIG_PATH))
     except Exception as exc:
+        post_run_warnings.append(f"Output organization failed: {exc}")
         print(f"  [WARN] Output organization failed: {exc}")
 
     _print_completion_summary(phase_states, config, hours, minutes)
+
+    # F-4.3: Non-zero exit on post-run failures or phase failures
+    has_failed_phases = any(
+        entry.get("status") == "failed" for entry in phase_states
+    )
+    if post_run_warnings:
+        print("\n  [WARN] 후처리 경고:")
+        for w in post_run_warnings:
+            print(f"    - {w}")
+    if has_failed_phases or post_run_warnings:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

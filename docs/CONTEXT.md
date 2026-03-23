@@ -173,6 +173,28 @@
 - 7.T: test_e2e_group7.py 37건 — SC 검증, import 체인, 문서 존재, 교차모듈 일관성
 - **프로젝트 완료: 45/45 tasks (100%), 566 tests passed**
 
+### Group 8 — 파이프라인 로깅 및 관찰성 개선 F-4 Logging (2026-03-24)
+
+**실행 순서:** 8.1 → 8.2 → 8.3 → 8.4 → 8.5 → 8.6 → 8.T
+
+**기술 결정:**
+- 8.1: organize_outputs() 호출부에서 repo_root= 삭제 (시그니처에 없는 kwarg)
+- 8.2: _atomic_write_text/json 후 path.chmod(0o644), _staged_step_dir 후 dir.chmod(0o755)
+- 8.3: _canonical_output_valid() 신규 — 파일 존재 + min_bytes + CSV data row 확인
+- 8.4: post_run_warnings 리스트 패턴 + sys.exit(1)
+- 8.5: step manifest 로딩 → generated/not_generated 카운트
+- 8.6: Phase 완료 후 핵심 output 파일 [✓]/[△]/[✗] 출력
+
+**완료 (2026-03-24):**
+- 8.1: organize_outputs() repo_root= 삭제 (TypeError 수정)
+- 8.2: step_view.py _atomic_write_text → path.chmod(0o644), _staged_step_dir → dir.chmod(0o755)
+- 8.3: check_phase6() placeholder 패턴 감지 추가
+- 8.4: post_run_warnings 수집 + sys.exit(1) on failure
+- 8.5: _print_completion_summary에 "Derived Step View: N/7 generated" 추가
+- 8.6: _sanity_check_phase_outputs() — Phase 4-7 핵심 파일 [✓]/[△]/[✗]
+- 8.T: test_logging_group8.py 15건
+- Group 8 전체 완료: 588 passed
+
 ## 발견된 이슈
 
 (범위 밖 버그, 기술 부채, 추후 개선 사항을 여기에 기록)
