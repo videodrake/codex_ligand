@@ -1258,6 +1258,95 @@ def _validate_adv_handoff(lane: str) -> None:
     if lane == "adv-phase2":
         _validate_ko_consistency(wb_p1 / "phase1_downstream_patch_reference.csv")
 
+    # ── Data quality guards (AC-3.5) ──────────────────────────────────
+    _validate_handoff_data_quality(lane, wb_p1, wb_p2, wb_p3)
+
+
+def _validate_handoff_data_quality(
+    lane: str,
+    wb_p1: "Path",
+    wb_p2: "Path",
+    wb_p3: "Path",
+) -> None:
+    """Data quality guards for handoff files (AC-3.5).
+
+    Raises FileNotFoundError for FAIL conditions (pipeline must stop).
+    Logs warnings for WARNING conditions (pipeline continues).
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    # Phase 1 → Phase 2: hotspot 0개 → FAIL
+    if lane == "adv-phase2":
+        patch_path = wb_p1 / "phase1_downstream_patch_reference.csv"
+        if patch_path.exists():
+            with open(patch_path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            hotspot_rows = [
+                r for r in rows
+                if r.get("is_hotspot_any_state", "").lower() in ("true", "1")
+            ]
+            if len(hotspot_rows) == 0:
+                raise FileNotFoundError(
+                    f"Phase 1 데이터 품질 FAIL: hotspot 잔기 0개.\n"
+                    f"File: {patch_path}\n"
+                    f"Phase 1 결과를 검토하세요 — orientation filter 또는 "
+                    f"cluster consensus에 문제가 있을 수 있습니다."
+                )
+
+    # Phase 2 → Phase 3: 포켓 0개 → FAIL, 전부 irrelevant → WARNING
+    if lane == "adv-phase3-setup":
+        pocket_path = wb_p2 / "phase3_candidate_pocket_reference.csv"
+        if pocket_path.exists():
+            with open(pocket_path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            if len(rows) == 0:
+                raise FileNotFoundError(
+                    f"Phase 2 데이터 품질 FAIL: 후보 포켓 0개.\n"
+                    f"File: {pocket_path}\n"
+                    f"Phase 2 pocket proposal/merge를 검토하세요."
+                )
+            # Check if all pockets are irrelevant (low_relevance or skip)
+            relevant = [
+                r for r in rows
+                if r.get("docking_priority", "").lower() not in ("skip", "")
+                and r.get("relationship_class", "").lower() != "low_relevance_candidate"
+            ]
+            if len(relevant) == 0:
+                log.warning(
+                    "Phase 2 WARNING: 모든 후보 포켓이 irrelevant 또는 skip으로 분류됨. "
+                    "Phase 3 focused docking 결과가 제한적일 수 있습니다."
+                )
+
+    # Phase 3 → Phase 4: 유효 포즈 < 5 → FAIL, 리간드 1종 → WARNING
+    if lane == "adv-phase4":
+        evidence_path = wb_p3 / "phase4_docking_evidence_reference.csv"
+        if evidence_path.exists():
+            with open(evidence_path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            # Count valid poses (rows with non-empty affinity)
+            valid_poses = [
+                r for r in rows
+                if r.get("best_affinity", "").strip() not in ("", "NA", "None")
+            ]
+            if len(valid_poses) < 5:
+                raise FileNotFoundError(
+                    f"Phase 3 데이터 품질 FAIL: 유효 포즈 {len(valid_poses)}개 (최소 5개 필요).\n"
+                    f"File: {evidence_path}\n"
+                    f"Phase 3 focused docking이 충분한 결과를 생성하지 못했습니다."
+                )
+            # Check ligand diversity
+            ligand_ids = {
+                r.get("ligand_id", "").strip()
+                for r in valid_poses
+                if r.get("ligand_id", "").strip()
+            }
+            if len(ligand_ids) <= 1:
+                log.warning(
+                    f"Phase 3 WARNING: 리간드 1종({next(iter(ligand_ids), '?')})만 유효 포즈 보유. "
+                    f"다양성 부족으로 consensus 해석에 주의가 필요합니다."
+                )
+
 
 def _adv_phase1():
     """Run Phase 1 analysis: TG 1.1.5 (standardize) + TG 1.2 (extract interface)

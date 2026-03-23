@@ -546,6 +546,47 @@ conda install -c conda-forge rdkit      # SMILES 3D 생성 (선택)
 | -4 ~ -6 | 약한 결합 |
 | -4 이상 | 유의미하지 않음 |
 
+#### 11.2.1 Vina Scoring Function의 소수성 과대평가 편향 (Hydrophobic Bias)
+
+Vina scoring function은 van der Waals 상호작용과 소수성 효과(hydrophobic effect)에 높은 가중치를 부여한다. 이로 인해 다음과 같은 체계적 편향이 발생한다:
+
+1. **소수성 포켓 과대평가**: 깊고 소수성인 포켓(예: ATP binding site)은 실제 결합 친화도보다 높은(더 음의) affinity 값을 받는 경향이 있다. ATP site 포켓이 -10 ~ -12 kcal/mol 범위의 affinity를 보이는 것은 이 편향의 전형적 사례이다.
+2. **극성 표면 포켓 과소평가**: PPI(protein-protein interaction) 근처 포켓은 극성 잔기가 풍부하여 Vina가 결합 에너지를 과소평가한다. 이러한 포켓의 affinity가 상대적으로 높아(덜 음수) 보이더라도, 생물학적으로는 의미 있는 결합 부위일 수 있다.
+3. **Blind docking에서의 포즈 분포 왜곡**: 전체 단백질을 탐색하는 blind docking에서 포즈가 ATP site와 N-lobe의 깊은 포켓에 과도하게 집중되며, C-lobe surface 영역은 상대적으로 적은 포즈를 받는다. 이 편향은 Workflow B의 focused docking에서 보완된다.
+
+**실무 지침**: Vina affinity 값을 다른 영역의 포켓 간에 직접 비교할 때는 이 편향을 고려해야 한다. C-lobe surface 포켓의 -6 kcal/mol은 ATP site 포켓의 -10 kcal/mol과 같은 척도로 비교할 수 없다.
+
+#### 11.2.2 C-lobe Surface 포켓의 Affinity 해석 지침
+
+C-lobe surface 포켓은 EGFR-MYO1D PPI 인터페이스에 인접한 핵심 관심 영역이다. 이 영역의 포켓은 얕고 극성이 풍부하여 Vina affinity가 전반적으로 낮게 나타나지만, 이것이 곧 결합 불가를 의미하지 않는다.
+
+| Affinity 범위 | C-lobe Surface 포켓 해석 |
+|---------------|--------------------------|
+| -8 이하 | 강한 결합 — 표면 포켓으로서 드물게 우수한 결합 |
+| -7 ~ -8 | 유의미한 결합 — PPI 조절 후보로서 우선 검토 대상 |
+| -5 ~ -7 | 표면 포켓으로서 의미 있는 결합 — 과소평가 가능성 고려 |
+| -5 이상 | 약한 결합 — 추가 검증 필요하나, focused docking 결과와 교차 확인 권장 |
+
+**핵심**: 위 11.2절의 일반 해석 기준표에서 -5 ~ -7 kcal/mol은 "약한~중간 결합"이지만, C-lobe surface 포켓에서는 소수성 과대평가 편향을 감안하면 이 범위도 **의미 있는 결합**으로 해석할 수 있다. 특히 Workflow B(PPI focused docking)에서 동일 포켓이 높은 점수를 받은 경우, Vina affinity가 낮더라도 해당 포켓의 생물학적 중요성은 높을 수 있다.
+
+#### 11.2.3 ATP Site 포켓 배제 근거
+
+ATP binding site(37잔기: P-loop 718-723, β3 726, αC-helix 743-745/762, β4 766, β5 linker 777, hinge 788-796, post-hinge 797/800, catalytic 831-837, pre-DFG 844, A-loop 854-858)에 위치한 포켓은 `is_atp_site = True`로 자동 태그되어 valid_sites.csv에서 `exclusion_reason = "ATP_site_experimental"`로 배제된다.
+
+**실험적 근거**: 약물 처리 시 ATP 결합은 유지되면서 kinase 활성만 소실됨. 이는 ATP binding site 자체가 EGFR-MYO1D 상호작용 차단의 유효 타겟이 아님을 의미한다. 이 포켓에서 높은 Vina affinity가 관찰되더라도 이는 포켓의 깊은 구조와 소수성 편향에 의한 것이며, 치료적 관점에서 false positive이다.
+
+#### 11.2.4 Ko et al. Sheet 접촉 정보 해석
+
+pocket_table.csv에 포함된 `contacts_sheet_8_9`, `contacts_sheet_10_11`, `contacts_sheet_12` 컬럼은 MYO1D beta-meander sheet 잔기와의 접촉 수를 나타낸다.
+
+| Sheet | 잔기 범위 | 의미 |
+|-------|-----------|------|
+| Sheet 8/9 (active face) | 961-964, 968-972 | EGFR과의 직접 결합면. 이 잔기와 접촉하는 포켓은 PPI 조절 관점에서 가장 유망 |
+| Sheet 10/11 | 975-991 | 간접 접촉 영역. 접촉 시 추가 조사 권장 |
+| Sheet 12 | 993-997 | 주변 영역. 접촉 감지 시 INFO 수준 참고 |
+
+`contacts_sheet_8_9 > 0`인 포켓은 MYO1D의 EGFR 결합면에 직접 영향을 미칠 가능성이 높으므로 우선 검토 대상이다.
+
 ### 11.3 결과 파일
 
 - `<ligand>_<mode>.pdbqt` -- 모든 pose가 포함된 PDBQT 파일

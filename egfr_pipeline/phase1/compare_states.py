@@ -76,6 +76,7 @@ ROBUSTNESS_COLUMNS = [
     "is_hotspot_all_present_states",
     "construct_type",
     "orientation_validation_status",
+    "conformational_selection_candidate",   # AC-3.7
 ]
 
 
@@ -250,7 +251,44 @@ def compare_across_states(
             "is_hotspot_all_present_states": is_hotspot_all,
             "construct_type": construct_type,
             "orientation_validation_status": orientation_status,
+            "conformational_selection_candidate": False,  # updated below
         })
+
+    # AC-3.8: seed/state imbalance WARNING for n_valid_models
+    state_valid_counts = {}
+    for state in states_with_data:
+        state_dir = output_base / state
+        hs = load_hotspot_residues(state_dir)
+        if hs:
+            # Use max n_orientation_valid_models across hotspot rows as proxy
+            vals = [
+                int(h.get("n_orientation_valid_models", 0) or 0) for h in hs
+            ]
+            state_valid_counts[state] = max(vals) if vals else 0
+
+    if len(state_valid_counts) >= 2:
+        counts = list(state_valid_counts.values())
+        max_c, min_c = max(counts), min(counts)
+        if min_c > 0 and max_c / min_c >= 2.0:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"AC-3.8: Orientation-valid 모델 수가 state 간 2배 이상 차이: "
+                f"{state_valid_counts}. 결과 비교에 주의 필요."
+            )
+
+    # AC-3.7: Conformational selection candidate tagging
+    # State-specific residues with occupancy in top 10% within their state
+    state_specific_rows = [
+        r for r in robustness_rows if r["robustness_class"] == "state_specific"
+    ]
+    if state_specific_rows:
+        occs = sorted(
+            [r["global_max_occupancy"] for r in state_specific_rows], reverse=True,
+        )
+        top10_threshold = occs[max(0, len(occs) // 10)] if occs else 0
+        for r in state_specific_rows:
+            if r["global_max_occupancy"] >= top10_threshold > 0:
+                r["conformational_selection_candidate"] = True
 
     # Sort: receptor first, then by robustness (robust > moderate > specific),
     # then by global_max_occupancy descending

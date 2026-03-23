@@ -346,6 +346,25 @@ def build_classification_note(
         lines.append(f"| {cls} | {len(pockets)} | {ids} |")
     lines.append("")
 
+    # AC-3.6: PPI patch overestimation warning
+    n_total = len(relationships)
+    n_ortho_rim = (len(by_class.get("orthosteric_candidate", []))
+                   + len(by_class.get("rim_candidate", [])))
+    if n_total > 0:
+        ortho_rim_pct = n_ortho_rim / n_total * 100
+        if ortho_rim_pct > 80:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"PPI 패치 과대추정 가능성: orthosteric+rim = "
+                f"{n_ortho_rim}/{n_total} ({ortho_rim_pct:.0f}% > 80%%)"
+            )
+            lines.extend([
+                "> **WARNING**: orthosteric + rim 포켓이 전체의 "
+                f"{ortho_rim_pct:.0f}%를 차지합니다 (> 80%). "
+                "PPI 패치 과대추정 가능성을 검토하세요.",
+                "",
+            ])
+
     # Detail table
     if relationships:
         lines.extend([

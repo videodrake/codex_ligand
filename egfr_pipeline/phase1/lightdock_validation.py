@@ -152,7 +152,8 @@ CONVERGENCE_COLUMNS = [
     "pyrosetta_max_occupancy",
     "lightdock_frequency",  # Fraction of top LightDock models with this residue
     "convergence_class",    # convergent / pyrosetta_only / lightdock_only
-    "method_agreement",     # both / pyrosetta_only / lightdock_only
+    "method_agreement",     # both / strong_both / weak_both / pyrosetta_only / lightdock_only
+    "concordance_score",    # AC-3.9: min(occ)/max(occ), 0-1 range
 ]
 
 NLOBE_CLOBE_BOUNDARY = 838
@@ -928,9 +929,22 @@ def compute_cross_method_convergence(
         in_pyrosetta = pyro is not None
         in_lightdock = light is not None
 
+        # AC-3.9: Concordance score and both sub-classification
+        concordance_score = ""
         if in_pyrosetta and in_lightdock:
             convergence_class = "convergent"
-            method_agreement = "both"
+            try:
+                pyro_occ = float(pyro.get("max_occupancy", "") or 0)
+            except (TypeError, ValueError):
+                pyro_occ = 0.0
+            try:
+                light_occ = float(light.get("frequency", "") or 0)
+            except (TypeError, ValueError):
+                light_occ = 0.0
+            max_occ = max(pyro_occ, light_occ)
+            min_occ = min(pyro_occ, light_occ)
+            concordance_score = round(min_occ / max_occ, 4) if max_occ > 0 else 0.0
+            method_agreement = "strong_both" if concordance_score > 0.5 else "weak_both"
         elif in_pyrosetta:
             convergence_class = "pyrosetta_only"
             method_agreement = "pyrosetta_only"
@@ -963,6 +977,7 @@ def compute_cross_method_convergence(
             "lightdock_frequency": light.get("frequency", "") if light else "",
             "convergence_class": convergence_class,
             "method_agreement": method_agreement,
+            "concordance_score": concordance_score,
         })
 
     if not convergence_rows:

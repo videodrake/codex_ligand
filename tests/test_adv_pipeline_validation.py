@@ -44,7 +44,8 @@ def test_validate_adv_handoff_phase2_passes_with_handoff(
     wb_p1 = tmp_path / "output" / "workflow_b" / "phase1_ppi_analysis"
     wb_p1.mkdir(parents=True)
     (wb_p1 / "phase1_downstream_patch_reference.csv").write_text(
-        "col1,col2\na,b\n", encoding="utf-8",
+        "residue_id,is_hotspot_any_state\nALA700,True\nALA701,True\n",
+        encoding="utf-8",
     )
 
     # Should not raise

@@ -81,7 +81,8 @@ def test_cross_method_convergence_preserves_metadata_and_lightdock_construct_typ
     assert leu819["construct_type"] == "full_kinase_domain"
     assert leu819["orientation_validation_status"] == "orientation_validated"
     assert leu819["convergence_class"] == "convergent"
-    assert leu819["method_agreement"] == "both"
+    assert leu819["method_agreement"] in ("strong_both", "weak_both")
+    assert leu819["concordance_score"] != ""  # AC-3.9: concordance_score populated
 
     assert asp855["construct_type"] == "full_kinase_domain"
     assert asp855["orientation_validation_status"] == "not_available"

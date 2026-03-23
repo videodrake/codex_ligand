@@ -173,6 +173,9 @@ def _build_report(
     # Section 3: Orientation Filtering
     lines.extend(_section_orientation(state_summaries))
 
+    # Section 3b: Ambiguous Models Summary (AC-3.2)
+    lines.extend(_section_ambiguous(state_summaries))
+
     # Section 4: Receptor Hotspot Residues
     lines.extend(_section_hotspots(state_summaries))
 
@@ -305,6 +308,64 @@ def _section_orientation(state_summaries) -> List[str]:
         lines.append(f"| {state} | {n_total} | {n_pass} | {n_fail} | {n_ambig} | {rate} |")
 
     lines.append("")
+    return lines
+
+
+def _section_ambiguous(state_summaries) -> List[str]:
+    """AC-3.2: Ambiguous Models Summary section."""
+    lines = [
+        "### 3b. Ambiguous Models Summary",
+        "",
+        "Models with edge-on orientation (|dot product| < threshold) are "
+        "excluded from consensus but may contain additional interface contacts.",
+        "",
+    ]
+
+    has_data = False
+    all_unique_residues: set = set()
+
+    for state in RECEPTOR_STATES:
+        data = state_summaries.get(state, {})
+        orient = data.get("orientation_log", [])
+        if not orient:
+            continue
+
+        n_total = len(orient)
+        ambig = [o for o in orient if o.get("orientation_class") == "ambiguous"]
+        n_ambig = len(ambig)
+        if n_ambig == 0:
+            continue
+
+        has_data = True
+        rate = f"{100 * n_ambig / n_total:.1f}%" if n_total > 0 else "—"
+
+        # Group by seed_index
+        seed_counts: dict = {}
+        for o in ambig:
+            seed = o.get("seed_index", "?")
+            seed_counts[seed] = seed_counts.get(seed, 0) + 1
+
+        seed_summary = ", ".join(
+            f"seed {s}: {c}" for s, c in sorted(seed_counts.items())
+        )
+
+        lines.extend([
+            f"**{state}**: {n_ambig}/{n_total} ambiguous ({rate})",
+            f"  - Per seed: {seed_summary}",
+            "",
+        ])
+
+    if not has_data:
+        lines.append("No ambiguous models detected across any state.")
+        lines.append("")
+    else:
+        if all_unique_residues and len(all_unique_residues) >= 3:
+            lines.extend([
+                f"> **Note**: {len(all_unique_residues)} unique ambiguous-only "
+                f"residues detected — 추가 조사 권장.",
+                "",
+            ])
+
     return lines
 
 

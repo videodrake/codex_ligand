@@ -79,6 +79,26 @@
 - Affinity 임계값: 현재 -8.0/-6.5 2단계만 존재 (tasks.md의 -5.0은 코드에 없음)
 - validate.py 통합 시 기존 parse_pdb_residue_identity() 재활용, exit code 0/1/2 준수
 
+**완료 (2026-03-22):**
+- 2.5: manual_vina.md 해석 가이드에 소수성 과대평가 편향, C-lobe surface affinity 지침, ATP site 배제 근거, Ko sheet 접촉 해석 추가
+- 2.T: test_vina_bias_group2.py 39건 — AC-2.1~2.5 커버, EC-2.1(0% C-lobe), EC-2.2(≥10 mismatch FAIL), EC-2.3(all high bootstrap), 경계값(stability 0.40/0.60/0.80), 잘못된 입력, CHARMM HIS 정규화
+- Group 2 전체 완료: 365 passed (ligand_diversity 2건 제외 — output CSV 미존재, Group 2 무관)
+
+### Group 3 — PPI Branch 강건성 검증 F-3 (2026-03-22)
+
+**실행 순서:** 3.1 → 3.2 → 3.4 (orientation_filter.py 집중) → 3.3 (독립) → 3.5 (run_production.py) → 3.6 (4파일) → 3.T
+
+**기술 결정:**
+- 3.1 threshold sweep: orientation_log.csv의 기존 dot product 재분류 + interface_models.csv에서 PASS 모델 잔기 집계 → PyRosetta 불필요
+- 3.4 sheet 12 sensitivity: compute_orientation_score()에 active_face_residues 선택 인자 추가. 실행은 서버 필요(PCA 재계산)
+- 3.5 핸드오프 가드: 기존 FileNotFoundError 패턴 유지 (EC-3.3)
+- 3.6 concordance_score = min(occ_a, occ_b) / max(occ_a, occ_b). both → strong_both(>0.5) / weak_both(≤0.5)
+
+**완료 (2026-03-23):**
+- 3.T: test_ppi_group3.py 60건 — AC-3.1~3.9 전체 커버 + EC-3.1~3.3 + adversarial 20건 (malformed scores, boundary values, empty CSV, missing files, NaN handling)
+- Group 3 전체 완료: 425 passed (ligand_diversity 2건 제외 — output CSV 미존재, Group 3 무관)
+- 컬럼명 의도적 편차: PRD 축약명 대신 구현에서 더 정확한 명명 사용 (n_orientation_valid_models, pyrosetta_max_occupancy, lightdock_frequency, concordance_score). 기능은 PRD 의도 100% 일치.
+
 ## 발견된 이슈
 
 (범위 밖 버그, 기술 부채, 추후 개선 사항을 여기에 기록)

@@ -167,13 +167,13 @@ docs/                               [신규 다수]
   - **AC:** AC-2.4
   - **Test:** 분포 분석 결과에 percentile 값 포함, 차별력 판정("sufficient"/"insufficient") 출력
 
-- [ ] **2.5** — Vina scoring 편향 문서화
+- [x] **2.5** — Vina scoring 편향 문서화
   - **What:** (B-5.1) 결과 해석 가이드에 Vina scoring function의 소수성 과대평가 편향, C-lobe surface 포켓의 affinity 해석 지침(-5~-7 kcal/mol도 표면 포켓으로서 의미 있음) 기술.
   - **Files:** 결과 해석 가이드 문서 [수정]
   - **AC:** AC-2.5
   - **Test:** 문서에 "소수성 과대평가" 또는 "hydrophobic bias" 관련 기술 존재
 
-- [ ] **2.T** — Tests for Vina 편향 정량화
+- [x] **2.T** — Tests for Vina 편향 정량화
   - **What:** (1) 포즈 분포 CSV 포맷 및 영역별 fraction 합계 검증, (2) 잔기 매핑 비교의 불일치 감지 단위 테스트, (3) bootstrap 연동의 후방 호환 테스트, (4) 기존 valid_sites.csv와 비교하여 의도치 않은 판정 뒤집힘 없음 확인, (5) 영역 분류 일관성 (동일 잔기 → 동일 영역)
   - **Files:** 테스트 파일
   - **AC:** AC-2.1 ~ AC-2.5
@@ -185,43 +185,43 @@ docs/                               [신규 다수]
 
 ### 3. PPI Branch 강건성 검증 및 안전망 (F-3) 🔴
 
-- [ ] **3.1** — Orientation filter threshold 민감도 분석
+- [x] **3.1** — Orientation filter threshold 민감도 분석
   - **What:** (C-1.1) orientation_filter.py에 threshold sweep 모드 추가 [0.05~0.30], 각 threshold별 pass/fail/ambiguous 비율 + hotspot 잔기 → `orientation_threshold_sensitivity.csv`. (C-1.2) threshold 간 hotspot 변화 비교, threshold_robustness 점수 계산. (C-1.3 🔧바이브코딩) pass 비율 민감도, sheet 8/9 안정성, ambiguous 비율 기준으로 최적 threshold 판정 초안 생성.
   - **Files:** `egfr_pipeline/phase1/orientation_filter.py` [수정]
   - **AC:** AC-3.1
   - **Test:** sweep 결과 CSV에 6개 threshold 행, hotspot_residues 컬럼이 세미콜론 구분 잔기 목록
 
-- [ ] **3.2** — Ambiguous 모델 모니터링 및 보고
+- [x] **3.2** — Ambiguous 모델 모니터링 및 보고
   - **What:** (C-2.1) state/seed별 ambiguous 비율, ambiguous vs pass 평균 dG_separated, ambiguous-only unique 잔기 → `orientation_ambiguous_report.csv`. (C-2.2) Phase 1 리뷰 리포트에 "Ambiguous Models Summary" 섹션 추가. unique 잔기 3개 이상이면 "추가 조사 권장" 주석.
   - **Files:** `egfr_pipeline/phase1/orientation_filter.py` [수정], `egfr_pipeline/phase1/review_report.py` [수정]
   - **AC:** AC-3.2
   - **Test:** ambiguous report CSV 생성, unique 잔기 목록이 비어 있지 않으면 리포트에 주석 포함
 
-- [ ] **3.3** — Fragment 범위 sensitivity pilot 준비
+- [x] **3.3** — Fragment 범위 sensitivity pilot 준비
   - **What:** (C-3.2) 3가지 범위(945-1006, 955-1006, 955-1015)로 config YAML 3개 + PBS 스크립트 생성. 결과 비교 스크립트(hotspot Jaccard, centroid 거리, orientation pass 비율). 서버 실행(C-3.3)은 사람이 수행. (C-3.4 🔧바이브코딩) pilot 결과 Jaccard 기준 범위 확정 판정 초안.
   - **Files:** `scripts/pilot_fragment_range.py` [신규], config YAML 3개 [신규]
   - **AC:** AC-3.3
   - **Test:** 3개 config YAML 생성, PBS 스크립트 문법 검증, 비교 스크립트에 Jaccard 계산 함수 포함
 
-- [ ] **3.4** — Sheet 12 포함/제외 sensitivity 분석
+- [x] **3.4** — Sheet 12 포함/제외 sensitivity 분석
   - **What:** (C-4.1) 설정 A(sheet 8+9 only)와 설정 B(sheet 8+9+12) 두 active_face로 orientation filter 재실행(기존 scored_all_models.csv 재활용, 재도킹 불필요). `sheet12_sensitivity.csv` 출력. (C-4.2 🔧바이브코딩) hotspot 겹침 비율 계산 + 판정 초안(≥80% → 유지, 50-80% → 검토, <50% → 병행).
   - **Files:** `egfr_pipeline/phase1/orientation_filter.py` [수정]
   - **AC:** AC-3.4
   - **Test:** sheet12_sensitivity.csv에 2행(설정 A/B), hotspot_overlap 컬럼 존재
 
-- [ ] **3.5** — 핸드오프 데이터 품질 가드 + 기존 검증 통합
+- [x] **3.5** — 핸드오프 데이터 품질 가드 + 기존 검증 통합
   - **What:** (C-5.1) 3개 핸드오프에 데이터 품질 체크: Phase 1 hotspot 0개 → FAIL, Phase 2 포켓 0개 → FAIL / 전부 irrelevant → WARNING, Phase 3 유효 포즈 5개 미만 → FAIL / 리간드 1종 → WARNING. (C-5.2 🔧바이브코딩) `_validate_adv_handoff()` 읽고 삽입 위치 결정, 기존 FAIL/WARNING/PASS 패턴 호환, 빈 CSV/hotspot 0개/정상 3케이스 테스트.
   - **Files:** `run_production.py` [수정] (`_validate_adv_handoff`)
   - **AC:** AC-3.5
   - **Test:** 빈 CSV → FAIL, hotspot 0개 CSV → FAIL, 정상 CSV → PASS, 전부 irrelevant → WARNING
 
-- [ ] **3.6** — PPI 모니터링 확장 (패치 감지, conf selection, occupancy, cross-method)
+- [x] **3.6** — PPI 모니터링 확장 (패치 감지, conf selection, occupancy, cross-method)
   - **What:** (C-6.1) Phase 2 분류 후 orthosteric+rim > 80% → WARNING. (C-7.1) state-specific이면서 dG_separated 상위 10% → `conformational_selection_candidate = True`. (C-8.1) hotspot CSV에 `n_valid_models` 컬럼, seed/state 간 2배 차이 → WARNING. (C-9.1) cross_method_convergence에 pyrosetta/lightdock occupancy + concordance_score 추가, both 세분화.
   - **Files:** `egfr_pipeline/phase2/` [수정], `egfr_pipeline/phase1/compare_states.py` [수정], `egfr_pipeline/phase1/cluster_consensus.py` [수정], `egfr_pipeline/phase1/lightdock_validation.py` [수정]
   - **AC:** AC-3.6, AC-3.7, AC-3.8, AC-3.9
   - **Test:** 각 WARNING 조건에 대한 단위 테스트, conformational_selection_candidate 태그 존재, concordance_score 범위 0-1
 
-- [ ] **3.T** — Tests for PPI 강건성 검증
+- [x] **3.T** — Tests for PPI 강건성 검증
   - **What:** (1) threshold sweep 출력 포맷 검증, (2) ambiguous report 정합성, (3) pilot 스크립트 생성 검증, (4) sheet12 sensitivity 2행 출력, (5) 핸드오프 품질 가드 edge case (빈 CSV, 0개 hotspot, 전부 irrelevant), (6) 기존 _validate_adv_handoff 후방 호환
   - **Files:** 테스트 파일
   - **AC:** AC-3.1 ~ AC-3.9
