@@ -353,25 +353,25 @@ docs/                               [신규 다수]
 
 ### 7. E2E 통합 및 최종 검증 🔴
 
-- [ ] **7.1** — 전체 파이프라인 회귀 테스트
+- [x] **7.1** — 전체 파이프라인 회귀 테스트
   - **What:** 모든 수정이 반영된 코드로 `run_production.py`를 실행하여 기존 기능이 정상 동작하는지 확인. 새로 추가된 컬럼(is_atp_site, exclusion_reason, bootstrap_confidence, contacts_sheet_*, allosteric_candidate)이 valid_sites.csv에 포함되고, 기존 컬럼은 변경되지 않음을 확인.
   - **Files:** `run_production.py`, 전체 output
   - **AC:** SC-2 (기존 파이프라인 회귀 없이 실행)
   - **Test:** 프로덕션 실행 완료, 기존 컬럼 값이 baseline과 일치 (또는 의도된 변경만 존재)
 
-- [ ] **7.2** — Before/After Verdict 결과 비교
+- [x] **7.2** — Before/After Verdict 결과 비교
   - **What:** Group 0에서 기록한 baseline과 최종 결과를 비교. STRONG/MODERATE/WEAK 포켓 수 변화, ATP site 배제 포켓 수, allosteric 후보 수를 정리. Verdict 가중치 변경이 있었다면 해당 영향도 분석. 비교 결과를 `before_after_comparison.md`로 출력.
   - **Files:** baseline 기록, 최종 valid_sites.csv
   - **AC:** SC-3, SC-6
   - **Test:** 비교 문서에 포켓 수 변화 테이블 포함
 
-- [ ] **7.3** — AC 커버리지 검증 및 최종 문서
+- [x] **7.3** — AC 커버리지 검증 및 최종 문서
   - **What:** PRD의 모든 Must-Have AC(AC-1.1~AC-4.5)가 충족되었는지 체크리스트 확인. Should-Have(AC-5.1~AC-5.6) 충족 여부 기록. 미충족 AC가 있으면 사유 기록. 최종 문서 일관성 검토 (문서 간 상호 참조 정합).
   - **Files:** `docs/prd.md`, 전체 산출물
   - **AC:** SC-1
   - **Test:** Must-Have AC 전체 통과, 미충족 사유 없음
 
-- [ ] **7.T** — E2E 통합 테스트
+- [x] **7.T** — E2E 통합 테스트
   - **What:** (1) 전체 테스트 스위트 실행 (기존 + 신규), (2) 핸드오프 품질 가드 edge case 통합 테스트, (3) valid_sites.csv 파서 호환성, (4) workflow_comparison.py 실 데이터 실행, (5) 문서 파일 전체 존재 확인
   - **Files:** 전체 테스트 파일
   - **AC:** SC-1 ~ SC-6

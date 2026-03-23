@@ -157,6 +157,22 @@
 - 6.T: test_infra_group6.py 17건
 - Group 6 전체 완료: 524 passed
 
+### Group 7 — E2E 통합 및 최종 검증 (2026-03-24)
+
+**실행 순서:** 7.1 → 7.2 → 7.3 → 7.T
+
+**기술 결정:**
+- output/ 비어있음 → 실제 프로덕션 실행 불가. 코드 수준 회귀 검증 + 컬럼/시그니처 확인
+- Before/After: baseline N/A (Group 0에서 valid_sites.csv 미존재 확인) → 코드 수준 변경 정리
+- AC 커버리지: PRD AC-1.1~AC-6.3 + SC-1~SC-6 체크리스트
+
+**완료 (2026-03-24):**
+- 7.1: VERDICT_FIELDS 45개 baseline 전체 보존 확인, run_production.py import 정상
+- 7.2: before_after_comparison.md — 컬럼 +1, 로직 변경 5건, 신규 모듈 9개, 문서 7개, 테스트 +207
+- 7.3: ac_coverage_checklist.md — AC-1.1~AC-6.3 전체 PASS, SC-1~SC-6 전체 PASS
+- 7.T: test_e2e_group7.py 37건 — SC 검증, import 체인, 문서 존재, 교차모듈 일관성
+- **프로젝트 완료: 45/45 tasks (100%), 566 tests passed**
+
 ## 발견된 이슈
 
 (범위 밖 버그, 기술 부채, 추후 개선 사항을 여기에 기록)
