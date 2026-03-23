@@ -229,10 +229,9 @@ def _print_completion_summary(
     print("║" + " " * w + "║")
     step_view_dir = output_root(config)
     n_generated = 0
+    import glob as _glob
     n_total_steps = 7
     for i in range(1, n_total_steps + 1):
-        step_dir = step_view_dir / f"step{i}_*"
-        import glob as _glob
         matches = _glob.glob(str(step_view_dir / f"step{i}_*"))
         if matches and Path(matches[0]).is_dir():
             n_generated += 1
@@ -730,11 +729,15 @@ def check_phase6() -> List[str]:
     elif report.exists():
         # F-4.1: Detect placeholder reports that look "complete" but are empty shells
         content = report.read_text(encoding="utf-8")
+        from egfr_pipeline.report import (
+            PLACEHOLDER_NO_VINA, PLACEHOLDER_NO_CROSS,
+            PLACEHOLDER_NO_PPI, PLACEHOLDER_NO_VERDICT,
+        )
         placeholder_patterns = [
-            "No Vina pocket data available",
-            "No cross-receptor comparison data available",
-            "No PPI auxiliary data available",
-            "No verdict data available",
+            PLACEHOLDER_NO_VINA,
+            PLACEHOLDER_NO_CROSS,
+            PLACEHOLDER_NO_PPI,
+            PLACEHOLDER_NO_VERDICT,
         ]
         if all(pat in content for pat in placeholder_patterns):
             missing.append("project_report.txt (placeholder only)")
@@ -1402,7 +1405,9 @@ def _validate_handoff_data_quality(
             # Count valid poses (rows with non-empty affinity)
             valid_poses = [
                 r for r in rows
-                if r.get("best_affinity", "").strip() not in ("", "NA", "None")
+                if r.get("best_affinity", "").strip().lower() not in (
+                    "", "na", "none", "nan", "n/a", "inf", "-inf",
+                )
             ]
             if len(valid_poses) < 5:
                 raise FileNotFoundError(

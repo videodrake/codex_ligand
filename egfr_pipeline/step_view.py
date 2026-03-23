@@ -548,7 +548,10 @@ def _atomic_write_text(path: Path, text: str) -> Path:
         handle.write(text)
         temp_path = Path(handle.name)
     temp_path.replace(path)
-    path.chmod(0o644)  # F-4.7: ensure group/other readable
+    try:
+        path.chmod(0o644)  # F-4.7: ensure group/other readable
+    except (PermissionError, OSError):
+        pass  # Non-fatal: chmod may fail on NFS/CIFS/SELinux
     return path
 
 
@@ -611,7 +614,10 @@ def _staged_step_dir(project_root: Path, step_num: int) -> Iterator[Tuple[Path, 
         if final_dir.exists():
             shutil.rmtree(final_dir)
         temp_dir.replace(final_dir)
-        final_dir.chmod(0o755)  # F-4.7: ensure group/other can traverse
+        try:
+            final_dir.chmod(0o755)  # F-4.7: ensure group/other can traverse
+        except (PermissionError, OSError):
+            pass  # Non-fatal: may fail on restricted filesystems
 
 
 def write_step_manifest(step_dir: Union[Path, str], manifest_data: dict) -> Path:

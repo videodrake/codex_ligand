@@ -94,10 +94,10 @@ class TestPhaseSkipValidation:
         assert _csv_has_rows(data) is True
 
     def test_check_phase6_placeholder_detection(self):
-        """Verify check_phase6 source contains placeholder pattern detection."""
+        """Verify check_phase6 uses placeholder constants from report.py."""
         source = (PROJECT_ROOT / "run_production.py").read_text()
         assert "placeholder_patterns" in source
-        assert "No Vina pocket data available" in source
+        assert "PLACEHOLDER_NO_VINA" in source  # Uses constant, not hardcoded string
 
 
 # =====================================================================

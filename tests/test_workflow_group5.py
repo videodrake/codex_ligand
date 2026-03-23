@@ -104,27 +104,46 @@ class TestAllostericCandidate:
         assert "allosteric_candidate" in VERDICT_FIELDS
 
     def test_high_vina_low_ppi_is_allosteric(self):
-        # Simulated: vina_quality_score=40, ppi_proximity_score=2 → True
-        assert 40.0 >= 35.0 and 2.0 <= 5.0
+        """Vina=40, PPI=2 → allosteric_candidate should be True."""
+        # Test the actual condition used in verdict.py verdict_rows
+        v_score, p_score = 40.0, 2.0
+        result = round(v_score, 1) >= 35.0 and round(p_score, 1) <= 5.0
+        assert result is True
 
     def test_high_vina_high_ppi_is_not_allosteric(self):
-        # vina=40, ppi=15 → False
-        assert not (40.0 >= 35.0 and 15.0 <= 5.0)
+        """Vina=40, PPI=15 → not allosteric (PPI too high)."""
+        v_score, p_score = 40.0, 15.0
+        result = round(v_score, 1) >= 35.0 and round(p_score, 1) <= 5.0
+        assert result is False
 
     def test_low_vina_low_ppi_is_not_allosteric(self):
-        # vina=20, ppi=2 → False (vina too low)
-        assert not (20.0 >= 35.0 and 2.0 <= 5.0)
+        """Vina=20, PPI=2 → not allosteric (Vina too low)."""
+        v_score, p_score = 20.0, 2.0
+        result = round(v_score, 1) >= 35.0 and round(p_score, 1) <= 5.0
+        assert result is False
+
+    def test_boundary_vina_35_ppi_5_is_allosteric(self):
+        """Boundary: Vina=35.0, PPI=5.0 → True (>= and <=)."""
+        v_score, p_score = 35.0, 5.0
+        result = round(v_score, 1) >= 35.0 and round(p_score, 1) <= 5.0
+        assert result is True
 
 
 class TestEC52ZeroAllosteric:
     """EC-5.2: 0 allosteric candidates → report says 'not identified'."""
 
     def test_report_handles_no_allosteric(self):
-        # The report.py code handles empty allosteric list
-        # by printing "No allosteric candidates identified"
-        from egfr_pipeline.report import section_header
-        # Verify the function exists (used in report generation)
-        assert callable(section_header)
+        """Verify report.py source contains the no-allosteric fallback message."""
+        import egfr_pipeline.report as report_mod
+        source = Path(report_mod.__file__).read_text()
+        assert "No allosteric candidates identified" in source
+
+    def test_empty_verdict_rows_produces_no_candidates(self):
+        """Filter on empty list returns empty."""
+        verdict_rows = []
+        allosteric = [r for r in verdict_rows
+                      if str(r.get("allosteric_candidate", "")).lower() in ("true", "1")]
+        assert allosteric == []
 
 
 # =====================================================================

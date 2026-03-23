@@ -10,6 +10,13 @@ Output: plain-text report + CSV summary tables.
 PPI sections are explicitly marked as auxiliary evidence.
 """
 import csv
+
+# Placeholder strings used when data is missing.
+# Shared with run_production.py check_phase6() for placeholder detection.
+PLACEHOLDER_NO_VINA = "No Vina pocket data available"
+PLACEHOLDER_NO_CROSS = "No cross-receptor comparison data available"
+PLACEHOLDER_NO_PPI = "No PPI auxiliary data available"
+PLACEHOLDER_NO_VERDICT = "No verdict data available"
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -156,7 +163,7 @@ def format_comparison_highlights(
 ) -> str:
     """Cross-receptor pocket comparison highlights."""
     if not comparison_rows:
-        return "  No cross-receptor comparison data available.\n"
+        return f"  {PLACEHOLDER_NO_CROSS}.\n"
 
     # Filter to same_patch_candidates first, then top by distance
     candidates = [r for r in comparison_rows if r.get("same_patch_candidate", "").lower() == "true"]
@@ -264,7 +271,7 @@ def format_ppi_section(
             lines.append("")
 
     if not pyrosetta_summary and not pyrosetta_residues and not afm_residues:
-        lines.append("  No PPI auxiliary data available.")
+        lines.append(f"  {PLACEHOLDER_NO_PPI}.")
         lines.append("  Configure ppi.pyrosetta_result_dirs and/or ppi.afm_models in project config.")
         lines.append("")
 
@@ -436,7 +443,7 @@ def format_verdict_section(
 ) -> str:
     """Section 4: Automated site verdict summary."""
     if not verdict_rows:
-        return "  No verdict data available.\n  Run 'Site Verdict' (option 7) to generate.\n"
+        return f"  {PLACEHOLDER_NO_VERDICT}.\n  Run 'Site Verdict' (option 7) to generate.\n"
 
     lines = []
 
@@ -657,7 +664,7 @@ def generate_report(
     if pocket_rows:
         report_lines.append(format_receptor_pocket_section(pocket_rows, drug_map_rows))
     else:
-        report_lines.append("  No Vina pocket data available.\n")
+        report_lines.append(f"  {PLACEHOLDER_NO_VINA}.\n")
 
     # Section 1.5: Pose Region Distribution (AC-2.1)
     region_dist_rows = load_csv(vina_post / "vina_pose_distribution_by_region.csv")
