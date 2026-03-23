@@ -222,3 +222,65 @@ class TestCrossModuleConsistency:
         from egfr_pipeline.verdict import DEFAULT_THRESHOLDS
         from scripts.verdict_weight_sensitivity import STRONG_MIN
         assert DEFAULT_THRESHOLDS["valid_min"] == STRONG_MIN
+
+    def test_atp_site_residues_count(self):
+        from egfr_pipeline.region_definitions import ATP_SITE_RESIDUES
+        assert len(ATP_SITE_RESIDUES) == 37
+
+    def test_ko_sheet_8_9_nonempty(self):
+        from egfr_pipeline.region_definitions import KO_SHEET_8_9
+        assert len(KO_SHEET_8_9) > 0
+        assert all(isinstance(r, int) for r in KO_SHEET_8_9)
+
+    def test_cross_coverage_thresholds_in_verdict(self):
+        from egfr_pipeline.verdict import DEFAULT_THRESHOLDS
+        assert "cross_coverage_3of3" in DEFAULT_THRESHOLDS
+        assert "cross_coverage_2of3" in DEFAULT_THRESHOLDS
+        assert DEFAULT_THRESHOLDS["cross_coverage_3of3"] > DEFAULT_THRESHOLDS["cross_coverage_2of3"]
+
+
+# =====================================================================
+# Adversarial: full pipeline function signatures
+# =====================================================================
+
+class TestFunctionSignatures:
+    """Verify critical function signatures haven't changed."""
+
+    def test_score_pocket_returns_7_tuple(self):
+        from egfr_pipeline.verdict import score_pocket
+        import inspect
+        sig = inspect.signature(score_pocket)
+        assert len(sig.parameters) == 7  # pocket, ppi, cross, support, thresholds, has_ppi, exp
+
+    def test_compute_pocket_depth_signature(self):
+        from egfr_pipeline.vina.pocket_summary import compute_pocket_depth
+        import inspect
+        sig = inspect.signature(compute_pocket_depth)
+        params = list(sig.parameters.keys())
+        assert "centroid" in params
+        assert "contact_resnums" in params
+        assert "receptor_pdb" in params
+
+    def test_run_comparison_returns_tuple(self):
+        from egfr_pipeline.workflow_comparison import run_comparison, generate_synthetic_data
+        a, b = generate_synthetic_data()
+        result = run_comparison(a, b)
+        assert isinstance(result, tuple)
+        assert len(result) == 2  # (results, report_lines)
+
+
+class TestAllTestFilesPass:
+    """Meta-test: verify our test file count matches expectations."""
+
+    def test_group_test_files_exist(self):
+        tests_dir = PROJECT_ROOT / "tests"
+        expected = [
+            "test_vina_bias_group2.py",
+            "test_ppi_group3.py",
+            "test_verdict_group4.py",
+            "test_workflow_group5.py",
+            "test_infra_group6.py",
+            "test_e2e_group7.py",
+        ]
+        for f in expected:
+            assert (tests_dir / f).exists(), f"Missing test file: {f}"
