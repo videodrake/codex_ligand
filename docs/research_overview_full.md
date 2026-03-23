@@ -23,3 +23,13 @@ ATP site pockets should be excluded from analysis because:
 - Vina blind docking naturally finds strong poses in the deep, well-defined ATP pocket
 - These poses are false positives — the drugs act elsewhere on the kinase surface
 - See `region_definitions.py` for the 37 ATP_SITE_RESIDUES definition
+
+### 1.4 Methodology Limitations
+
+This pipeline relies on computational predictions with known limitations.
+See [`docs/methodology_limitations.md`](methodology_limitations.md) for details on:
+- Rigid-body docking (induced fit not modeled)
+- LightDock independence (shared input structures)
+- Input structure bias (common blind spots)
+- Solvent effects (implicit solvation only)
+- Vina scoring bias (hydrophobic overestimation)

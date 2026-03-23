@@ -144,6 +144,8 @@ def precheck_status_file(config: Optional[dict] = None) -> Path:
 # These helpers let code migrate incrementally.
 
 def legacy_project_root(config: dict) -> Path:
+    # DEPRECATED: Use workflow_a_root() or workflow_b_root() instead.
+    # Old flat layout (output/project_name/) replaced by workflow-based layout.
     """Old-style project root for code not yet migrated."""
     output = Path(config.get("output_root", "./output"))
     project_name = config.get("project_name")
@@ -151,6 +153,8 @@ def legacy_project_root(config: dict) -> Path:
 
 
 def legacy_phase1_ppi_dir() -> Path:
+    # DEPRECATED: Use wb_phase1_ppi_analysis() instead.
+    # Old flat PPI dir (output/phase1_ppi/) replaced by workflow_b layout.
     """Old-style PPI output dir."""
     return REPO_ROOT / "output" / "phase1_ppi"
 

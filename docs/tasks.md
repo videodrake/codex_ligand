@@ -275,43 +275,43 @@ docs/                               [신규 다수]
 
 ### 5. 워크플로우 비교 및 문서 체계 정비 (F-5) 🟡
 
-- [ ] **5.1** — Workflow A↔B 비교 모듈 설계
+- [x] **5.1** — Workflow A↔B 비교 모듈 설계
   - **What:** (E-1.1 🔧바이브코딩→사람) valid_sites.csv와 phase4_final_review_table.csv의 컬럼 구조 확인. 매칭 방법 옵션(centroid 거리 + Jaccard vs centroid만) 비교. ATP site 포켓 제외 여부, irrelevant 포켓 포함 여부, "상위" 기준 등 설계 결정을 정리하여 `workflow_comparison_design.md` 출력.
   - **Files:** `docs/workflow_comparison_design.md` [신규]
   - **AC:** AC-5.1 (설계 파트)
   - **Test:** 설계 문서에 매칭 방법, 분류 기준, 제외 조건이 명시
 
-- [ ] **5.2** — Workflow A↔B 비교 모듈 구현
+- [x] **5.2** — Workflow A↔B 비교 모듈 구현
   - **What:** (E-1.2) `workflow_comparison.py` 구현. 5.1에서 확정된 매칭 방법으로 두 CSV의 포켓을 매칭하여 4가지(Consensus/A-only/B-only/Conflict)로 분류. A-only에 "allosteric 후보?" 플래그, B-only에 "blind docking 편향?" 플래그. 출력: `workflow_comparison.csv` + `workflow_comparison_report.md`.
   - **Files:** `egfr_pipeline/workflow_comparison.py` [신규]
   - **AC:** AC-5.1 (구현 파트)
   - **Test:** 테스트 입력(valid_sites + phase4_table)으로 4가지 분류 결과 생성, CSV 포맷 검증
 
-- [ ] **5.3** — Allosteric 후보 분류 및 보고
+- [x] **5.3** — Allosteric 후보 분류 및 보고
   - **What:** (E-3.1) verdict.py에서 Vina 축 ≥ 35 AND PPI 축 ≤ 5인 포켓에 `allosteric_candidate = True`. valid_sites.csv에 컬럼 추가. (E-3.2) report.py의 project_report.txt에 "Allosteric 후보 포켓" 섹션 신설.
   - **Files:** `egfr_pipeline/verdict.py` [수정], `egfr_pipeline/report.py` [수정]
   - **AC:** AC-5.3
   - **Test:** Vina 축 높고 PPI 축 낮은 포켓에 태그 설정, report에 섹션 존재
 
-- [ ] **5.4** — 방법론적 한계 통합 문서 + 해석 가이드
+- [x] **5.4** — 방법론적 한계 통합 문서 + 해석 가이드
   - **What:** (E-4.1) 5개 섹션(rigid-body, LightDock, 입력 구조, solvent, Vina scoring) → `methodology_limitations.md`. cross_method_convergence에 independence_level 메타데이터 추가. (E-4.2) CLAUDE.md, research_overview_full.md에서 참조. (E-2.1) 불일치 시나리오별 해석 가이드 → `workflow_comparison_guide.md`.
   - **Files:** `docs/methodology_limitations.md` [신규], `docs/workflow_comparison_guide.md` [신규], `CLAUDE.md` [수정]
   - **AC:** AC-5.2, AC-5.4
   - **Test:** 두 문서 존재, 5개 한계 섹션 포함, 3가지 불일치 시나리오(A=STRONG B=irrelevant 등) 기술
 
-- [ ] **5.5** — 결과 면책 조항 추가
+- [x] **5.5** — 결과 면책 조항 추가
   - **What:** (E-5.1) valid_sites.csv, project_report.txt, phase4_final_review_table.csv 최상단에 "계산적 예측이며 실험적 검증 필요" 면책 조항 추가. downstream 파서와 충돌 시 별도 metadata 파일로 분리.
   - **Files:** `egfr_pipeline/report.py` [수정], `egfr_pipeline/verdict.py` [수정]
   - **AC:** AC-5.5
   - **Test:** 생성된 파일 최상단에 "DISCLAIMER" 또는 "면책" 문구 포함
 
-- [ ] **5.6** — Output 경로 가이드 + Legacy deprecation
+- [x] **5.6** — Output 경로 가이드 + Legacy deprecation
   - **What:** (E-6.1) Workflow A/B/비교/Legacy 경로를 명확히 기술하는 `output_path_guide.md` 작성. (E-6.2) paths.py의 legacy 함수에 `# DEPRECATED` 주석 추가.
   - **Files:** `docs/output_path_guide.md` [신규], `egfr_pipeline/paths.py` [수정]
   - **AC:** AC-5.6
   - **Test:** 경로 가이드에 4개 섹션(Workflow A/B/비교/Legacy), paths.py에 DEPRECATED 주석 존재
 
-- [ ] **5.T** — Tests for 워크플로우 비교 및 문서
+- [x] **5.T** — Tests for 워크플로우 비교 및 문서
   - **What:** (1) workflow_comparison.py 출력 포맷 검증 (4가지 분류), (2) allosteric 태그 로직 단위 테스트, (3) 면책 조항이 파일 최상단에 위치, (4) 문서 파일 존재 및 필수 섹션 포함, (5) paths.py legacy 함수 deprecation 주석 존재
   - **Files:** 테스트 파일
   - **AC:** AC-5.1 ~ AC-5.6

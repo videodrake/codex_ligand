@@ -212,6 +212,17 @@ def run_review_output(
     expanded_path = output_dir / "phase4_expanded_evidence_table.csv"
     _write_csv(expanded_path, EXPANDED_TABLE_COLUMNS, expanded_rows)
 
+    # AC-5.5: Disclaimer metadata (EC-5.3: separate file, not CSV comment)
+    disclaimer_path = output_dir / "phase4_review_disclaimer.md"
+    disclaimer_path.write_text(
+        "# Disclaimer — phase4_final_review_table.csv\n\n"
+        "This file contains computational predictions from the Phase 4\n"
+        "perturbation relevance scoring pipeline. Rankings and mechanistic\n"
+        "classifications are hypotheses requiring experimental validation.\n\n"
+        "See `docs/methodology_limitations.md` for known limitations.\n",
+        encoding="utf-8",
+    )
+
     return review_path, expanded_path
 
 

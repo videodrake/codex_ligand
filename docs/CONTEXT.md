@@ -120,6 +120,27 @@
 - 4.T: test_verdict_group4.py 43건 — AC-4.1~4.5 + EC-4.1~4.3 + adversarial 12건
 - Group 4 전체 완료: 468 passed (ligand_diversity 2건 제외)
 
+### Group 5 — 워크플로우 비교 및 문서 체계 정비 F-5 (2026-03-23)
+
+**실행 순서:** 5.1 → 5.3 → 5.2 → 5.5 → 5.4 → 5.6 → 5.T
+
+**기술 결정:**
+- 포켓 매칭: valid_sites.csv에 centroid 미포함 → vina_pocket_table.csv + candidate_pockets.csv에서 centroid 로딩. centroid 거리 < 8Å + 잔기 Jaccard ≥ 0.3
+- CSV 면책: csv.DictReader가 # 주석 미지원 (21+ 곳 사용) → valid_sites_disclaimer.md 별도 파일로 분리 (EC-5.3)
+- Allosteric 태깅: verdict.py에서 vina_quality_score ≥ 35 AND ppi_proximity_score ≤ 5 → allosteric_candidate = True. Phase 4의 allosteric_modulator_candidate와 병행
+- 5.3을 5.2보다 먼저: allosteric_candidate 컬럼이 비교 모듈의 A-only 플래그에 필요
+- legacy paths.py: 2개 함수 (legacy_project_root, legacy_phase1_ppi_dir) — 외부 호출 없음, DEPRECATED 주석만
+
+**완료 (2026-03-24):**
+- 5.1: workflow_comparison_design.md — 매칭 방법, 4분류, 제외 조건 설계
+- 5.3: verdict.py allosteric_candidate (Vina≥35 AND PPI≤5) + report.py 섹션 4.7
+- 5.2: workflow_comparison.py — centroid+Jaccard 매칭, 4분류, CSV+보고서
+- 5.5: 면책 조항 — report.txt 최상단 DISCLAIMER + valid_sites_disclaimer.md + phase4_review_disclaimer.md (EC-5.3: 별도 파일)
+- 5.4: methodology_limitations.md 5섹션 + workflow_comparison_guide.md 3시나리오 + CLAUDE.md/research_overview 참조
+- 5.6: output_path_guide.md 4섹션 + paths.py DEPRECATED 주석 2개
+- 5.T: test_workflow_group5.py 39건 — AC-5.1~5.6 + EC-5.1~5.3 + adversarial 9건
+- Group 5 전체 완료: 507 passed (ligand_diversity 2건 제외)
+
 ## 발견된 이슈
 
 (범위 밖 버그, 기술 부채, 추후 개선 사항을 여기에 기록)

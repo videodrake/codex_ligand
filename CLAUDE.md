@@ -38,6 +38,12 @@ EGFR-MYO1D 파이프라인에서 확인된 실험적 사실:
 2. **Ko et al. alanine substitution**: MYO1D beta-meander sheet 8/9 잔기가 EGFR과의 직접 결합면(active face). 이 잔기가 PPI hotspot에 3개 미만이면 Workflow B를 중단.
 3. **리간드 다양성**: 3종 리간드(173940, 97806, VAX-C12_0) 쌍별 Tanimoto < 0.4 → 화학적으로 다양, cross-chemical consensus 유효.
 
+## 참조 문서
+
+- `docs/methodology_limitations.md` — 방법론적 한계 5개 섹션 (rigid-body, LightDock 독립성, 입력 구조, solvent, Vina scoring)
+- `docs/workflow_comparison_guide.md` — Workflow A↔B 불일치 시나리오 해석 가이드
+- `docs/phase4_A3_axis_specification.md` — Phase 4 A3 축 (Perturbation Relevance) 계산 로직
+
 ## 규칙
 
 - templates/ 폴더는 절대 삭제하지 않는다. 프로젝트 삭제 시 projects/{name}/만 삭제.
