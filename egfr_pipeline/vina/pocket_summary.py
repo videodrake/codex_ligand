@@ -265,7 +265,9 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
             contact_resnums = set()
             for res_id in contact_str.split(";"):
                 try:
-                    contact_resnums.add(extract_resnum(res_id.strip()))
+                    rn = extract_resnum(res_id.strip())
+                    if rn is not None:
+                        contact_resnums.add(rn)
                 except (ValueError, TypeError):
                     pass
             depth = compute_pocket_depth(centroid, contact_resnums, pdb_path)

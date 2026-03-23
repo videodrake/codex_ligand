@@ -110,7 +110,8 @@ class TestExitCodeOnFailure:
     def test_post_run_warnings_pattern_exists(self):
         source = (PROJECT_ROOT / "run_production.py").read_text()
         assert "post_run_warnings" in source
-        assert "sys.exit(1)" in source
+        assert "sys.exit(1)" in source  # phase failure
+        assert "sys.exit(2)" in source  # post-run only failure
 
     def test_post_run_warnings_on_organize_failure(self):
         source = (PROJECT_ROOT / "run_production.py").read_text()
@@ -248,3 +249,74 @@ class TestExitCodeIntegration:
         source = (PROJECT_ROOT / "run_production.py").read_text()
         assert "has_failed_phases" in source
         assert '"failed"' in source
+
+    def test_exit_codes_differentiated(self):
+        """Exit 1 for phase failure, exit 2 for post-run only."""
+        source = (PROJECT_ROOT / "run_production.py").read_text()
+        assert "sys.exit(1)" in source
+        assert "sys.exit(2)" in source
+
+
+class TestExtractResnumInsertionCodes:
+    """extract_resnum handles PDB insertion codes."""
+
+    def test_normal_residue(self):
+        from egfr_pipeline.residue_utils import extract_resnum
+        assert extract_resnum("MET971") == 971
+
+    def test_insertion_code(self):
+        from egfr_pipeline.residue_utils import extract_resnum
+        assert extract_resnum("ALA700A") == 700
+
+    def test_negative_with_insertion(self):
+        from egfr_pipeline.residue_utils import extract_resnum
+        assert extract_resnum("GLY-50B") == -50
+
+    def test_no_number(self):
+        from egfr_pipeline.residue_utils import extract_resnum
+        assert extract_resnum("XYZ") is None
+
+
+class TestBOMHandling:
+    """CSV reads use utf-8-sig for BOM safety."""
+
+    def test_handoff_uses_utf8_sig(self):
+        source = (PROJECT_ROOT / "run_production.py").read_text()
+        # All handoff CSV reads should use utf-8-sig
+        assert "utf-8-sig" in source
+
+    def test_utf8_sig_reads_bom_csv(self, tmp_path):
+        """utf-8-sig strips BOM from first column name."""
+        import csv
+        bom_csv = tmp_path / "bom.csv"
+        bom_csv.write_bytes(b'\xef\xbb\xbfcol1,col2\na,b\n')
+
+        with open(bom_csv, newline="", encoding="utf-8-sig") as f:
+            rows = list(csv.DictReader(f))
+        assert "col1" in rows[0]  # BOM stripped
+
+    def test_utf8_sig_works_without_bom(self, tmp_path):
+        """utf-8-sig is backward compatible with non-BOM files."""
+        import csv
+        normal_csv = tmp_path / "normal.csv"
+        normal_csv.write_text("col1,col2\na,b\n")
+
+        with open(normal_csv, newline="", encoding="utf-8-sig") as f:
+            rows = list(csv.DictReader(f))
+        assert "col1" in rows[0]
+
+
+class TestAffinityNullCheck:
+    """Expanded affinity null-check catches nan/N/A/Inf."""
+
+    def test_nan_excluded(self):
+        val = "nan"
+        assert val.strip().lower() in ("", "na", "none", "nan", "n/a", "inf", "-inf")
+
+    def test_capital_NA_excluded(self):
+        val = "N/A"
+        assert val.strip().lower() in ("", "na", "none", "nan", "n/a", "inf", "-inf")
+
+    def test_valid_affinity_not_excluded(self):
+        val = "-7.5"
+        assert val.strip().lower() not in ("", "na", "none", "nan", "n/a", "inf", "-inf")

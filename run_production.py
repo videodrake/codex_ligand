@@ -1232,7 +1232,7 @@ def _validate_ko_consistency(patch_csv_path) -> None:
     if not patch_path.exists():
         return  # File existence already checked by caller
 
-    with open(patch_path, newline="", encoding="utf-8") as f:
+    with open(patch_path, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
 
     if not rows:
@@ -1358,7 +1358,7 @@ def _validate_handoff_data_quality(
     if lane == "adv-phase2":
         patch_path = wb_p1 / "phase1_downstream_patch_reference.csv"
         if patch_path.exists():
-            with open(patch_path, newline="", encoding="utf-8") as f:
+            with open(patch_path, newline="", encoding="utf-8-sig") as f:
                 rows = list(csv.DictReader(f))
             hotspot_rows = [
                 r for r in rows
@@ -1376,7 +1376,7 @@ def _validate_handoff_data_quality(
     if lane == "adv-phase3-setup":
         pocket_path = wb_p2 / "phase3_candidate_pocket_reference.csv"
         if pocket_path.exists():
-            with open(pocket_path, newline="", encoding="utf-8") as f:
+            with open(pocket_path, newline="", encoding="utf-8-sig") as f:
                 rows = list(csv.DictReader(f))
             if len(rows) == 0:
                 raise FileNotFoundError(
@@ -1400,7 +1400,7 @@ def _validate_handoff_data_quality(
     if lane == "adv-phase4":
         evidence_path = wb_p3 / "phase4_docking_evidence_reference.csv"
         if evidence_path.exists():
-            with open(evidence_path, newline="", encoding="utf-8") as f:
+            with open(evidence_path, newline="", encoding="utf-8-sig") as f:
                 rows = list(csv.DictReader(f))
             # Count valid poses (rows with non-empty affinity)
             valid_poses = [
@@ -2001,8 +2001,12 @@ def main():
         print("\n  [WARN] 후처리 경고:")
         for w in post_run_warnings:
             print(f"    - {w}")
-    if has_failed_phases or post_run_warnings:
+
+    # Exit codes: 1 = phase failure (critical), 2 = post-run only (non-critical)
+    if has_failed_phases:
         sys.exit(1)
+    elif post_run_warnings:
+        sys.exit(2)
 
 
 if __name__ == "__main__":

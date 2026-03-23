@@ -33,8 +33,11 @@ def normalize_residue_id(residue_id: str, keep_chain: bool = False) -> str:
 
 
 def extract_resnum(normalized_id: str) -> Optional[int]:
-    """Extract residue number from normalized id like 'MET971' -> 971."""
-    m = re.search(r'(-?\d+)$', normalized_id)
+    """Extract residue number from normalized id like 'MET971' -> 971.
+
+    Also handles PDB insertion codes: 'ALA700A' -> 700, 'GLY-50B' -> -50.
+    """
+    m = re.search(r'(-?\d+)[A-Za-z]?$', normalized_id)
     return int(m.group(1)) if m else None
 
 
