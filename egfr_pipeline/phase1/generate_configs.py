@@ -151,6 +151,7 @@ def generate_config(
         "min_hbonds_int": "0",
         "enable_expensive_metrics": "true",
         "min_survivors": "50",
+        "dG_density_dSASA_cap": "1200.0",
     }
 
     # ---- Output ----

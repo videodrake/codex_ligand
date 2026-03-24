@@ -167,6 +167,11 @@ def set_chain(line: str, chain: str) -> str:
     return line[:21] + chain + line[22:]
 
 
+def set_resnum(line: str, resnum: int) -> str:
+    """Set residue number in PDB ATOM line."""
+    return line[:22] + f"{resnum:4d}" + line[26:]
+
+
 def set_atom_serial(line: str, serial: int) -> str:
     """Set atom serial number in PDB ATOM line."""
     return line[:6] + f"{serial:5d}" + line[11:]
