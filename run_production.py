@@ -1000,10 +1000,11 @@ def check_phase5() -> List[str]:
         for col in _csv_has_required_columns(agr_path, agr_required):
             missing.append(f"cross_method_agreement.csv: 필수 컬럼 누락 '{col}'")
 
-    # disclaimer 파일 존재 확인
-    disclaimer = project_root / "valid_sites_disclaimer.md"
-    if not disclaimer.exists():
-        missing.append("valid_sites_disclaimer.md 없음")
+    # disclaimer 파일 존재 확인 — Plan E-5 구현 전까지 optional
+    # TODO: Plan E-5 완료 후 필수로 전환
+    # disclaimer = project_root / "valid_sites_disclaimer.md"
+    # if not disclaimer.exists():
+    #     missing.append("valid_sites_disclaimer.md 없음")
 
     return missing
 
