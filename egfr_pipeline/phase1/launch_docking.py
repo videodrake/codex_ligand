@@ -115,8 +115,8 @@ def generate_run_metadata(
         # Task 1.1.2: Normalized execution inputs
         "receptor_id": state_name,
         "partner_id": "extended_beta_meander_955_1006",
-        "construct_type": "full_kinase_domain",
-        "construct_note": "Phase 1 v2: monomer receptor (not dimer), extended partner (955 not 960/962)",
+        "construct_type": "dimer_offset",
+        "construct_note": "Phase 1 v2: dimer receptor (+1000 offset), extended partner (955-1006)",
 
         # Run parameters
         "config_file": _project_relative_display(config_path),

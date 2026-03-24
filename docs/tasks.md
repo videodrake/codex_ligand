@@ -20,6 +20,24 @@ Group 0 (Setup) ──→ Group 1 (F-1: 실험 데이터)
                                                           │
                                                           v
                                               Group 7 (E2E 통합)
+                                                          │
+                                                          v
+                                              Group 8 (로깅/관찰성)
+
+Group G (Dimer 수정) — 완료 ✅
+  G-1 → G-5 → G-2 → G-6
+                ↓
+          G-3 → G-4
+                ↓
+               G-7
+
+Group H (상태 오염 방지) — 독립 실행 가능, 우선순위 높음
+  H-6 (PHASE_CORE_OUTPUTS 확장)
+    → H-4 (_validate_lane_outputs, 모든 lane type)
+      → H-1 (marker 쓰기 전 output 검증)
+      → H-2 (skip 시 stale marker 감지)
+  H-5 (seed marker 무결성) — 독립
+  H-3 (PBS 로그) — 독립
 ```
 
 ## Project Structure
@@ -417,4 +435,178 @@ docs/                               [신규 다수]
   - **Files:** 테스트 파일
   - **Test:** pytest 전체 통과
 
+---
+
+### G. Dimer 입력 인식 및 전처리 수정 🔴
+
+> **출처**: Production 결과 PyMOL/ChimeraX 검증에서 발견
+> **긴급도**: 높음 — 현재 파이프라인이 dimer 입력을 monomer로 오인하고 있음
+
+**Dependency:**
+```
+G-1 (진단) → G-5 (PPI_TARGETS 확인) → G-2 (메타데이터 정정) → G-6 (문서 정정)
+                                         ↓
+                               G-3 (전처리 로직) → G-4 (excluded residues)
+                                         ↓
+                                    G-7 (자동 감지)
+```
+
+- [x] **G-1** — 입력 PDB 구조 진단 (dimer 여부 확인)
+  - **What:** 입력 PDB 3종(`3GT8_raw.pdb`, `EGFR_160-185.pdb`, `EGFR_170-200.pdb`)의 chain 구성, 잔기 번호 범위, atom 수를 확인한다. Phase 1 전처리 후 도킹 입력 PDB와 실제 도킹 결과 PDB의 chain 구성도 확인하여, 각 단계에서 dimer/monomer 상태를 파악한다.
+  - **Files:** `input/receptors/*.pdb`, `output/phase1_ppi/runtime_inputs/docking_*.pdb`, `phase2_ppi_docking/*/prod_seed0/docking_*/cluster_results/*.pdb`
+  - **AC:** 진단
+  - **Test:** 각 입력 PDB별 chain ID, 잔기 범위, CA atom 수 기록 완료. Dimer/monomer 판정 근거 문서화.
+
+- [x] **G-2** — `prepare_inputs.py` RECEPTOR_STATES 메타데이터 정정
+  - **What:** G-1 진단 결과에 따라 RECEPTOR_STATES dict의 `source_chain`, `description` 필드를 실제 구조에 맞게 수정한다. `is_dimer` 필드를 추가하여 dimer 여부를 명시한다. 3GT8_raw도 PDB 3GT8 자체가 asymmetric dimer이므로 확인 후 정정.
+  - **Files:** `egfr_pipeline/phase1/prepare_inputs.py`
+  - **AC:** 코드 수정
+  - **Test:** RECEPTOR_STATES의 description이 실제 구조와 일치. is_dimer 필드가 진단 결과와 일치.
+
+- [x] **G-3** — Dimer-aware 전처리 로직 구현
+  - **What:** G-1 진단 결과에 따라 `prepare_receptor()` 함수가 dimer 구조를 올바르게 처리하도록 수정한다. 핵심 결정: dimer를 도킹 입력으로 사용하는 것이 의도된 설계라면 메타데이터만 수정, 아니라면 전처리 로직 수정. Chain X 내 두 monomer 분리 또는 dimer 유지 전략 결정.
+  - **Files:** `egfr_pipeline/phase1/prepare_inputs.py`
+  - **AC:** 코드 수정
+  - **Test:** 전처리 후 PDB가 의도된 구조(dimer 또는 monomer)와 일치. 기존 테스트 회귀 없음.
+
+- [x] **G-4** — `generate_configs.py` excluded_residues 업데이트
+  - **What:** Dimer 구조라면 두 번째 monomer의 membrane-proximal 잔기도 excluded_residues에 포함해야 하는지 검토한다. `prepare_dimer_pdb.py`의 `MEMBRANE_PROXIMAL_B`가 이미 이를 처리하는지 확인. 필요시 EXCLUDED_RESIDUES_A 업데이트.
+  - **Files:** `egfr_pipeline/phase1/generate_configs.py`, `egfr_pipeline/ppi/prepare_dimer_pdb.py`
+  - **AC:** 코드 수정
+  - **Test:** Excluded residues가 dimer 구조에서 과학적으로 적절한 범위를 커버.
+
+- [x] **G-5** — `run_production.py` PPI_TARGETS 입력 경로 검증
+  - **What:** PPI_TARGETS 리스트가 실제로 어떤 config/input PDB를 가리키는지 확인하고, 해당 입력이 dimer/monomer 어느 것인지 명시적으로 기록한다.
+  - **Files:** `run_production.py`
+  - **AC:** 코드 수정
+  - **Test:** PPI_TARGETS의 각 입력 경로가 올바른 PDB를 참조하며, dimer/monomer 상태가 주석으로 명시됨.
+
+- [x] **G-6** — Report/메타데이터 monomer→dimer 용어 정정
+  - **What:** "single chain", "monomer" 등 잘못된 표기를 dimer 반영으로 수정한다. 대상: `prepare_inputs.py`, `generate_configs.py`, `phase1_pyrosetta_execution_note.md`, `phase1_input_validation_report.md`, 보고서 등.
+  - **Files:** `egfr_pipeline/phase1/prepare_inputs.py`, `egfr_pipeline/phase1/generate_configs.py`, `docs/phase1_pyrosetta_execution_note.md`, `docs/phase1_input_validation_report.md`
+  - **AC:** 문서 수정
+  - **Test:** grep으로 "single chain" 또는 "monomer receptor" 등 잘못된 표기가 남아있지 않음.
+
+- [x] **G-7** — Phase 1 input validation에 dimer 감지 체크 추가
+  - **What:** 입력 PDB를 읽을 때 자동으로 dimer 여부를 감지하는 `detect_dimer()` 함수를 구현한다. 판정 기준: (1) 같은 chain에서 동일 잔기 번호 2번 이상 등장, (2) CA atom 수가 kinase domain 1개(~309) 대비 비정상적으로 많음(>400). Phase 1 validation report에 결과 포함.
+  - **Files:** `egfr_pipeline/phase1/prepare_inputs.py` 또는 `egfr_pipeline/validate.py`
+  - **AC:** 코드 수정
+  - **Test:** monomer PDB → `is_dimer: False`, dimer PDB → `is_dimer: True`. 기존 테스트 회귀 없음.
+
+- [x] **G-T** — Tests for Dimer 수정
+  - **What:** G-1~G-7 전체에 대한 테스트. detect_dimer 단위 테스트, RECEPTOR_STATES 메타데이터 일관성 테스트, excluded_residues 범위 테스트.
+  - **Files:** 테스트 파일
+  - **Test:** pytest 전체 통과
+
+**Definition of Done:** 입력 PDB의 dimer/monomer 상태가 정확히 진단되고, 코드/문서/메타데이터가 실제 구조와 일치하며, 향후 입력에 대해 자동 감지가 동작한다.
+
 **Definition of Done:** 빈 파일 skip 방지, 후처리 실패 시 exit code 반영, 완료 요약에 step health 표시, permission 수정으로 파이프라인 관찰성이 확보된다.
+
+---
+
+### H. 상태 오염 방지 — Lane Marker 검증 및 파이프라인 강건성 🔴
+
+> **출처**: Production 실행 시 빈 lane marker가 전체 Workflow B를 무력화한 사건
+> **긴급도**: 높음 — 테스트↔프로덕션 상태 오염이 반복 발생
+>
+> **이미 수정된 항목 (Group 8, commit 7e2661c + 87711bb):**
+> - NamedTemporaryFile permission → 0644, 디렉토리 → 0755
+> - `organize_outputs()` signature mismatch 해결
+> - Phase 6 빈 파일/placeholder skip 방지 (`check_phase6()` placeholder 감지)
+> - WARN → exit code 반영 (`sys.exit(2)` for post_run_warnings)
+> - Phase 4-7 `_sanity_check_phase_outputs()` 추가
+
+**근본 원인:** `_run_lane()`이 phase 함수 반환 후 핸드오프 파일 존재를 확인하지 않고 `lane_complete.json`을 생성. 이전 테스트 실행에서 빈 마커가 남아 실제 실행을 skip.
+
+**기존 코드 흐름 (수정 전):**
+```
+_run_lane():
+  L1612: lane_is_complete() → 마커만 확인, 산출물 안 봄    ← H-2 수정 지점
+  L1622: reset_lane_completion()
+  L1643: write_lane_manifest(status="running")
+  L1645: phase 함수 실행
+    └→ _validate_adv_handoff() ← INPUT 검증 (이미 존재, 변경 불필요)
+    └→ 실제 phase 로직
+  L1694: write_lane_completion(status="completed")         ← H-1 수정 지점
+         (현재: 산출물 검증 없이 바로 "completed" 마커 생성)
+```
+
+**검증 레이어 구분:**
+- `_validate_adv_handoff()`: **입력(INPUT)** 검증 — "이 lane을 실행하려면 선행 lane의 산출물이 있어야 한다" (이미 구현됨)
+- `_validate_lane_outputs()`: **출력(OUTPUT)** 검증 — "이 lane이 완료됐으면 자기 산출물이 있어야 한다" (신규)
+
+**Dependency:**
+```
+H-6 (PHASE_CORE_OUTPUTS 확장)
+  → H-4 (_validate_lane_outputs, 모든 lane type)
+    → H-1 (marker 쓰기 전 output 검증)
+    → H-2 (skip 시 stale marker 감지)
+H-5 (seed marker 무결성) — 독립
+H-3 (PBS 로그) — 독립
+H-T (통합 테스트)
+```
+
+- [x] **H-6** — `PHASE_CORE_OUTPUTS`를 Phase 1-3으로 확장 + `_sanity_check_phase_outputs()` 범위 확대
+  - **What:** 현재 `PHASE_CORE_OUTPUTS`(L311-326)가 Phase 4-7만 정의하고, `_sanity_check_phase_outputs()`(L329-354)도 `phase_dirs`에 Phase 4-7만 있어 Phase 1-3은 early return된다. Phase 1(vina-cpu: `*_vina_results/` 내 `.pdbqt` 파일), Phase 2(ppi: `final_ranking.csv` per seed), Phase 3(ppi-post: `ppi_pyrosetta_residues.csv`, `ppi_pyrosetta_summary.csv`)의 핵심 산출물을 `PHASE_CORE_OUTPUTS`에 추가하고, `phase_dirs`에 Phase 1-3 경로를 추가한다. 검증 기준: 파일 존재 + 최소 크기(100B) + CSV는 header+1행 이상.
+  - **Files:** `run_production.py` (`PHASE_CORE_OUTPUTS` dict, `_sanity_check_phase_outputs()`)
+  - **AC:** 코드 수정
+  - **Test:** Phase 1 완료 후 pdbqt 없으면 `[△]` 경고. Phase 2 ranking 비어있으면 `[✗]`. Phase 3 CSV 없으면 `[✗]`.
+
+- [x] **H-4** — `_validate_lane_outputs()` 함수 및 전체 lane별 산출물 매핑 테이블 정의
+  - **What:** 모든 lane type에 대해 기대 산출물 파일 목록을 dict으로 정의한다. H-6에서 확장된 `PHASE_CORE_OUTPUTS`를 기반으로 lane→phase 매핑을 구성한다. `_validate_adv_handoff()`가 "다음 lane의 입력" 관점이라면, 이 함수는 "현재 lane의 출력" 관점으로 검증한다. 매핑이 정의되지 않은 lane은 검증을 건너뛴다(기존 동작 유지).
+  - **대상 lane:**
+    - `vina-cpu` → Phase 1 산출물 (pdbqt 파일)
+    - `ppi` → Phase 2 산출물 (final_ranking.csv, state/seed별)
+    - `ppi-post` → Phase 3 산출물 (ppi_pyrosetta_*.csv)
+    - `vina-post` → Phase 4 산출물 (이미 PHASE_CORE_OUTPUTS에 있음)
+    - `finalize` → Phase 5-7 산출물 (이미 있음)
+    - `adv-phase1` → `phase1_downstream_patch_reference.csv`
+    - `adv-phase2` → `phase3_candidate_pocket_reference.csv`
+    - `adv-phase3-setup` → `phase3_docking_job_table.csv`
+    - `adv-phase3-execute` → `phase3_round_log.csv` (append)
+    - `adv-phase3-post` → `phase4_docking_evidence_reference.csv`
+    - `adv-phase4` → Phase 4 scoring 산출물
+  - **Files:** `run_production.py`
+  - **AC:** 코드 수정
+  - **Test:** 모든 lane type에 대해 산출물 목록이 정의되어 있고, 파일 존재+비어있지 않으면 `(True, [])`, 미존재 또는 빈 파일이면 `(False, [missing_files])` 반환. 매핑 미정의 lane은 `(True, [])` 반환.
+
+- [x] **H-1** — `_run_lane()` 완료 마커 생성 전 출력(OUTPUT) 검증 추가
+  - **What:** `_run_lane()`에서 `write_lane_completion(status="completed")` 호출 직전(L1694)에, `_validate_lane_outputs(lane)`를 호출하여 해당 lane의 핵심 산출물이 실제로 존재하고 비어있지 않은지 검증한다. 검증 실패 시 status="failed"로 마커를 쓰고 `RuntimeError("Lane {lane} completed without valid outputs: {missing}")` raise. 이 검증은 `_validate_adv_handoff()`(입력 검증)와는 별개의 **출력 검증**이며, 양쪽이 같은 파일 목록을 양방향으로 체크하여 빈 마커 문제를 이중 방어한다. 수정 전: phase 함수 반환 → 즉시 "completed" 마커. 수정 후: phase 함수 반환 → 산출물 검증 → 통과 시에만 "completed" 마커.
+  - **Files:** `run_production.py` (`_run_lane()` 함수, L1694 부근)
+  - **AC:** 코드 수정
+  - **Test:** phase 함수가 정상 반환했지만 핸드오프 파일이 없으면 status="failed" 마커 + exception. 핸드오프 파일이 있으면 정상 "completed" 마커.
+
+- [x] **H-2** — Lane skip 시 stale marker 감지
+  - **What:** `_run_lane()`의 skip 분기(L1612-1620)에서, `lane_is_complete()`가 True를 반환하더라도 `_validate_lane_outputs(lane)`로 실제 산출물 존재를 재확인한다. 마커만 있고 산출물이 없으면 stale marker로 판정 → `reset_lane_completion()` 호출 → `[WARN] Stale marker detected for {lane}: marker exists but outputs missing. Re-executing.` 출력 → skip하지 않고 lane 재실행으로 fall through. 매핑 미정의 lane은 기존 동작 유지(마커만으로 skip). 수정 전: 마커 status=="completed"이면 무조건 skip. 수정 후: 마커 + 산출물 둘 다 있어야 skip.
+  - **Files:** `run_production.py` (`_run_lane()` 함수, L1612 부근)
+  - **AC:** 코드 수정
+  - **Test:** (1) 빈 마커 + 산출물 없음 → skip 안 하고 재실행. (2) 정상 마커 + 산출물 있음 → skip. (3) 매핑 미정의 lane → 마커만으로 skip(기존 동작).
+
+- [x] **H-5** — `seed_complete.json` 무결성 검증 강화
+  - **What:** `_seed_is_complete()`(L403-423)의 legacy migration 경로에 검증을 추가한다. 현재: `final_ranking.csv` 존재하면 즉시 마커 자동 생성. 수정 후: (1) ranking.csv가 최소 100B 이상이고 header+1행 이상인지 체크, (2) 검증 실패 시 마커 생성하지 않고 False 반환, (3) 자동 생성 시 marker에 `"migration": true, "ranking_rows": N, "ranking_size_bytes": N` 메타데이터 포함. 기존 프로덕션 실행에는 이미 marker가 있으므로 migration 경로를 타지 않아 하위호환성 유지.
+  - **Files:** `run_production.py` (`_seed_is_complete()`, `_write_seed_completion()`)
+  - **AC:** 코드 수정
+  - **Test:** 빈 ranking.csv → seed 미완료. header만 있는 ranking.csv → seed 미완료. 정상 ranking.csv(header+1행 이상) → seed 완료 + migration 메타데이터 포함.
+
+- [x] **H-3** — PBS 의존성 체인 실패 시 job ID 기록 및 로그 보존
+  - **What:** `run_advanced_pipeline.pbs`에서 제출된 모든 job ID를 `output/workflow_a/logs/pbs_job_chain.log`에 기록한다. 형식: `YYYY-MM-DD HH:MM:SS | lane_name | job_id | depends_on`. 기존 로그가 있으면 append. `log_job()` 헬퍼 함수를 스크립트 내에 정의하여 각 qsub 직후 호출. 후속 디버깅 시 `qstat -f <job_id>` 또는 `tracejob <job_id>`로 실패 원인 추적 가능.
+  - **Files:** `config/run_advanced_pipeline.pbs`
+  - **AC:** 인프라 수정
+  - **Test:** 파이프라인 제출 후 `pbs_job_chain.log`가 생성되고, 각 lane의 job ID/시각/의존이 기록됨.
+
+- [x] **H-T** — Tests for 상태 오염 방지
+  - **What:** 아래 시나리오를 테스트:
+    1. `_validate_lane_outputs()` — 모든 lane type에 대해 산출물 매핑 정확성
+    2. `_validate_lane_outputs()` — 빈 파일 → 검증 실패, 정상 파일 → 검증 성공
+    3. `_validate_lane_outputs()` — 매핑 미정의 lane → True 반환 (기존 동작 유지)
+    4. stale marker 시나리오: 마커 있고 산출물 없음 → skip 안 하고 재실행
+    5. output 검증 시나리오: phase 성공했지만 산출물 없음 → "failed" 마커 + exception
+    6. seed_complete.json — 빈 ranking → 미완료, header-only → 미완료, 정상 → 완료+migration
+    7. PHASE_CORE_OUTPUTS — Phase 1-3 항목 존재 확인
+    8. (regression) Phase 6 빈 report → skip 안 함 (Group 8에서 수정)
+    9. (regression) 후처리 실패 → exit code ≠ 0 (Group 8에서 수정)
+    10. (regression) step_view 파일 permission 0644 (Group 8에서 수정)
+  - **Files:** `tests/test_state_contamination_group_h.py`
+  - **Test:** pytest 전체 통과
+
+**Definition of Done:** 마커가 산출물 존재를 보증하고(H-1), stale marker가 자동 감지되며(H-2), seed marker 무결성이 검증되고(H-5), Phase 1-7 전체에 sanity check가 있으며(H-6), 전체 lane type의 산출물 매핑이 정의되고(H-4), PBS 체인 실패 시 job ID 추적이 가능하다(H-3).

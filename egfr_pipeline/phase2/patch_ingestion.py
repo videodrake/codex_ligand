@@ -90,9 +90,9 @@ VALID_CHAINS = {"A"}
 VALID_LOBES = {"N-lobe", "C-lobe"}
 VALID_ROBUSTNESS = {"robust", "moderate", "state_specific"}
 VALID_CONFIDENCE = {"high", "medium", "low"}
-VALID_CONSTRUCT_TYPES = {"full_kinase_domain"}
+VALID_CONSTRUCT_TYPES = {"full_kinase_domain", "dimer_offset"}
 VALID_METHOD_AGREEMENT = {"both", "pyrosetta_only", "lightdock_only", "single", "none"}
-RESIDUE_NUM_RANGE = (699, 1007)  # Full kinase domain PDB numbering
+RESIDUE_NUM_RANGE = (699, 2007)  # Dimer: monomer A 699-1007 + monomer B 1699-2007
 MD_GATE_ARTIFACTS = (
     "md_gate_decision.md",
     "phase1_md_validation_report.md",

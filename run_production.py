@@ -31,7 +31,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config as load_pipeline_config
 from egfr_pipeline.config import resolve_resource_config
@@ -64,24 +64,33 @@ from egfr_pipeline.runtime import (
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
 
-# PPI 설정 — Phase 1 monomer-based (3 states × 5 seeds)
+# PPI 설정 — Phase 1 dimer-based, +1000 offset (3 states × 5 seeds)
+# 모든 receptor state는 dimer로 도킹 (사용자 의도).
+# Chain A(monomer1, 699-1007) + Chain B(monomer2, +1000 → 1701-2007) → 단일 Chain A.
+# Partner(ext_beta_meander) → Chain B.
+# 도킹 후 restore_chains()로 원래 chain 복원.
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 PRODUCTION_N_SEEDS = 5  # generate_configs.py와 동일
 
 
 def _build_ppi_targets() -> List[dict]:
-    from egfr_pipeline.paths import wa_phase2_ppi_seed
+    from egfr_pipeline.paths import wa_phase2_ppi_seed, wa_phase2_runtime_inputs
+    runtime_dir = wa_phase2_runtime_inputs()
     targets = []
     for state in RECEPTOR_STATES:
+        # Mapping CSV: prepare_inputs.py가 dimer 전처리 시 생성
+        mapping_csv = str(
+            runtime_dir / f"docking_{state}_ext_beta_meander_mapping.csv"
+        )
         for seed_idx in range(PRODUCTION_N_SEEDS):
             targets.append({
                 "name": f"{state}_seed{seed_idx}",
                 "config_ini": f"config/phase1/phase1_prod_{state}_seed{seed_idx}.ini",
                 "docking_dir": str(wa_phase2_ppi_seed(state=state, seed=seed_idx)),
-                "mapping_csv": "",
+                "mapping_csv": mapping_csv,
                 "receptor_id": state,
                 "partner_name": "ext_beta_meander",
-                "construct_type": "full_kinase_domain",
+                "construct_type": "dimer_offset",
                 "orientation_validation_status": "not_available",
                 "seed_index": seed_idx,
                 "is_production": True,
@@ -162,6 +171,7 @@ def _print_completion_summary(
     config: dict,
     hours: int,
     minutes: int,
+    hr_counts: Tuple[int, int, int] = (0, 0, 0),
 ) -> None:
     """프로덕션 완료 후 결과 요약 블록 출력."""
     from egfr_pipeline.paths import (
@@ -244,6 +254,14 @@ def _print_completion_summary(
     print(f"║  {'로그:':<{w - 2}}║")
     print(f"║    {wa_logs(config) / 'LOG_INDEX.txt'}  ║")
 
+    # Human review checklist 요약
+    n_must, n_should, n_note = hr_counts
+    if n_must + n_should + n_note > 0:
+        print("║" + " " * w + "║")
+        print(f"║  Human Review: human_review_checklist.md{' ' * (w - 43)}║")
+        hr_detail = f"     {n_must} MUST items, {n_should} SHOULD items"
+        print(f"║  {hr_detail:<{w - 4}}  ║")
+
     # 다음 행동 안내
     print("╠" + "═" * w + "╣")
     if failed:
@@ -298,8 +316,21 @@ def _project_root() -> Path:
     return workflow_a_root(_load_config())
 
 
-# F-4.5: Phase completion sanity check — core output file health
+# F-4.5 + H-6: Phase completion sanity check — core output file health
+# Phase 1-3 추가 (H-6): 이전에는 Phase 4-7만 있어 Phase 1-3 산출물 오염을 감지 못함
 PHASE_CORE_OUTPUTS = {
+    1: [
+        # Phase 1 (Vina): receptor별 pdbqt 파일은 동적이므로 check_phase1()에서 별도 검증.
+        # 여기서는 Vina root 디렉토리에 최소 1개 결과가 있는지만 확인.
+    ],
+    2: [
+        # Phase 2 (PPI): seed별 ranking은 동적이므로 check_phase2()에서 별도 검증.
+        # seed_complete.json 마커 기반.
+    ],
+    3: [
+        ("PPI residue table", "ppi_pyrosetta_residues.csv"),
+        ("PPI summary table", "ppi_pyrosetta_summary.csv"),
+    ],
     4: [
         ("Pocket table", "vina_pocket_table.csv"),
         ("Pose table", "vina_pose_table.csv"),
@@ -318,17 +349,51 @@ PHASE_CORE_OUTPUTS = {
 
 
 def _sanity_check_phase_outputs(phase_num: int, config: dict) -> None:
-    """Print health of core output files after phase completion (F-4.5)."""
+    """Print health of core output files after phase completion (F-4.5 + H-6).
+
+    수정 전 (F-4.5): Phase 4-7만 커버
+    수정 후 (H-6): Phase 1-7 전체 커버. Phase 1-2는 동적 산출물이므로
+    check_phase1/2()를 재활용하고, Phase 3+는 PHASE_CORE_OUTPUTS 기반.
+    """
     from egfr_pipeline.paths import (
+        wa_phase1_vina_docking, wa_phase3_ppi_postprocess,
         wa_phase4_vina_postprocess, wa_phase5_verdict,
         wa_phase6_report, wa_phase7_validation,
     )
     phase_dirs = {
+        1: wa_phase1_vina_docking(config),
+        3: wa_phase3_ppi_postprocess(config),
         4: wa_phase4_vina_postprocess(config),
         5: wa_phase5_verdict(config),
         6: wa_phase6_report(config),
         7: wa_phase7_validation(config),
     }
+
+    # Phase 1: 동적 산출물 — check_phase1() 재활용
+    if phase_num == 1:
+        missing = check_phase1()
+        if missing:
+            for m in missing[:5]:  # 최대 5개만 출력
+                print(f"    [✗] Vina output: {m}")
+            if len(missing) > 5:
+                print(f"    [✗] ... and {len(missing) - 5} more missing")
+        else:
+            print(f"    [✓] Vina outputs: all present")
+        return
+
+    # Phase 2: 동적 산출물 — check_phase2() 재활용
+    if phase_num == 2:
+        missing = check_phase2()
+        if missing:
+            for m in missing[:5]:
+                print(f"    [✗] PPI seed: {m}")
+            if len(missing) > 5:
+                print(f"    [✗] ... and {len(missing) - 5} more missing")
+        else:
+            print(f"    [✓] PPI seeds: all complete")
+        return
+
+    # Phase 3-7: 정적 산출물 — PHASE_CORE_OUTPUTS 기반
     outputs = PHASE_CORE_OUTPUTS.get(phase_num, [])
     base_dir = phase_dirs.get(phase_num)
     if not outputs or not base_dir:
@@ -356,6 +421,108 @@ def _csv_has_rows(path: Path) -> bool:
             return next(reader, None) is not None
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# H-4: Lane output validation — "현재 lane의 출력" 관점 검증
+# _validate_adv_handoff()는 "다음 lane의 입력" 관점 (이미 구현됨).
+# 이 함수는 "현재 lane이 산출물을 실제로 만들었는가" 검증.
+# 매핑 미정의 lane → (True, []) 반환하여 기존 동작 보존.
+# ---------------------------------------------------------------------------
+
+
+def _validate_lane_outputs(lane: str) -> Tuple[bool, List[str]]:
+    """Validate that a lane produced its expected output files.
+
+    Returns (valid, missing_descriptions).
+    - valid=True, missing=[] → 모든 산출물 존재+비어있지 않음 (또는 매핑 미정의)
+    - valid=False, missing=[...] → 누락/빈 파일 목록
+    """
+    from egfr_pipeline.paths import (
+        wa_phase1_vina_docking, wa_phase3_ppi_postprocess,
+        wa_phase4_vina_postprocess, wa_phase5_verdict,
+        wa_phase6_report, wa_phase7_validation,
+        wb_phase1_ppi_analysis, wb_phase2_pocket_analysis,
+        wb_phase3_focused_docking,
+    )
+    config = _load_config()
+    missing: List[str] = []
+
+    # --- Workflow A lanes ---
+    if lane == "vina-cpu":
+        # Phase 1: 동적 산출물 — check_phase1() 재활용
+        m = check_phase1()
+        if m:
+            missing.extend(m[:5])
+        return (not missing, missing)
+
+    if lane == "ppi":
+        # Phase 2: seed별 — check_phase2() 재활용
+        m = check_phase2()
+        if m:
+            missing.extend(m[:5])
+        return (not missing, missing)
+
+    if lane == "ppi-post":
+        # Phase 3: residue + summary CSV
+        ppi_post = wa_phase3_ppi_postprocess(config)
+        for label, fname in PHASE_CORE_OUTPUTS.get(3, []):
+            path = ppi_post / fname
+            if not path.exists() or path.stat().st_size < 100:
+                missing.append(f"{label}: {fname}")
+        return (not missing, missing)
+
+    if lane == "vina-post":
+        # Phase 4
+        base = wa_phase4_vina_postprocess(config)
+        for label, fname in PHASE_CORE_OUTPUTS.get(4, []):
+            path = base / fname
+            if not path.exists() or path.stat().st_size < 100:
+                missing.append(f"{label}: {fname}")
+        return (not missing, missing)
+
+    if lane == "finalize":
+        # Phase 5-7
+        dirs = {
+            5: wa_phase5_verdict(config),
+            6: wa_phase6_report(config),
+            7: wa_phase7_validation(config),
+        }
+        for phase_num, base in dirs.items():
+            for label, fname in PHASE_CORE_OUTPUTS.get(phase_num, []):
+                path = base / fname
+                if not path.exists() or path.stat().st_size < 100:
+                    missing.append(f"Phase {phase_num} {label}: {fname}")
+        return (not missing, missing)
+
+    # --- Workflow B (advanced) lanes ---
+    wb_p1 = wb_phase1_ppi_analysis(config)
+    wb_p2 = wb_phase2_pocket_analysis(config)
+    wb_p3 = wb_phase3_focused_docking(config)
+
+    adv_outputs = {
+        "adv-phase1": [(wb_p1, "phase1_downstream_patch_reference.csv")],
+        "adv-phase2": [(wb_p2, "phase3_candidate_pocket_reference.csv")],
+        "adv-phase3-setup": [(wb_p3, "phase3_docking_job_table.csv")],
+        "adv-phase3-execute": [(wb_p3, "phase3_round_log.csv")],
+        "adv-phase3-post": [(wb_p3, "phase4_docking_evidence_reference.csv")],
+        "adv-phase4": [],  # Phase 4 scoring — 산출물은 wb_phase4 내 동적
+    }
+
+    if lane in adv_outputs:
+        for base_dir, fname in adv_outputs[lane]:
+            path = base_dir / fname
+            if lane == "adv-phase3-execute":
+                # round_log.csv는 append이므로 _csv_has_rows()로 검증
+                if not _csv_has_rows(path):
+                    missing.append(f"{fname} (비어있거나 미존재)")
+            else:
+                if not path.exists() or path.stat().st_size < 100:
+                    missing.append(f"{fname}")
+        return (not missing, missing)
+
+    # 매핑 미정의 lane → 기존 동작 보존 (마커만으로 skip 허용)
+    return (True, [])
 
 
 def _ppi_docking_dir(target: dict) -> Optional[Path]:
@@ -404,12 +571,29 @@ def _seed_is_complete(target: dict) -> bool:
                 return True
         except (OSError, json.JSONDecodeError):
             pass
-    # 2) 하위호환 migration: final_ranking.csv 존재 시 마커 자동 생성
+    # 2) 하위호환 migration: final_ranking.csv 존재 + 내용 유효 시 마커 자동 생성
+    # H-5: 수정 전 — ranking.csv 존재만 체크
+    # H-5: 수정 후 — ranking.csv 존재 + 최소 100B + header+1행 이상
     docking_dir = marker.parent
     ranking = docking_dir / "final_result" / "final_ranking.csv"
     if ranking.exists():
-        _write_seed_completion(target, status="completed")
-        print(f"  [MIGRATE] {target['name']}: backfilled seed marker")
+        # 내용 검증: 빈 파일/header-only 방지
+        if ranking.stat().st_size < 100 or not _csv_has_rows(ranking):
+            print(f"  [WARN] {target['name']}: ranking.csv exists but "
+                  f"invalid ({ranking.stat().st_size}B). Not migrating.")
+            return False
+        # 유효한 ranking → 마커 생성 + migration 메타데이터 포함
+        ranking_rows = sum(1 for _ in open(ranking, encoding="utf-8")) - 1
+        _write_seed_completion(
+            target, status="completed",
+            extra_meta={
+                "migration": True,
+                "ranking_rows": max(0, ranking_rows),
+                "ranking_size_bytes": ranking.stat().st_size,
+            },
+        )
+        print(f"  [MIGRATE] {target['name']}: backfilled seed marker "
+              f"({ranking_rows} rows, {ranking.stat().st_size}B)")
         return True
     return False
 
@@ -419,6 +603,7 @@ def _write_seed_completion(
     *,
     status: str,
     duration_seconds: int = 0,
+    extra_meta: Optional[dict] = None,
 ) -> Optional[Path]:
     """seed_complete.json 마커를 출력 디렉토리에 기록."""
     docking_dir = _ppi_docking_dir(target)
@@ -436,6 +621,8 @@ def _write_seed_completion(
         "completed_at": utc_now_iso(),
         "duration_seconds": duration_seconds,
     }
+    if extra_meta:
+        payload.update(extra_meta)
     marker_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return marker_path
 
@@ -630,9 +817,35 @@ def _refresh_step_view_outputs(
 # Phase 완료 체크 함수
 # ---------------------------------------------------------------------------
 
+_PDBQT_MIN_SIZE = 500  # 유효한 Vina 출력은 최소 수백 바이트
+
+
+def _pdbqt_is_valid(path: Path) -> bool:
+    """Vina .pdbqt 결과가 유효한지 검증: 크기 + MODEL + ATOM/HETATM 존재."""
+    if not path.exists():
+        return False
+    if path.stat().st_size < _PDBQT_MIN_SIZE:
+        return False
+    try:
+        has_model = False
+        has_atom = False
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("MODEL"):
+                    has_model = True
+                elif line.startswith(("ATOM", "HETATM")):
+                    has_atom = True
+                if has_model and has_atom:
+                    return True
+        return False
+    except OSError:
+        return False
+
+
 def check_phase1() -> List[str]:
-    """Phase 1 (Vina): 모든 receptor×ligand .pdbqt 결과 존재 여부.
+    """Phase 1 (Vina): 모든 receptor×ligand .pdbqt 결과 존재+유효 여부.
     결과물: workflow_a/phase1_vina_docking/{receptor_id}/{ligand}_blind.pdbqt
+    검증: 파일 존재 + 최소 크기 + MODEL/ATOM 레코드 포함.
     """
     from egfr_pipeline.paths import wa_phase1_vina_docking
     config = _load_config()
@@ -644,8 +857,11 @@ def check_phase1() -> List[str]:
         for lig in config.get("ligands", []):
             lig_name = Path(lig["pdbqt"]).stem.replace("_ligand", "")
             pdbqt = vina_root / rec["id"] / f"{lig_name}_{mode}.pdbqt"
+            label = f"{rec['id']}/{lig_name}_{mode}.pdbqt"
             if not pdbqt.exists():
-                missing.append(f"{rec['id']}/{lig_name}_{mode}.pdbqt")
+                missing.append(label)
+            elif not _pdbqt_is_valid(pdbqt):
+                missing.append(f"{label} (invalid: 크기 부족 또는 MODEL/ATOM 없음)")
 
     return missing
 
@@ -659,19 +875,60 @@ def check_phase2() -> List[str]:
     return missing
 
 
+def _csv_has_required_columns(path: Path, required_cols: List[str]) -> List[str]:
+    """CSV 헤더에 필수 컬럼이 모두 있는지 확인. 누락된 컬럼명 리스트 반환."""
+    if not path.exists():
+        return required_cols
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            if header is None:
+                return required_cols
+            header_set = {col.strip() for col in header}
+            return [col for col in required_cols if col not in header_set]
+    except Exception:
+        return required_cols
+
+
 def check_phase3() -> List[str]:
-    """Phase 3 (PPI postprocess): residue + summary tables exist and are non-empty."""
+    """Phase 3 (PPI postprocess): 4개 출력 CSV 존재+비어있지 않음+헤더+receptor 커버리지."""
     from egfr_pipeline.paths import wa_phase3_ppi_postprocess
     ppi_post = wa_phase3_ppi_postprocess(_load_config())
+    missing = []
+
+    required_files = [
+        "ppi_pyrosetta_residues.csv",
+        "ppi_pyrosetta_summary.csv",
+        "ppi_pyrosetta_residue_long.csv",
+        "ppi_pyrosetta_model_table.csv",
+    ]
+    for name in required_files:
+        if not _csv_has_rows(ppi_post / name):
+            missing.append(f"{name} 없음 또는 비어있음")
+
+    # 헤더 필수 컬럼 검증
     residue_path = ppi_post / "ppi_pyrosetta_residues.csv"
     summary_path = ppi_post / "ppi_pyrosetta_summary.csv"
-    if _csv_has_rows(residue_path) and _csv_has_rows(summary_path):
-        return []
-    missing = []
-    if not _csv_has_rows(residue_path):
-        missing.append("ppi_pyrosetta_residues.csv 없음 또는 비어있음")
-    if not _csv_has_rows(summary_path):
-        missing.append("ppi_pyrosetta_summary.csv 없음 또는 비어있음")
+    residue_required = ["receptor_id", "residue_num", "occupancy"]
+    summary_required = ["receptor_id", "n_runs_completed", "best_dg"]
+    for col in _csv_has_required_columns(residue_path, residue_required):
+        missing.append(f"ppi_pyrosetta_residues.csv: 필수 컬럼 누락 '{col}'")
+    for col in _csv_has_required_columns(summary_path, summary_required):
+        missing.append(f"ppi_pyrosetta_summary.csv: 필수 컬럼 누락 '{col}'")
+
+    # receptor 커버리지: summary에 모든 RECEPTOR_STATES가 포함되어야 함
+    if summary_path.exists() and not missing:
+        try:
+            with open(summary_path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            found_receptors = {row.get("receptor_id", "").strip() for row in rows}
+            for state in RECEPTOR_STATES:
+                if state not in found_receptors:
+                    missing.append(f"ppi_pyrosetta_summary.csv: receptor '{state}' 누락")
+        except Exception:
+            pass
+
     return missing
 
 
@@ -708,13 +965,46 @@ def check_phase4() -> List[str]:
 
 
 def check_phase5() -> List[str]:
-    """Phase 5 (Verdict): valid_sites.csv 존재+비어있지 않음."""
+    """Phase 5 (Verdict): CSV 존재+비어있지 않음+헤더+verdict 값 검증+disclaimer."""
     from egfr_pipeline.paths import wa_phase5_verdict
     project_root = wa_phase5_verdict(_load_config())
     missing = []
+
     for name in ["valid_sites.csv", "cross_method_agreement.csv"]:
         if not _csv_has_rows(project_root / name):
             missing.append(name)
+
+    # valid_sites.csv 헤더 + verdict 값 검증
+    valid_sites = project_root / "valid_sites.csv"
+    if valid_sites.exists() and _csv_has_rows(valid_sites):
+        vs_required = ["receptor_id", "pocket_id", "verdict", "confidence_score"]
+        for col in _csv_has_required_columns(valid_sites, vs_required):
+            missing.append(f"valid_sites.csv: 필수 컬럼 누락 '{col}'")
+        # verdict 값이 유효한지 확인
+        allowed_verdicts = {"STRONG", "MODERATE", "WEAK"}
+        try:
+            with open(valid_sites, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            for row in rows:
+                v = row.get("verdict", "").strip()
+                if v and v not in allowed_verdicts:
+                    missing.append(f"valid_sites.csv: 잘못된 verdict 값 '{v}'")
+                    break
+        except Exception:
+            pass
+
+    # cross_method_agreement.csv 헤더 검증
+    agr_path = project_root / "cross_method_agreement.csv"
+    if agr_path.exists() and _csv_has_rows(agr_path):
+        agr_required = ["receptor_id", "pocket_id", "jaccard", "agreement_level"]
+        for col in _csv_has_required_columns(agr_path, agr_required):
+            missing.append(f"cross_method_agreement.csv: 필수 컬럼 누락 '{col}'")
+
+    # disclaimer 파일 존재 확인
+    disclaimer = project_root / "valid_sites_disclaimer.md"
+    if not disclaimer.exists():
+        missing.append("valid_sites_disclaimer.md 없음")
+
     return missing
 
 
@@ -745,11 +1035,11 @@ def check_phase6() -> List[str]:
 
 
 PHASE_CHECKS = {
-    1: ("Vina blind docking 결과 (.pdbqt)", check_phase1),
+    1: ("Vina blind docking 결과 (.pdbqt 존재+유효)", check_phase1),
     2: ("PPI docking 결과 (seed_complete.json)", check_phase2),
-    3: ("PPI postprocess (ppi_pyrosetta_residues.csv)", check_phase3),
+    3: ("PPI postprocess (4개 CSV+헤더+receptor 커버리지)", check_phase3),
     4: ("Vina postprocess (pocket_table 등 5개 CSV)", check_phase4),
-    5: ("Verdict (valid_sites.csv)", check_phase5),
+    5: ("Verdict (CSV+헤더+verdict 값+disclaimer)", check_phase5),
     6: ("Report (project_report.txt)", check_phase6),
 }
 
@@ -955,7 +1245,7 @@ def _legacy_phase3_ppi_postprocess():
         name = target["name"]
         mapping_csv = target["mapping_csv"]
         if not mapping_csv:
-            print(f"  [SKIP] {name}: monomer 타겟 — chain restoration 불필요")
+            print(f"  [SKIP] {name}: mapping_csv 없음 — chain restoration 불필요")
             continue
         receptor_id = target["receptor_id"]
         partner_name = target["partner_name"]
@@ -1607,8 +1897,24 @@ def _run_lane(
         seed=seed,
         engine=engine,
     ):
-        print(f"  [SKIP] lane {lane} already completed via marker.")
-        return {"status": "skipped", "lane": lane}
+        # H-2: Stale marker 감지
+        # 수정 전: 마커 status=="completed"이면 무조건 skip
+        # 수정 후: 마커 + 산출물 둘 다 있어야 skip. 산출물 없으면 stale marker 삭제 후 재실행.
+        valid, missing_outputs = _validate_lane_outputs(lane)
+        if valid:
+            print(f"  [SKIP] lane {lane} already completed via marker.")
+            return {"status": "skipped", "lane": lane}
+        # Stale marker: 마커는 있지만 산출물 없음
+        print(f"  [WARN] Stale marker detected for {lane}: "
+              f"marker exists but outputs missing ({', '.join(missing_outputs)}). "
+              f"Re-executing.")
+        reset_lane_completion(
+            project_root,
+            lane,
+            state=state,
+            seed=seed,
+            engine=engine,
+        )
 
     reset_lane_completion(
         project_root,
@@ -1682,6 +1988,30 @@ def _run_lane(
                 create_log_index(config)
             except Exception:
                 pass
+        # H-1: 완료 마커 생성 전 산출물(OUTPUT) 검증
+        # 수정 전: phase 함수 반환 → 즉시 "completed" 마커
+        # 수정 후: phase 함수 반환 → _validate_lane_outputs() → 통과 시에만 "completed"
+        # _validate_adv_handoff()가 INPUT 검증이라면, 이것은 OUTPUT 검증 (이중 방어)
+        valid, missing_outputs = _validate_lane_outputs(lane)
+        if not valid:
+            msg = (f"Lane {lane} completed without valid outputs: "
+                   f"{', '.join(missing_outputs)}")
+            print(f"  [FAIL] {msg}")
+            write_lane_completion(
+                project_root,
+                lane,
+                status="failed",
+                state=state,
+                seed=seed,
+                engine=engine,
+                extra={
+                    "duration_seconds": max(0, int(time.time() - started)),
+                    "error": msg,
+                    "scratch_workspace": str(scratch_workspace) if scratch_workspace else "",
+                },
+            )
+            raise RuntimeError(msg)
+
         write_lane_completion(
             project_root,
             lane,
@@ -1980,6 +2310,22 @@ def main():
             last_error=next((error for error in failed_errors if error), ""),
         )
 
+    # Human review checklist 생성 (Phase 7 완료 후)
+    _hr_counts: Tuple[int, int, int] = (0, 0, 0)
+    try:
+        from egfr_pipeline.human_review import (
+            generate_human_review_checklist,
+            checklist_summary,
+        )
+        from egfr_pipeline.paths import output_root as _hr_output_root
+
+        _hr_project_root = _hr_output_root(config)
+        checklist_path = generate_human_review_checklist(_hr_project_root)
+        _hr_counts = checklist_summary(_hr_project_root)
+        print(f"  [REVIEW] Human review checklist: {checklist_path}")
+    except Exception as e:
+        print(f"  [WARN] Human review checklist generation failed: {e}")
+
     # Step-based output organization (F-4.3: collect post-run warnings)
     post_run_warnings: List[str] = []
 
@@ -1991,7 +2337,8 @@ def main():
         post_run_warnings.append(f"Output organization failed: {exc}")
         print(f"  [WARN] Output organization failed: {exc}")
 
-    _print_completion_summary(phase_states, config, hours, minutes)
+    _print_completion_summary(phase_states, config, hours, minutes,
+                              hr_counts=_hr_counts)
 
     # F-4.3: Non-zero exit on post-run failures or phase failures
     has_failed_phases = any(

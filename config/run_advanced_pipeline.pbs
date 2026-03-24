@@ -66,26 +66,42 @@ get_job_id() {
     echo "$1" | grep -oP '^\d+(\.\S+)?' | head -1
 }
 
+# H-3: PBS job chain 로그 — 디버깅용 job ID 기록
+JOB_LOG="${PBS_O_WORKDIR}/output/workflow_a/logs/pbs_job_chain.log"
+mkdir -p "$(dirname "$JOB_LOG")"
+log_job() {
+    local lane_name="$1"
+    local job_id="$2"
+    local depends_on="${3:-none}"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') | ${lane_name} | ${job_id} | depends_on=${depends_on}" >> "$JOB_LOG"
+}
+echo "--- Job chain log: $JOB_LOG ---"
+echo "$(date '+%Y-%m-%d %H:%M:%S') | === Pipeline submission start (FROM=$ADV_FROM, ROUNDS=$ADV_ROUNDS) ===" >> "$JOB_LOG"
+
 # --- Phase 1: PPI Analysis ---
 if [ "$ADV_FROM" -le 1 ]; then
     ADV1=$(qsub config/run_adv_phase1.pbs)
     PREV_JOB=$(get_job_id "$ADV1")
     echo "[adv-phase1] $ADV1"
+    log_job "adv-phase1" "$PREV_JOB" "none"
 fi
 
 # --- Phase 2: Pocket Analysis ---
 if [ "$ADV_FROM" -le 2 ]; then
+    DEP_FOR_2="${PREV_JOB:-none}"
     if [ -n "$PREV_JOB" ]; then
         ADV2=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase2.pbs)
     else
         ADV2=$(qsub config/run_adv_phase2.pbs)
     fi
     PREV_JOB=$(get_job_id "$ADV2")
-    echo "[adv-phase2] $ADV2 (after $PREV_JOB)"
+    echo "[adv-phase2] $ADV2 (after $DEP_FOR_2)"
+    log_job "adv-phase2" "$PREV_JOB" "$DEP_FOR_2"
 fi
 
 # --- Phase 3 Setup ---
 if [ "$ADV_FROM" -le 3 ]; then
+    DEP_FOR_3S="${PREV_JOB:-none}"
     if [ -n "$PREV_JOB" ]; then
         ADV3S=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase3_setup.pbs)
     else
@@ -93,28 +109,36 @@ if [ "$ADV_FROM" -le 3 ]; then
     fi
     PREV_JOB=$(get_job_id "$ADV3S")
     echo "[adv-phase3-setup] $ADV3S"
+    log_job "adv-phase3-setup" "$PREV_JOB" "$DEP_FOR_3S"
 
     # --- Phase 3 Execute (round by round, sequential) ---
     for ROUND in $(seq 0 $((ADV_ROUNDS - 1))); do
+        DEP_FOR_3E="$PREV_JOB"
         ADV3E=$(qsub -W depend=afterok:"$PREV_JOB" -v ROUND="$ROUND" config/run_adv_phase3_execute.pbs)
         PREV_JOB=$(get_job_id "$ADV3E")
         echo "[adv-phase3-execute round $ROUND] $ADV3E"
+        log_job "adv-phase3-execute-round${ROUND}" "$PREV_JOB" "$DEP_FOR_3E"
     done
 
     # --- Phase 3 Post ---
+    DEP_FOR_3P="$PREV_JOB"
     ADV3P=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase3_post.pbs)
     PREV_JOB=$(get_job_id "$ADV3P")
     echo "[adv-phase3-post] $ADV3P"
+    log_job "adv-phase3-post" "$PREV_JOB" "$DEP_FOR_3P"
 fi
 
 # --- Phase 4: Perturbation Scoring ---
 if [ "$ADV_FROM" -le 4 ]; then
+    DEP_FOR_4="${PREV_JOB:-none}"
     if [ -n "$PREV_JOB" ]; then
         ADV4=$(qsub -W depend=afterok:"$PREV_JOB" config/run_adv_phase4.pbs)
     else
         ADV4=$(qsub config/run_adv_phase4.pbs)
     fi
+    ADV4_ID=$(get_job_id "$ADV4")
     echo "[adv-phase4] $ADV4"
+    log_job "adv-phase4" "$ADV4_ID" "$DEP_FOR_4"
 fi
 
 echo ""

@@ -12,6 +12,7 @@
 | 핸드오프 검증 강화: 스키마 + 데이터 품질 2단계 | 빈 CSV나 hotspot 0개가 조용히 통과하여 의미 없는 결과 생성 방지 | 현재 스키마 체크만 유지 → edge case 취약 | 2026-03-19 |
 | 순차 의존 실행: A → B,C(병렬) → D → E → F | 리간드 다양성(A)과 편향 크기(B)가 메트릭 조정(D)의 근거 | 모든 계획안 병렬 → 메트릭 조정 근거 부재 | 2026-03-19 |
 | 바이브코딩 11건 필수: 기존 코드 분석 후 판단하여 구현 | 기존 로직의 암묵적 계약(함수 시그니처, 데이터 형태)을 파악해야 올바른 통합 가능 | 문서만 보고 구현 → 기존 코드와 충돌 위험 | 2026-03-19 |
+| Dimer 도킹: +1000 offset 방식으로 모든 state dimer 처리 | 사용자 원래 의도가 dimer 도킹. prepare_dimer_pdb.py 인프라 이미 구현됨. PyRosetta 잔기 고유성 보장 | 스텔스 dimer(중복 잔기) → PyRosetta ambiguity. Multi-chain → 도킹 코드 대대적 수정 | 2026-03-24 |
 
 ## 알려진 리스크
 
@@ -194,6 +195,70 @@
 - 8.6: _sanity_check_phase_outputs() — Phase 4-7 핵심 파일 [✓]/[△]/[✗]
 - 8.T: test_logging_group8.py 15건
 - Group 8 전체 완료: 588 passed
+
+### Group G — Dimer 입력 인식 및 전처리 수정 (2026-03-24)
+
+**G-1 진단 결과:**
+
+| 입력 PDB | Chain | CA atoms | 잔기 범위 | 중복 잔기 | 판정 |
+|-----------|-------|----------|-----------|-----------|------|
+| 3GT8_raw.pdb | A (309 CA) + B (307 CA) | 616 총 | A: 699-1007, B: 701-1007 | 없음 (2-chain dimer) | **Dimer** (chain A/B 분리) |
+| EGFR_160-185.pdb | X (758 CA) | 758 | 634-1014 | **377개** 중복 | **Dimer** (단일 chain에 2 monomer) |
+| EGFR_170-200.pdb | X (758 CA) | 758 | 634-1014 | **377개** 중복 | **Dimer** (단일 chain에 2 monomer) |
+
+**extract_chain_residue_range() 시뮬레이션 (chain X, 699-1007):**
+- EGFR_160-185: **618 CA atoms, 10000 ATOM lines** 선택 (monomer 대비 2배)
+- 3GT8_raw chain A: 309 CA atoms, 2485 ATOM lines (정상 monomer)
+
+**핵심 문제:**
+- MD cluster PDB (EGFR_160-185, EGFR_170-200)는 **단일 chain X에 두 monomer가 동일한 잔기 번호로 존재**
+- `extract_chain_residue_range()`가 chain + resnum으로만 필터링하므로, **양쪽 monomer의 atom을 모두 선택**
+- `resnums` set은 309개 (monomer처럼 보임)이지만 실제 atom은 2배 → **metadata가 현실과 불일치**
+- 3GT8_raw은 chain A만 추출하므로 진짜 monomer (정상)
+
+**결론:**
+- 3GT8_raw: chain A만 추출 → monomer (정상). 메타데이터에 "asymmetric dimer source" 명시만 필요
+- EGFR_160-185, EGFR_170-200: **dimer가 monomer로 위장되어 도킹에 투입됨** (버그)
+- 도킹 결과가 dimer 포함은 우연이 아니라 전처리 버그의 직접 결과
+
+**사용자 결정 (2026-03-24):**
+- **모든 receptor state를 dimer로 도킹하는 것이 원래 의도**
+- **+1000 offset 방식 채택** (`prepare_dimer_pdb.py` 인프라 활용)
+- Chain A(monomer1, 699-1007) + Chain B(monomer2, +1000 → 1701-2007) → 단일 Chain A
+- Partner → Chain B, 도킹 후 `restore_chains()`로 복원
+- MD clusters: chain X의 중복 잔기를 두 monomer로 분리 → A+B 할당 → offset 병합
+- 3GT8_raw: chain A+B 그대로 → offset 병합
+- PPI_TARGETS에 mapping_csv 경로 추가
+- excluded_residues: MEMBRANE_PROXIMAL_A + MEMBRANE_PROXIMAL_B (offset 적용)
+
+**구현 완료 (2026-03-24):**
+- G-1: 진단 완료 — 3GT8(2-chain dimer), MD clusters(single-chain dimer, 377 중복 잔기)
+- G-5: PPI_TARGETS → construct_type="dimer_offset", mapping_csv 경로 추가, 18개 config INI 헤더 업데이트
+- G-2: RECEPTOR_STATES에 is_dimer, dimer_chain 필드 추가, description 수정
+- G-3: extract_dimer_chains() 구현 (2-chain/single-chain 모두 지원), prepare_receptor() dimer 모드 (+1000 offset), prepare_docking_pair() mapping CSV 생성
+- G-4: EXCLUDED_RESIDUES_A에 monomer B +1000 offset 잔기 추가 (1713-1720,1726-1729,1799-1804,1868-1874,1917-1920)
+- G-6: launch_docking.py, lightdock_validation.py, patch_ingestion.py, phase1_notes.md 용어 정정. VALID_CONSTRUCT_TYPES에 "dimer_offset" 추가.
+- G-7: detect_dimer() 구현 — multi_chain, duplicate_atoms, ca_overcount 3가지 감지 방법
+- G-T: 15개 테스트 전체 통과
+
+### Group H — 상태 오염 방지 (2026-03-24)
+
+**계획:** H-6 → H-4 → H-1 → H-2, H-5/H-3 독립
+
+**기술 결정:**
+- OUTPUT 검증(`_validate_lane_outputs`)과 INPUT 검증(`_validate_adv_handoff`)은 별개 레이어. 같은 파일 목록을 양방향으로 체크하여 빈 마커 이중 방어
+- `PHASE_CORE_OUTPUTS`를 Phase 1-3으로 확장하여 `_sanity_check_phase_outputs()`가 전 Phase를 커버
+- `_validate_lane_outputs()`가 매핑 미정의 lane에는 (True, []) 반환 — 기존 동작 보존
+- seed marker migration: ranking.csv header+1행 이상 검증 추가, 기존 marker 있는 프로덕션에는 영향 없음
+
+**구현 완료 (2026-03-24):**
+- H-6: PHASE_CORE_OUTPUTS Phase 1-3 추가, _sanity_check_phase_outputs() Phase 1-2 동적 검증(check_phase1/2 재활용)
+- H-4: _validate_lane_outputs() — 11개 lane type(vina-cpu, ppi, ppi-post, vina-post, finalize, adv-phase1~4) 매핑. 미정의 lane → (True, [])
+- H-1: _run_lane() L1843에 output 검증 삽입. 검증 실패 → status="failed" 마커 + RuntimeError
+- H-2: skip 분기(L1761)에 stale marker 감지. 마커+산출물 둘 다 있어야 skip. 산출물 없으면 reset+재실행
+- H-5: _seed_is_complete() migration 경로에 ranking.csv 100B+header+1행 검증. extra_meta(migration, ranking_rows, ranking_size_bytes)
+- H-3: run_advanced_pipeline.pbs에 log_job() 헬퍼, pbs_job_chain.log에 lane/job_id/depends_on 기록
+- H-T: 12개 테스트 전체 통과
 
 ## 발견된 이슈
 

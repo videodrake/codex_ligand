@@ -427,7 +427,7 @@ def generate_lightdock_setup(
     metadata = {
         "receptor_id": state_name,
         "partner_id": "extended_beta_meander_955_1006",
-        "construct_type": "full_kinase_domain",
+        "construct_type": "dimer_offset",
         "method": "LightDock",
         "scoring_function": scoring,
         "n_swarms": n_swarms,

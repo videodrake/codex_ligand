@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Phase 1 Task 1.1: Generate PyRosetta docking config files for each receptor state.
 
-Creates properly configured INI files adapted for the Phase 1 full-kinase-domain
-monomer setup (not the legacy dimer setup).
+Creates INI files for Phase 1 dimer-based PPI docking (+1000 offset approach).
 
-Key differences from legacy configs:
-  - Input PDB: Phase 1 docking pairs (monomer receptor + extended beta-meander)
-  - Excluded residues: Chain A monomer only (no +1000 offset dimer residues)
-  - Output path: Explicit receptor state labeling
-  - Metadata: construct_type = full_kinase_domain
+Dimer 도킹 설정:
+  - Input PDB: Dimer receptor (chain A = monomer1 + monomer2 with +1000 offset) + partner (chain B)
+  - Excluded residues: 양쪽 monomer의 membrane-proximal 잔기 (monomer B는 +1000 offset)
+  - construct_type = dimer_offset
 
 Usage:
     python -m egfr_pipeline.phase1.generate_configs [--output_dir config/phase1]
@@ -30,8 +28,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
-# Membrane-proximal residues — monomer chain A only (no dimer offset)
-EXCLUDED_RESIDUES_A = "709-720,724-731,736-739,747,783-785,799-805,871-873,917-921"
+# Membrane-proximal residues — dimer (monomer A + monomer B with +1000 offset)
+# Monomer A: 709-720,724-731,736-739,747,783-785,799-805,871-873,917-921
+# Monomer B (original): 713-720,726-729,799-804,868-874,917-920
+# Monomer B (+1000): 1713-1720,1726-1729,1799-1804,1868-1874,1917-1920
+EXCLUDED_RESIDUES_A = (
+    "709-720,724-731,736-739,747,783-785,799-805,871-873,917-921,"
+    "1713-1720,1726-1729,1799-1804,1868-1874,1917-1920"
+)
 
 # Jura 2009: EGFR asymmetric dimer interface (C-lobe surface)
 # αC helix(741-756), αE helix(847-859), activation loop(831-852)
@@ -111,11 +115,11 @@ def generate_config(
     }
 
     # ---- Constraints ----
-    # Key difference: monomer-only excluded residues (no dimer +1000 offset)
+    # Dimer excluded residues: monomer A + monomer B (+1000 offset)
     config["Constraints"] = {
         "excluded_residues_A": EXCLUDED_RESIDUES_A,
         "key_residues_B": "",
-        "exclusion_contact_dist": "10.0",
+        "exclusion_contact_dist": "8.0",
         "enable_early_rejection": "true",
         "max_excluded_contacts": "0",
         "key_residue_bonus_weight": "0.0",
@@ -177,9 +181,9 @@ def generate_config(
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(f"# Phase 1 PyRosetta PPI Docking Config\n")
-        f.write(f"# Receptor: {state_name} (full kinase domain monomer)\n")
+        f.write(f"# Receptor: {state_name} (dimer, +1000 offset)\n")
         f.write(f"# Partner: extended beta-meander (955-1006)\n")
-        f.write(f"# Construct: full_kinase_domain (NOT legacy dimer)\n")
+        f.write(f"# Construct: dimer_offset (+1000 offset, prepare_dimer_pdb.py 방식)\n")
         if is_production:
             f.write(f"# Run type: production (seed {seed_index}, {n_models} models)\n")
             f.write(f"# Multi-seed strategy: {PRODUCTION_N_SEEDS} seeds × {PRODUCTION_MODELS_PER_SEED} = "
@@ -187,9 +191,9 @@ def generate_config(
         else:
             f.write(f"# Run type: test ({n_models} models)\n")
         f.write(f"#\n")
-        f.write(f"# Key differences from legacy (dimer) configs:\n")
-        f.write(f"#   - Receptor is monomer (chain A only, ~309 residues)\n")
-        f.write(f"#   - No +1000 offset dimer residues in excluded_residues_A\n")
+        f.write(f"# Dimer 도킹 설정:\n")
+        f.write(f"#   - Receptor는 dimer (Chain A: 699-1007, Chain B→A: 1701-2007)\n")
+        f.write(f"#   - +1000 offset dimer residues가 excluded_residues_A에 포함\n")
         f.write(f"#   - Partner is extended beta-meander (955-1006, not 960-1006)\n")
         f.write(f"#   - n_cpus = 16 (safe for shared HPC with 32 cores)\n")
         f.write(f"\n")

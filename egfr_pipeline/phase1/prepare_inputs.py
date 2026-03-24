@@ -53,28 +53,36 @@ def _display_path(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 # Receptor states and their source PDB files
+# 모든 state는 dimer로 도킹 (사용자 의도).
+# +1000 offset 방식: Chain A(monomer1) + Chain B(monomer2, +1000) → 단일 Chain A.
 RECEPTOR_STATES = {
     "3GT8_raw": {
         "pdb": "input/receptors/3GT8_raw.pdb",
-        "source_chain": "A",       # Crystal structure, use chain A monomer
-        "description": "Crystal structure (PDB 3GT8), chain A monomer",
+        "source_chain": "A",       # Crystal structure, chain A = monomer 1
+        "dimer_chain": "B",        # Chain B = monomer 2 (701-1007)
+        "is_dimer": True,
+        "description": "Crystal structure (PDB 3GT8), asymmetric dimer (chain A+B)",
     },
     "EGFR_160-185": {
         "pdb": "input/receptors/EGFR_160-185.pdb",
-        "source_chain": "X",       # MD cluster, single chain X
-        "description": "MD cluster representative (38-48 ns), single chain",
+        "source_chain": "X",       # MD cluster, chain X에 두 monomer가 중복 잔기로 존재
+        "dimer_chain": "X",        # 같은 chain에서 분리 필요 (중복 잔기 번호)
+        "is_dimer": True,
+        "description": "MD cluster representative (38-48 ns), dimer in single chain X",
     },
     "EGFR_170-200": {
         "pdb": "input/receptors/EGFR_170-200.pdb",
-        "source_chain": "X",       # MD cluster, single chain X
-        "description": "MD cluster representative (85-100 ns), single chain",
+        "source_chain": "X",       # MD cluster, chain X에 두 monomer가 중복 잔기로 존재
+        "dimer_chain": "X",        # 같은 chain에서 분리 필요 (중복 잔기 번호)
+        "is_dimer": True,
+        "description": "MD cluster representative (85-100 ns), dimer in single chain X",
     },
 }
 
 # Common residue range for kinase domain (PDB numbering)
-# 3GT8_raw chain A: 699-1007 (309 residues)
-# MD clusters chain X: 634-1014 (381 residues, includes flanking)
-# Overlap for comparability: 699-1007
+# 3GT8_raw: chain A (699-1007, 309 res) + chain B (701-1007, 307 res) → dimer
+# MD clusters: chain X (634-1014, 758 CA atoms, 377 잔기 중복) → dimer in single chain
+# Monomer 1 추출 범위: 699-1007 (kinase domain)
 KINASE_DOMAIN_START = 699
 KINASE_DOMAIN_END = 1007
 
@@ -97,8 +105,14 @@ SHEET_DEFINITIONS = {
     "sheet_12": {"residues": [993, 994, 995, 996, 997], "role": "structural_support"},
 }
 
-# Membrane-proximal residues to exclude (PDB numbering, monomer chain A only)
+# Membrane-proximal residues to exclude (PDB numbering)
+# Monomer A (kinase domain)
 MEMBRANE_PROXIMAL = "709-720,724-731,736-739,747,783-785,799-805,871-873,917-921"
+# Monomer B (dimer partner) — prepare_dimer_pdb.py와 동일
+MEMBRANE_PROXIMAL_B = "713-720,726-729,799-804,868-874,917-920"
+
+# Dimer +1000 offset (prepare_dimer_pdb.py 방식과 동일)
+CHAIN_B_OFFSET = 1000
 
 # Pilot data reference (legacy C-lobe fragment system)
 PILOT_DATA = {
@@ -394,24 +408,159 @@ def extract_chain_residue_range(
     res_end: int,
     target_chain: str = "A",
 ) -> Tuple[List[str], List[int]]:
-    """Extract atoms from a specific chain and residue range.
+    """Extract atoms from a specific chain and residue range (first occurrence only).
+
+    For chains with duplicate residue numbers (e.g. dimer in single chain X),
+    this extracts only the FIRST monomer's atoms.
 
     Returns (atom_lines, unique_residue_numbers).
     """
     all_atoms = parse_pdb_atoms(pdb_path)
     selected = []
     resnums = set()
+    # Track seen (resnum, atom_name) to pick first occurrence only
+    seen_atoms: Set[Tuple[int, str]] = set()
 
     for line in all_atoms:
         chain = get_chain(line)
         resnum = get_resnum(line)
         if chain == source_chain and res_start <= resnum <= res_end:
+            atom_name = get_atom_name(line)
+            key = (resnum, atom_name)
+            if key in seen_atoms:
+                continue  # skip duplicate (second monomer)
+            seen_atoms.add(key)
             if chain != target_chain:
                 line = set_chain(line, target_chain)
             selected.append(line)
             resnums.add(resnum)
 
     return selected, sorted(resnums)
+
+
+def extract_dimer_chains(
+    pdb_path: Path,
+    state_info: dict,
+    res_start: int,
+    res_end: int,
+) -> Tuple[List[str], List[int], List[str], List[int]]:
+    """Extract both monomers from a dimer PDB as chain A and chain B.
+
+    Handles two cases:
+    - 2-chain dimer (3GT8_raw): source_chain=A, dimer_chain=B
+    - Single-chain dimer (MD clusters): source_chain=X, dimer_chain=X
+      → split by first/second occurrence of each (resnum, atom_name)
+
+    Returns (chain_a_lines, a_resnums, chain_b_lines, b_resnums).
+    """
+    source_chain = state_info["source_chain"]
+    dimer_chain = state_info["dimer_chain"]
+    all_atoms = parse_pdb_atoms(pdb_path)
+
+    if source_chain != dimer_chain:
+        # Case 1: Two separate chains (e.g. 3GT8_raw: A + B)
+        a_lines, b_lines = [], []
+        a_resnums: Set[int] = set()
+        b_resnums: Set[int] = set()
+
+        for line in all_atoms:
+            chain = get_chain(line)
+            resnum = get_resnum(line)
+            if chain == source_chain and res_start <= resnum <= res_end:
+                a_lines.append(set_chain(line, "A"))
+                a_resnums.add(resnum)
+            elif chain == dimer_chain and res_start <= resnum <= res_end:
+                b_lines.append(set_chain(line, "B"))
+                b_resnums.add(resnum)
+
+        return a_lines, sorted(a_resnums), b_lines, sorted(b_resnums)
+
+    # Case 2: Single chain with duplicate residue numbers (MD clusters)
+    # First occurrence → monomer A, second occurrence → monomer B
+    a_lines, b_lines = [], []
+    a_resnums_set: Set[int] = set()
+    b_resnums_set: Set[int] = set()
+    seen_atoms: Set[Tuple[int, str]] = set()
+
+    for line in all_atoms:
+        chain = get_chain(line)
+        resnum = get_resnum(line)
+        if chain != source_chain or not (res_start <= resnum <= res_end):
+            continue
+        atom_name = get_atom_name(line)
+        key = (resnum, atom_name)
+        if key not in seen_atoms:
+            seen_atoms.add(key)
+            a_lines.append(set_chain(line, "A"))
+            a_resnums_set.add(resnum)
+        else:
+            b_lines.append(set_chain(line, "B"))
+            b_resnums_set.add(resnum)
+
+    return a_lines, sorted(a_resnums_set), b_lines, sorted(b_resnums_set)
+
+
+def detect_dimer(pdb_path: Path, chain_id: str) -> dict:
+    """Detect whether an input PDB contains a dimer.
+
+    Checks for:
+    1. Multiple chains with kinase domain residues (explicit 2-chain dimer)
+    2. Duplicate (resnum, atom_name) in same chain (single-chain dimer)
+    3. CA atom count >> expected monomer size (~309)
+
+    Returns dict: is_dimer, n_monomers, n_ca_atoms, n_duplicated_residues, chains.
+    """
+    atoms = parse_pdb_atoms(pdb_path)
+
+    # Count chains with kinase-range residues
+    chain_ca: Dict[str, int] = {}
+    for line in atoms:
+        if get_atom_name(line) == "CA":
+            ch = get_chain(line)
+            rn = get_resnum(line)
+            if KINASE_DOMAIN_START <= rn <= KINASE_DOMAIN_END:
+                chain_ca[ch] = chain_ca.get(ch, 0) + 1
+
+    # Check for duplicate residue numbers in target chain
+    target_atoms = [
+        line for line in atoms
+        if get_chain(line) == chain_id
+        and KINASE_DOMAIN_START <= get_resnum(line) <= KINASE_DOMAIN_END
+    ]
+    seen: Set[Tuple[int, str]] = set()
+    n_dup = 0
+    for line in target_atoms:
+        key = (get_resnum(line), get_atom_name(line))
+        if key in seen:
+            n_dup += 1
+        else:
+            seen.add(key)
+
+    ca_count = chain_ca.get(chain_id, 0)
+    expected_monomer = 309  # EGFR kinase domain
+
+    # Determine dimer status
+    multi_chain_dimer = len(chain_ca) > 1 and sum(chain_ca.values()) > expected_monomer * 1.5
+    single_chain_dimer = n_dup > 50  # 50+ duplicate atoms = strong dimer signal
+    ca_overcount = ca_count > expected_monomer * 1.5
+
+    is_dimer = multi_chain_dimer or single_chain_dimer or ca_overcount
+    n_monomers = max(1, round(sum(chain_ca.values()) / expected_monomer))
+
+    return {
+        "is_dimer": is_dimer,
+        "n_monomers": n_monomers,
+        "n_ca_atoms": sum(chain_ca.values()),
+        "n_ca_in_target_chain": ca_count,
+        "n_duplicated_atoms": n_dup,
+        "chains": sorted(chain_ca.keys()),
+        "detection_method": (
+            "multi_chain" if multi_chain_dimer
+            else "duplicate_atoms" if single_chain_dimer
+            else "ca_overcount" if ca_overcount
+            else "none"
+        ),
+    }
 
 
 def write_pdb(lines: List[str], output_path: Path, renumber_atoms: bool = True) -> None:
@@ -486,34 +635,76 @@ def prepare_receptor(
     state_info: dict,
     output_dir: Path,
 ) -> dict:
-    """Prepare a full kinase domain receptor PDB.
+    """Prepare a dimer receptor PDB with +1000 offset.
 
-    For 3GT8_raw: extract chain A monomer (699-1007).
-    For MD clusters: extract chain X residues 699-1007, rename to chain A.
+    Extracts both monomers from the input dimer:
+    - 3GT8_raw: chain A (699-1007) + chain B (701-1007)
+    - MD clusters: chain X first occurrence + second occurrence
+
+    Monomer 1 → chain A (699-1007, original numbering)
+    Monomer 2 → chain A (+1000 offset → 1699-2007)
+    Combined as single chain A for PyRosetta compatibility.
 
     Returns metadata dict.
     """
     pdb_path = PROJECT_ROOT / state_info["pdb"]
     source_chain = state_info["source_chain"]
+    is_dimer = state_info.get("is_dimer", False)
 
     print(f"\n{'='*60}")
-    print(f"Preparing receptor: {state_name}")
+    print(f"Preparing receptor: {state_name} ({'dimer' if is_dimer else 'monomer'})")
     print(f"  Source: {pdb_path}")
     print(f"  Source chain: {source_chain}")
-    print(f"  Target range: {KINASE_DOMAIN_START}-{KINASE_DOMAIN_END} (chain A)")
+    print(f"  Target range: {KINASE_DOMAIN_START}-{KINASE_DOMAIN_END}")
 
-    # Extract kinase domain
-    lines, resnums = extract_chain_residue_range(
-        pdb_path, source_chain,
-        KINASE_DOMAIN_START, KINASE_DOMAIN_END,
-        target_chain="A",
-    )
-
-    if not resnums:
-        raise ValueError(
-            f"No residues found in {pdb_path} chain {source_chain} "
-            f"range {KINASE_DOMAIN_START}-{KINASE_DOMAIN_END}"
+    if is_dimer:
+        # Extract both monomers
+        a_lines, a_resnums, b_lines, b_resnums = extract_dimer_chains(
+            pdb_path, state_info,
+            KINASE_DOMAIN_START, KINASE_DOMAIN_END,
         )
+        if not a_resnums:
+            raise ValueError(
+                f"No monomer A residues in {pdb_path} chain {source_chain} "
+                f"range {KINASE_DOMAIN_START}-{KINASE_DOMAIN_END}"
+            )
+        print(f"  Monomer A: {a_resnums[0]}-{a_resnums[-1]} ({len(a_resnums)} res)")
+        if b_resnums:
+            print(f"  Monomer B: {b_resnums[0]}-{b_resnums[-1]} ({len(b_resnums)} res)")
+        else:
+            print(f"  WARNING: No monomer B found — falling back to monomer-only")
+            is_dimer = False
+
+    if is_dimer:
+        # Apply +1000 offset to monomer B, merge into chain A
+        merged_lines = list(a_lines)
+        for line in b_lines:
+            old_resnum = get_resnum(line)
+            new_resnum = old_resnum + CHAIN_B_OFFSET
+            new_line = set_chain(line, "A")
+            new_line = set_resnum(new_line, new_resnum)
+            merged_lines.append(new_line)
+
+        b_resnums_offset = [r + CHAIN_B_OFFSET for r in b_resnums]
+        resnums = a_resnums + b_resnums_offset
+        lines = merged_lines
+
+        print(f"  Monomer B offset: +{CHAIN_B_OFFSET} → "
+              f"{b_resnums_offset[0]}-{b_resnums_offset[-1]}")
+        print(f"  Merged chain A: {len(a_resnums)} + {len(b_resnums)} = "
+              f"{len(resnums)} residues")
+    else:
+        # Monomer-only fallback (extract first occurrence)
+        lines, resnums = extract_chain_residue_range(
+            pdb_path, source_chain,
+            KINASE_DOMAIN_START, KINASE_DOMAIN_END,
+            target_chain="A",
+        )
+        if not resnums:
+            raise ValueError(
+                f"No residues found in {pdb_path} chain {source_chain} "
+                f"range {KINASE_DOMAIN_START}-{KINASE_DOMAIN_END}"
+            )
 
     lines, rosetta_stats = normalize_rosetta_input_lines(lines)
     print(f"  Rosetta normalization: {_rosetta_stats_summary(rosetta_stats)}")
@@ -538,36 +729,42 @@ def prepare_receptor(
     first_res = resnums[0]
     last_res = resnums[-1]
 
-    # Check for gaps
-    expected = set(range(first_res, last_res + 1))
-    actual = set(resnums)
-    missing = sorted(expected - actual)
+    # Check for gaps (monomer A only — offset range has its own gap logic)
+    a_only = [r for r in resnums if r <= KINASE_DOMAIN_END]
+    expected = set(range(a_only[0], a_only[-1] + 1)) if a_only else set()
+    actual_a = set(a_only)
+    missing = sorted(expected - actual_a)
 
-    # N-lobe / C-lobe counts
-    n_nlobe = sum(1 for r in resnums if r < NLOBE_CLOBE_BOUNDARY)
-    n_clobe = sum(1 for r in resnums if r >= NLOBE_CLOBE_BOUNDARY)
+    # N-lobe / C-lobe counts (monomer A only)
+    n_nlobe = sum(1 for r in a_only if r < NLOBE_CLOBE_BOUNDARY)
+    n_clobe = sum(1 for r in a_only if r >= NLOBE_CLOBE_BOUNDARY)
 
     # Write receptor PDB
     output_pdb = output_dir / f"receptor_{state_name}.pdb"
     write_pdb(lines, output_pdb)
 
+    construct_type = "dimer_offset" if is_dimer else "full_kinase_domain"
+
     print(f"  Output: {output_pdb}")
-    print(f"  Residues: {first_res}-{last_res} ({n_residues} residues, {n_atoms} atoms)")
+    print(f"  Construct: {construct_type}")
+    print(f"  Total: {n_residues} residues, {n_atoms} atoms")
     if stripped_resnums:
         print(f"  Backbone-incomplete residues removed: {format_ranges(stripped_resnums)}")
     print(f"  N-lobe: {n_nlobe} residues (< {NLOBE_CLOBE_BOUNDARY})")
     print(f"  C-lobe: {n_clobe} residues (>= {NLOBE_CLOBE_BOUNDARY})")
     if missing:
-        print(f"  WARNING: {len(missing)} missing residues: {format_ranges(missing)}")
+        print(f"  WARNING: {len(missing)} missing residues (monomer A): "
+              f"{format_ranges(missing)}")
     else:
-        print(f"  No gaps detected")
+        print(f"  No gaps detected (monomer A)")
 
     # Get sequence for validation
     seq = get_residue_sequence(output_pdb, "A")
 
     metadata = {
         "state_name": state_name,
-        "construct_type": "full_kinase_domain",
+        "construct_type": construct_type,
+        "is_dimer": is_dimer,
         "source_pdb": str(state_info["pdb"]),
         "source_chain": source_chain,
         "description": state_info["description"],
@@ -584,6 +781,11 @@ def prepare_receptor(
         "numbering_system": "PDB (3GT8-consistent)",
         "membrane_proximal_excluded": MEMBRANE_PROXIMAL,
     }
+    if is_dimer:
+        metadata["chain_b_offset"] = CHAIN_B_OFFSET
+        metadata["monomer_a_residues"] = len(a_only)
+        metadata["monomer_b_residues"] = len([r for r in resnums if r > KINASE_DOMAIN_END])
+        metadata["membrane_proximal_excluded_b"] = MEMBRANE_PROXIMAL_B
     _apply_rosetta_stats(metadata, rosetta_stats)
 
     return metadata
@@ -736,15 +938,21 @@ def prepare_docking_pair(
     partner_pdb: Path,
     output_pdb: Path,
     state_name: str,
+    receptor_meta: Optional[dict] = None,
 ) -> dict:
     """Create a docking-ready PDB with receptor=chain A, partner=chain B.
 
-    This is the Phase 1 approach: single kinase domain monomer + partner.
-    No dimer merging (unlike the legacy C-lobe fragment approach).
+    For dimer receptors (+1000 offset):
+    - Receptor chain A contains both monomers (699-1007 + 1699-2007)
+    - Partner is chain B
+    - Excluded residues include both monomers' membrane-proximal regions
+    - Generates mapping CSV for post-docking chain restoration
     """
-    print(f"\n  Creating docking pair: {state_name}")
+    is_dimer = (receptor_meta or {}).get("is_dimer", False)
+    print(f"\n  Creating docking pair: {state_name} "
+          f"({'dimer +1000 offset' if is_dimer else 'monomer'})")
 
-    # Read receptor (already chain A)
+    # Read receptor (already chain A, may contain +1000 offset residues)
     receptor_lines = parse_pdb_atoms(receptor_pdb)
     r_resnums = sorted(set(get_resnum(l) for l in receptor_lines))
 
@@ -774,19 +982,49 @@ def prepare_docking_pair(
     write_pdb(combined, output_pdb)
 
     # Compute excluded residues
-    excl_set = parse_ranges(MEMBRANE_PROXIMAL)
-    # Only keep excluded residues that are actually in this receptor
-    excl_actual = excl_set & set(r_resnums)
+    excl_a_set = parse_ranges(MEMBRANE_PROXIMAL)
+    if is_dimer:
+        # Add monomer B membrane-proximal with +1000 offset
+        excl_b_set = parse_ranges(MEMBRANE_PROXIMAL_B)
+        excl_b_offset = {r + CHAIN_B_OFFSET for r in excl_b_set}
+        excl_combined = excl_a_set | excl_b_offset
+    else:
+        excl_combined = excl_a_set
+    # Only keep excluded residues actually present in receptor
+    excl_actual = excl_combined & set(r_resnums)
     excl_str = format_ranges(excl_actual)
 
+    # Monomer counts
+    a_only = [r for r in r_resnums if r <= KINASE_DOMAIN_END]
+    b_offset = [r for r in r_resnums if r > KINASE_DOMAIN_END]
+
     print(f"    Receptor: chain A, {r_resnums[0]}-{r_resnums[-1]} ({len(r_resnums)} res)")
+    if is_dimer and b_offset:
+        print(f"      Monomer A: {a_only[0]}-{a_only[-1]} ({len(a_only)} res)")
+        print(f"      Monomer B: {b_offset[0]}-{b_offset[-1]} ({len(b_offset)} res, +{CHAIN_B_OFFSET} offset)")
     print(f"    Partner:  chain B, {p_resnums[0]}-{p_resnums[-1]} ({len(p_resnums)} res)")
     if stripped:
         print(f"    Backbone-incomplete residues removed: {format_ranges(stripped)}")
     print(f"    Excluded: {len(excl_actual)} membrane-proximal residues")
     print(f"    Output:   {output_pdb}")
 
-    return {
+    # Generate mapping CSV for post-docking chain restoration
+    mapping_csv_path = None
+    if is_dimer:
+        mapping_csv_path = output_pdb.with_name(output_pdb.stem + "_mapping.csv")
+        with open(mapping_csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["new_chain", "new_resnum", "original_chain", "original_resnum"])
+            for r in a_only:
+                writer.writerow(["A", r, "A", r])
+            for r in b_offset:
+                writer.writerow(["A", r, "B", r - CHAIN_B_OFFSET])
+            for r in p_resnums:
+                writer.writerow(["B", r, "partner", r])
+        print(f"    Mapping:  {mapping_csv_path} "
+              f"({len(a_only) + len(b_offset) + len(p_resnums)} entries)")
+
+    result = {
         "state_name": state_name,
         "output_pdb": _display_path(output_pdb),
         "receptor_chain": "A",
@@ -799,7 +1037,12 @@ def prepare_docking_pair(
         "n_excluded": len(excl_actual),
         "total_atoms": len(combined),
         "stripped_residues": format_ranges(stripped) if stripped else "",
+        "construct_type": "dimer_offset" if is_dimer else "full_kinase_domain",
+        "is_dimer": is_dimer,
     }
+    if mapping_csv_path:
+        result["mapping_csv"] = _display_path(mapping_csv_path)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -858,8 +1101,8 @@ def validate_receptors(receptor_metas: List[dict]) -> List[str]:
 
     # Check construct type
     types = set(m["construct_type"] for m in receptor_metas)
-    if types == {"full_kinase_domain"}:
-        messages.append(f"PASS: All states are full_kinase_domain construct")
+    if len(types) == 1:
+        messages.append(f"PASS: All states are {types.pop()} construct")
     else:
         messages.append(f"WARNING: Mixed construct types: {types}")
 
@@ -1055,7 +1298,7 @@ def write_validation_report(
         "## Summary",
         "",
         f"- **Receptor states prepared:** {len(receptor_metas)}",
-        f"- **Receptor construct type:** full_kinase_domain",
+        f"- **Receptor construct type:** {receptor_metas[0]['construct_type']}",
         f"- **Partner construct type:** extended_beta_meander",
         f"- **Partner residue range:** {partner_meta['residue_start']}-{partner_meta['residue_end']}",
         f"- **Numbering system:** PDB (3GT8-consistent)",
@@ -1195,7 +1438,8 @@ def prepare_phase1_inputs(output_dir: Optional[Path] = None) -> dict:
         docking_pdb = output_dir / f"docking_{state_name}_ext_beta_meander.pdb"
 
         pair_meta = prepare_docking_pair(
-            receptor_pdb, partner_pdb, docking_pdb, state_name
+            receptor_pdb, partner_pdb, docking_pdb, state_name,
+            receptor_meta=r_meta,
         )
         pair_metas.append(pair_meta)
 
@@ -1244,7 +1488,7 @@ def prepare_phase1_inputs(output_dir: Optional[Path] = None) -> dict:
     print("TASK GROUP 1.0 COMPLETE")
     print(f"{'='*60}")
     print(f"\nDeliverables in {output_dir}/:")
-    print(f"  Receptor PDBs:     3 states × full_kinase_domain")
+    print(f"  Receptor PDBs:     3 states × {receptor_metas[0]['construct_type']}")
     print(f"  Partner PDB:       1 × extended_beta_meander ({partner_meta['residue_start']}-{partner_meta['residue_end']})")
     print(f"  Docking pairs:     3 × (receptor + partner)")
     print(f"  receptor_metadata.csv")

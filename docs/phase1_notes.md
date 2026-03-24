@@ -43,10 +43,10 @@
 
 ### 1.4 Config 변경사항 (Legacy -> Phase 1)
 
-| Setting | Legacy (dimer) | Phase 1 (monomer) | Why |
+| Setting | Legacy (dimer) | Phase 1 (dimer, +1000 offset) | Why |
 |---------|---------------|-------------------|-----|
-| input_pdb | `EGFR_dimer_*.pdb` | `docking_*_ext_beta_meander.pdb` | Monomer receptor |
-| excluded_residues_A | Includes `1713-1720,...` | Only `709-720,...` | No dimer chain B |
+| input_pdb | `EGFR_dimer_*.pdb` | `docking_*_ext_beta_meander.pdb` | Dimer receptor (+1000 offset) |
+| excluded_residues_A | Includes `1713-1720,...` | Includes `1713-1720,...` | 양쪽 monomer membrane-proximal |
 | total_global_models | 50,000 (single seed) | 20,000 x 5 seeds | Multi-seed strategy |
 | random_seed | auto | Deterministic per seed | Reproducibility |
 | n_cpus | 32 | 16 | Shared HPC safety |
@@ -61,7 +61,7 @@
 {
     "receptor_id": "3GT8_raw",
     "partner_id": "extended_beta_meander_955_1006",
-    "construct_type": "full_kinase_domain",
+    "construct_type": "dimer_offset",
     "config_file": "config/phase1/phase1_prod_3GT8_raw_seed0.ini",
     "input_pdb": "input/PPI/phase1/docking_3GT8_raw_ext_beta_meander.pdb",
     "total_global_models": 20000,
@@ -181,7 +181,7 @@ Rosetta global docking은 fixed-backbone을 가정한다. 20k -> 100k로 증가�
 | decoy_id | str | File_PDB | PDB filename |
 | receptor_id | str | metadata | e.g., "3GT8_raw" |
 | partner_id | str | metadata | "extended_beta_meander_955_1006" |
-| construct_type | str | metadata | "full_kinase_domain" |
+| construct_type | str | metadata | "dimer_offset" |
 | seed_index | int | metadata | 0-4 for production |
 | run_type | str | metadata | "test" or "production" |
 | Rank | int | final_ranking.csv | 1-20 within seed |
