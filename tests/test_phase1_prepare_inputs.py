@@ -155,3 +155,19 @@ def test_prepare_phase1_inputs_writes_rosetta_normalization_metadata(
     assert "HSD->HIS:5" in report_text
     assert "ILE:CD->CD1:1" in report_text
     assert result["status_code"] == 0
+
+
+def test_register_pilot_data_uses_historical_namespaced_fields(tmp_path: Path) -> None:
+    output_path = module.register_pilot_data(tmp_path)
+
+    rows = list(csv.DictReader(output_path.open(encoding="utf-8")))
+    assert len(rows) == 2
+    for row in rows:
+        assert row["status"] == "historical_reference_only"
+        assert row["historical_only"] == "true"
+        assert row["downstream_filter"] == "historical_only == true AND status == historical_reference_only"
+        assert "results_dir" not in row
+        assert "runtime_inputs" not in row
+
+    assert rows[0]["historical_reference.results_dir"]
+    assert rows[1]["legacy_reference.results_dir"]

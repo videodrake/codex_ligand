@@ -76,6 +76,16 @@ ARTIFACT_RESNUM = 962
 # Comparison logic
 # ---------------------------------------------------------------------------
 
+def _is_historical_reference_entry(row: dict) -> bool:
+    """Return True only for explicit non-runtime historical reference rows."""
+    status_ok = row.get("status") == "historical_reference_only"
+    historical_only_ok = str(row.get("historical_only", "")).strip().lower() == "true"
+    has_namespace_ref = bool(
+        row.get("historical_reference.results_dir") or row.get("legacy_reference.results_dir")
+    )
+    return status_ok and historical_only_ok and has_namespace_ref
+
+
 def generate_pilot_comparison(
     output_base: Path,
     states: List[str] = None,
@@ -98,10 +108,10 @@ def generate_pilot_comparison(
     pilot_entries = []
     if pilot_ref_path.exists():
         with open(pilot_ref_path, encoding="utf-8") as f:
-            pilot_entries = list(csv.DictReader(f))
+            pilot_entries = [row for row in csv.DictReader(f) if _is_historical_reference_entry(row)]
     elif legacy_pilot_ref_path.exists():
         with open(legacy_pilot_ref_path, encoding="utf-8") as f:
-            pilot_entries = list(csv.DictReader(f))
+            pilot_entries = [row for row in csv.DictReader(f) if _is_historical_reference_entry(row)]
 
     # Load new results per state
     state_data = {}

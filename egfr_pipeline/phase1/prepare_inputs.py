@@ -1235,6 +1235,7 @@ def write_docking_pair_metadata(pair_metas: List[dict], output_dir: Path) -> Pat
 def register_pilot_data(output_dir: Path) -> Path:
     """Register existing pilot data as historical reference."""
     output_path = output_dir / "pilot_data_reference.csv"
+    downstream_filter = "historical_only == true AND status == historical_reference_only"
 
     pilot_entries = [
         {
@@ -1247,7 +1248,9 @@ def register_pilot_data(output_dir: Path) -> Path:
             "partner_range": "960-1006",
             "known_artifacts": "N-lobe absence; VAL962 N-terminal artifact; no orientation filter",
             "status": "historical_reference_only",
-            "results_dir": "output/egfr_myo1d_vina/ppi/beta_meander",
+            "historical_only": "true",
+            "historical_reference.results_dir": "output/egfr_myo1d_vina/ppi/beta_meander",
+            "downstream_filter": downstream_filter,
         },
         {
             "label": "EGFR_dimer_TH1",
@@ -1259,14 +1262,20 @@ def register_pilot_data(output_dir: Path) -> Path:
             "partner_range": "801-1006",
             "known_artifacts": "N-lobe absence; TH1 noise (not primary search input)",
             "status": "historical_reference_only",
-            "results_dir": "output/egfr_myo1d_vina/ppi/TH1",
+            "historical_only": "true",
+            "legacy_reference.results_dir": "output/egfr_myo1d_vina/ppi/TH1",
+            "downstream_filter": downstream_filter,
         },
     ]
 
     if not pilot_entries:
         print("  WARNING: No pilot entries to register")
         return output_path
-    fieldnames = list(pilot_entries[0].keys())
+    fieldnames: List[str] = []
+    for entry in pilot_entries:
+        for key in entry.keys():
+            if key not in fieldnames:
+                fieldnames.append(key)
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
