@@ -100,6 +100,9 @@ qsub -v MODE=post-only config/run_production.pbs               # Phase 4부터 (
 qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs        # precheck 가드 우회 (의도적으로만)
 ```
 
+> 참고: `run_production.py`의 legacy Phase 2/3 실행 경로는 제거되었습니다.  
+> PPI 단계만 실행하려면 `python run_production.py --only 2,3` 또는 `qsub -v MODE=ppi-only config/run_production.pbs`를 사용하세요.
+
 #### Lane별 PBS 스크립트 (개별 제출)
 
 `run_production.pbs` 대신 lane별로 개별 제출할 수 있습니다:
