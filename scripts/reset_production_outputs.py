@@ -3,10 +3,8 @@
 
 This script is intentionally conservative about what it removes:
 
-- current project output root from ``config/example-project.yaml``
-- phase-separated downstream output directories
-- PyRosetta PPI docking directories derived from the production INI files
-- legacy ``EGFR_dimer_*`` docking directories at repository root
+- active workflow outputs (``workflow_a/workflow_b/precheck``)
+- optional legacy outputs only when ``--include-legacy`` is explicitly enabled
 
 It does **not** remove:
 
@@ -18,125 +16,52 @@ It does **not** remove:
 from __future__ import annotations
 
 import argparse
-import configparser
-import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Iterable, List, Set
-
+from typing import List, Set
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from egfr_pipeline import paths
-from egfr_pipeline.pyrosetta_docking.run_metadata import build_output_root_name
-
-PROJECT_CONFIG = REPO_ROOT / "config" / "example-project.yaml"
-# Legacy PPI configs removed — Phase 1 인프라로 전환 완료 (config/phase1/*.ini)
-PPI_CONFIGS = ()
-PHASE_OUTPUT_DIRS = (
+ACTIVE_WORKFLOW_OUTPUT_DIRS = (
     REPO_ROOT / "output" / "workflow_a",
     REPO_ROOT / "output" / "workflow_b",
     REPO_ROOT / "output" / "precheck",
+)
+LEGACY_OPTIONAL_OUTPUT_DIRS = (
     REPO_ROOT / "output" / "phase1_ppi",
-    REPO_ROOT / "output" / "phase2_pockets",
-    REPO_ROOT / "output" / "phase3_docking",
-    REPO_ROOT / "output" / "phase4_perturbation",
+    REPO_ROOT / "output" / "egfr_myo1d_vina",
 )
-DERIVED_STEP_DIRS = (
-    "step1_vina_raw",
-    "step2_ppi_raw",
-    "step3_ppi_postprocess",
-    "step4_vina_postprocess",
-    "step5_verdict",
-    "step6_report",
-    "step7_validate",
-)
-DERIVED_ROOT_FILES = (
-    "current_run_manifest.json",
-    "step_index.md",
+LEGACY_OPTIONAL_GLOBS = (
+    "output/step*",
+    "step*",
 )
 
 
-def _project_output_dir() -> Path:
-    output_root_raw = "./output"
-    for raw_line in PROJECT_CONFIG.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        match = re.match(r"^output_root\s*:\s*(.+?)\s*$", line)
-        if not match:
-            continue
-        parsed = match.group(1).strip()
-        if (parsed.startswith('"') and parsed.endswith('"')) or (
-            parsed.startswith("'") and parsed.endswith("'")
-        ):
-            parsed = parsed[1:-1]
-        output_root_raw = parsed
-        break
-    output_root = Path(output_root_raw)
-    if not output_root.is_absolute():
-        output_root = (REPO_ROOT / output_root).resolve()
-    return paths.workflow_a_root({"output_root": str(output_root)}).resolve()
-
-
-def _ppi_output_dirs() -> Set[Path]:
-    targets: Set[Path] = set()
-
-    for config_path in PPI_CONFIGS:
-        if not config_path.exists():
-            continue
-
-        parser = configparser.ConfigParser()
-        parser.read(config_path, encoding="utf-8")
-        input_pdb_rel = parser.get("Path", "input_pdb_name", fallback="")
-        if not input_pdb_rel:
-            continue
-
-        input_pdb = REPO_ROOT / input_pdb_rel
-        stem = input_pdb.stem
-        targets.add(REPO_ROOT / stem)
-        tagged = build_output_root_name(parser, str(input_pdb), stem)
-        targets.add(REPO_ROOT / tagged)
-
-    for path in REPO_ROOT.glob("EGFR_dimer_*"):
-        if path.is_dir():
-            targets.add(path)
-
-    return targets
-
-
-def _derived_output_targets(project_root: Path) -> List[Path]:
-    targets: List[Path] = []
-    for name in DERIVED_STEP_DIRS:
-        targets.append(project_root / name)
-    for name in DERIVED_ROOT_FILES:
-        targets.append(project_root / name)
-    return targets
-
-
-def collect_cleanup_targets() -> List[Path]:
-    targets: List[Path] = []
+def collect_cleanup_targets(*, include_legacy: bool) -> tuple[List[Path], List[Path]]:
+    active_targets: List[Path] = []
+    legacy_targets: List[Path] = []
     seen: Set[Path] = set()
 
-    def add(path: Path) -> None:
+    def add(path: Path, *, group: List[Path]) -> None:
         resolved = path.resolve()
         if resolved not in seen:
             seen.add(resolved)
-            targets.append(resolved)
+            group.append(resolved)
 
-    project_root = _project_output_dir()
-    for path in _derived_output_targets(project_root):
-        add(path)
-    add(project_root)
-    for path in PHASE_OUTPUT_DIRS:
-        add(path)
-    for path in sorted(_ppi_output_dirs()):
-        add(path)
+    for path in ACTIVE_WORKFLOW_OUTPUT_DIRS:
+        add(path, group=active_targets)
 
-    return targets
+    if include_legacy:
+        for path in LEGACY_OPTIONAL_OUTPUT_DIRS:
+            add(path, group=legacy_targets)
+        for pattern in LEGACY_OPTIONAL_GLOBS:
+            for path in sorted(REPO_ROOT.glob(pattern)):
+                add(path, group=legacy_targets)
+
+    return active_targets, legacy_targets
 
 
 def _remove_path(path: Path, execute: bool) -> str:
@@ -163,16 +88,34 @@ def main() -> int:
         action="store_true",
         help="Actually remove the targets. Without this flag, only print a dry-run plan.",
     )
+    parser.add_argument(
+        "--include-legacy",
+        action="store_true",
+        help="Also clean optional legacy outputs (phase1_ppi, egfr_myo1d_vina, and step* artifacts).",
+    )
     args = parser.parse_args()
 
-    targets = collect_cleanup_targets()
+    active_targets, legacy_targets = collect_cleanup_targets(
+        include_legacy=args.include_legacy
+    )
 
     print("Production output reset plan")
     print(f"Repository root: {REPO_ROOT}")
     print(f"Execute removals: {args.execute}")
+    print(f"Include legacy targets: {args.include_legacy}")
     print("")
-    for path in targets:
+    print("=== Active workflow targets (always) ===")
+    for path in active_targets:
         print(_remove_path(path, execute=args.execute))
+
+    print("")
+    if legacy_targets:
+        print("=== Legacy optional targets (--include-legacy) ===")
+        for path in legacy_targets:
+            print(_remove_path(path, execute=args.execute))
+    else:
+        print("=== Legacy optional targets (--include-legacy) ===")
+        print("[SKIP] legacy cleanup disabled")
 
     if not args.execute:
         print("")
