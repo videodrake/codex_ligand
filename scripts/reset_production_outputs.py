@@ -19,12 +19,11 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import re
 import shutil
 import sys
 from pathlib import Path
 from typing import Iterable, List, Set
-
-import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -62,8 +61,21 @@ DERIVED_ROOT_FILES = (
 
 
 def _project_output_dir() -> Path:
-    payload = yaml.safe_load(PROJECT_CONFIG.read_text(encoding="utf-8"))
-    output_root_raw = payload.get("output_root", "./output")
+    output_root_raw = "./output"
+    for raw_line in PROJECT_CONFIG.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(r"^output_root\s*:\s*(.+?)\s*$", line)
+        if not match:
+            continue
+        parsed = match.group(1).strip()
+        if (parsed.startswith('"') and parsed.endswith('"')) or (
+            parsed.startswith("'") and parsed.endswith("'")
+        ):
+            parsed = parsed[1:-1]
+        output_root_raw = parsed
+        break
     output_root = Path(output_root_raw)
     if not output_root.is_absolute():
         output_root = (REPO_ROOT / output_root).resolve()

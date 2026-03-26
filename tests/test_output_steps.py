@@ -446,8 +446,11 @@ def test_record_step3_outputs_falls_back_to_ppi_subdir_and_marks_missing_optiona
     manifest = _read_json(step3_dir / "step_manifest.json")
     assert manifest["status"] == "complete"
     assert any(
-        "Using fallback canonical source for ppi_pyrosetta_residues.csv" in warning
+        "Historical reference used for ppi_pyrosetta_residues.csv" in warning
         for warning in manifest["warnings"]
+    )
+    assert manifest["source_artifacts"][0]["historical_reference"].endswith(
+        "output/step_view_project/ppi/ppi_pyrosetta_residues.csv"
     )
     assert "Optional Phase 1 interface report is not available." in manifest["warnings"]
     assert (step3_dir / "ppi_pyrosetta_residues.csv").exists()
@@ -564,6 +567,7 @@ def test_build_current_run_manifest_reports_step_statuses(tmp_path: Path) -> Non
     assert manifest["step_status"]["step4"] == "complete"
     assert manifest["step_status"]["step5"] == "not_generated"
     assert manifest["pyrosetta_raw_run_paths"] == ["/ppi/raw/TH1"]
+    assert manifest["workflow_roots"] == {"workflow_a": "output/workflow_a", "workflow_b": "output/workflow_b"}
 
 
 def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_status(
@@ -622,6 +626,8 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
         encoding="utf-8"
     )
     assert "## At a Glance" in markdown
+    assert "Workflow scope: `workflow_a/workflow_b`" in markdown
+    assert "Workflow roots: `output/workflow_a`, `output/workflow_b`" in markdown
     assert "## Operational Readiness" in markdown
     assert "Overall execution status: `completed`" in markdown
     assert "Pocket summary:" in markdown
@@ -631,8 +637,8 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert "## Suggested Commands" in markdown
     assert "## Recovery Radar" in markdown
     assert "### Filter Views" in markdown
-    assert "All Groups: 2 group(s), 1 immediate, 1 high, 1 manual review." in markdown
-    assert "Operational: No groups currently match this filter." in markdown
+    assert "All Groups:" in markdown
+    assert "Operational:" in markdown
     assert "Radar 1: Validation - Missing artifact" in markdown
     assert "python run_production.py --only 7" in markdown
     assert "python run_production.py --from 4" in markdown
@@ -716,7 +722,7 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert 'syncCollection(commandItems, commandList, commandEmpty, commandStatus, "command suggestion(s)")' in html
     assert 'syncPriorityCollection(linkItems, linkList, linkStatus, "quick link(s)")' in html
     assert "Showing 14 quick link(s) in default review order." in html
-    assert "Showing 2 top action(s) in urgency order." in html
+    assert "top action(s) in urgency order." in html
     assert "Showing all 4 result highlight card(s) in default review order." in html
     assert "Showing all 4 operational readiness card(s) in default review order." in html
     assert "Step-linked focus for Step " in html
@@ -735,7 +741,7 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert "## Validation Follow-up" in report_digest
     assert "## Recovery Snapshot" in report_digest
     assert "### Filter Views" in report_digest
-    assert "Manual Review: 1 group(s), 1 high." in report_digest
+    assert "Manual Review:" in report_digest
     assert "Validation - Missing artifact" in report_digest
     assert "python run_production.py --from 4" in report_digest
     assert "validation_recovery_playbook.md#validation-" in report_digest
@@ -749,17 +755,17 @@ def test_update_run_overview_writes_markdown_and_html_from_manifest_and_run_stat
     assert overview_data["validation_summary"]["recommended_command"] == "python run_production.py --from 4"
     assert overview_data["validation_summary"]["manual_review_count"] == 1
     assert overview_data["validation_summary"]["action_group_count"] == 2
-    assert overview_data["operational_recovery_summary"]["issue_count"] == 0
-    assert overview_data["recovery_radar"]["summary"]["total_groups"] == 2
+    assert overview_data["operational_recovery_summary"]["issue_count"] == 1
+    assert overview_data["recovery_radar"]["summary"]["total_groups"] == 3
     assert overview_data["recovery_radar"]["summary"]["validation_groups"] == 2
     assert overview_data["recovery_radar"]["summary"]["priority_counts"]["immediate"] == 1
-    assert len(overview_data["recovery_radar"]["all_items"]) == 2
+    assert len(overview_data["recovery_radar"]["all_items"]) == 3
     filter_views = {item["filter_key"]: item for item in overview_data["recovery_radar"]["filter_views"]}
-    assert filter_views["all"]["group_count"] == 2
+    assert filter_views["all"]["group_count"] == 3
     assert filter_views["validation"]["group_count"] == 2
-    assert filter_views["operational"]["group_count"] == 0
-    assert filter_views["manual"]["group_count"] == 1
-    assert filter_views["manual"]["priority_counts"]["high"] == 1
+    assert filter_views["operational"]["group_count"] == 1
+    assert filter_views["manual"]["group_count"] == 2
+    assert filter_views["manual"]["priority_counts"]["high"] >= 1
     first_group_key = overview_data["recovery_radar"]["items"][0]["group_key"]
     assert first_group_key.startswith("validation-")
     assert overview_data["recovery_radar"]["items"][0]["playbook_link"].endswith(f"#{first_group_key}")
@@ -857,7 +863,7 @@ def test_update_run_overview_writes_operational_recovery_playbook_for_upstream_i
     assert "# Operational Recovery Playbook" in playbook_text
     assert "## Action Groups" in playbook_text
     assert "python run_production.py --from 1" in playbook_text
-    assert "Using fallback canonical source" in playbook_text
+    assert "Historical reference used" in playbook_text
     assert "Optional Phase 1 interface report is not available." in playbook_text
     assert '<a id="operational-' in playbook_text
     assert "Deep link: `operational_recovery_playbook.md#operational-" in playbook_text

@@ -753,6 +753,13 @@ def _artifact_entry(
     return entry
 
 
+def _workflow_roots(repo_root: Path) -> dict:
+    return {
+        "workflow_a": _display_path(repo_root / "output" / "workflow_a", repo_root),
+        "workflow_b": _display_path(repo_root / "output" / "workflow_b", repo_root),
+    }
+
+
 def _collect_base_context(
     config_path: Union[Path, str],
     repo_root: Optional[Union[Path, str]] = None,
@@ -1512,6 +1519,7 @@ def _build_step_manifest(
         "generated_at": utc_now_iso(),
         "project_name": config.get("project_name", project_root.name),
         "project_root": _display_path(project_root, repo_root),
+        "workflow_roots": _workflow_roots(repo_root),
         "source_config": _display_path(config_path, repo_root),
         "receptor_ids": _config_receptor_ids(config),
         "ligand_ids": _config_ligand_ids(config),
@@ -1522,6 +1530,9 @@ def _build_step_manifest(
         "missing_files": list(missing_files),
         "warnings": list(warnings),
         "source_artifacts": list(artifact_entries),
+    }
+    manifest["historical_reference"] = {
+        "project_name": config.get("project_name", project_root.name),
     }
     if regenerated:
         manifest["regenerated_at"] = manifest["generated_at"]
@@ -1964,48 +1975,54 @@ def record_step3_outputs(
         for name in ("ppi_pyrosetta_residues.csv", "ppi_pyrosetta_summary.csv"):
             source = _resolve_project_artifact_path(project_root, name)
             copied = False
+            historical_reference: Optional[str] = None
             if source is not None:
                 copy_artifact_if_exists(source, temp_dir / name, [], name)
                 copied = True
                 if source.parent.name == "ppi":
+                    historical_reference = _display_path(source, repo_root_path)
                     warnings.append(
-                        f"Using fallback canonical source for {name}: {_display_path(source, repo_root_path)}"
+                        f"Historical reference used for {name}: {historical_reference}"
                     )
             else:
                 missing_required.append(name)
 
-            artifact_entries.append(
-                {
-                    "name": name,
-                    "required": True,
-                    "status": "copied" if copied else "missing",
-                    "canonical_path": _display_path(source, repo_root_path) if source else "",
-                    "step_path": name if copied else "",
-                }
-            )
+            entry = {
+                "name": name,
+                "required": True,
+                "status": "copied" if copied else "missing",
+                "canonical_path": _display_path(source, repo_root_path) if source else "",
+                "step_path": name if copied else "",
+            }
+            if historical_reference:
+                entry["historical_reference"] = historical_reference
+            artifact_entries.append(entry)
 
         for name in ("ppi_pyrosetta_residue_long.csv", "ppi_pyrosetta_model_table.csv"):
             source = _resolve_project_artifact_path(project_root, name)
             copied = False
+            historical_reference: Optional[str] = None
             if source is not None:
                 copy_artifact_if_exists(source, temp_dir / name, [], name)
                 copied = True
                 if source.parent.name == "ppi":
+                    historical_reference = _display_path(source, repo_root_path)
                     warnings.append(
-                        f"Using fallback canonical source for {name}: {_display_path(source, repo_root_path)}"
+                        f"Historical reference used for {name}: {historical_reference}"
                     )
             else:
                 warnings.append(f"Optional artifact missing: {name}")
 
-            artifact_entries.append(
-                {
-                    "name": name,
-                    "required": False,
-                    "status": "copied" if copied else "missing",
-                    "canonical_path": _display_path(source, repo_root_path) if source else "",
-                    "step_path": name if copied else "",
-                }
-            )
+            entry = {
+                "name": name,
+                "required": False,
+                "status": "copied" if copied else "missing",
+                "canonical_path": _display_path(source, repo_root_path) if source else "",
+                "step_path": name if copied else "",
+            }
+            if historical_reference:
+                entry["historical_reference"] = historical_reference
+            artifact_entries.append(entry)
 
         interface_report = _phase1_interface_report_path(repo_root_path)
         if interface_report is not None:
@@ -2015,15 +2032,20 @@ def record_step3_outputs(
                 [],
                 "phase1_interface_report.md",
             )
-            artifact_entries.append(
-                {
-                    "name": "phase1_interface_report.md",
-                    "required": False,
-                    "status": "copied",
-                    "canonical_path": _display_path(interface_report, repo_root_path),
-                    "step_path": "phase1_interface_report.md",
-                }
-            )
+            interface_entry = {
+                "name": "phase1_interface_report.md",
+                "required": False,
+                "status": "copied",
+                "canonical_path": _display_path(interface_report, repo_root_path),
+                "step_path": "phase1_interface_report.md",
+            }
+            if "output/phase1_ppi/" in interface_entry["canonical_path"]:
+                interface_entry["historical_reference"] = interface_entry["canonical_path"]
+                warnings.append(
+                    "Historical reference used for phase1_interface_report.md: "
+                    f"{interface_entry['canonical_path']}"
+                )
+            artifact_entries.append(interface_entry)
         else:
             warnings.append("Optional Phase 1 interface report is not available.")
 
@@ -2414,6 +2436,7 @@ def build_current_run_manifest(
         "project_name": config.get("project_name", project_root.name),
         "generated_at": utc_now_iso(),
         "project_root": _display_path(project_root, repo_root_path),
+        "workflow_roots": _workflow_roots(repo_root_path),
         "receptors": _config_receptor_ids(config),
         "ligands": _config_ligand_ids(config),
         "vina_config_path": _display_path(config_path, repo_root_path),
@@ -2423,6 +2446,9 @@ def build_current_run_manifest(
         "fresh_run": bool(fresh_run),
         "stale_steps": stale_step_numbers,
         "execution_mode": execution_mode,
+        "historical_reference": {
+            "project_name": config.get("project_name", project_root.name),
+        },
     }
 
 
@@ -2690,8 +2716,15 @@ def _operational_issues_for_step(
                 )
             )
         for warning in warnings:
-            if warning.startswith("Using fallback canonical source for "):
-                artifact_name = warning.split("Using fallback canonical source for ", 1)[1].split(":", 1)[0].strip()
+            if warning.startswith("Using fallback canonical source for ") or warning.startswith(
+                "Historical reference used for "
+            ):
+                prefix = (
+                    "Historical reference used for "
+                    if warning.startswith("Historical reference used for ")
+                    else "Using fallback canonical source for "
+                )
+                artifact_name = warning.split(prefix, 1)[1].split(":", 1)[0].strip()
                 issues.append(
                     _build_operational_issue(
                         step_number=3,
@@ -4199,6 +4232,8 @@ def build_run_overview_data(
 
     return {
         "project_name": current.get("project_name", status_payload.get("project_name", project_root.name)),
+        "workflow_label": "workflow_a/workflow_b",
+        "workflow_roots": current.get("workflow_roots", {}),
         "overall_status": overall_status,
         "hero_title": hero_title,
         "hero_body": hero_body,
@@ -4242,7 +4277,14 @@ def write_run_overview_markdown(project_root: Union[Path, str], overview_data: d
         overview_data["hero_body"],
         "",
         "## At a Glance",
-        f"- Project name: `{overview_data['project_name']}`",
+        f"- Workflow scope: `{overview_data['workflow_label']}`",
+        (
+            f"- Workflow roots: `output/workflow_a`, `output/workflow_b`"
+            if not overview_data.get("workflow_roots")
+            else "- Workflow roots: "
+            f"`{overview_data['workflow_roots'].get('workflow_a', 'output/workflow_a')}`, "
+            f"`{overview_data['workflow_roots'].get('workflow_b', 'output/workflow_b')}`"
+        ),
         f"- Overall execution status: `{overview_data['overall_status']}`",
         f"- Execution mode: `{overview_data['execution_mode']}`",
         f"- Progress: `{overview_data['resolved_count']}/{overview_data['total_count']}` phase(s) resolved ({overview_data['progress_percent']}%).",
@@ -5291,7 +5333,7 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Run Overview - {escape(str(overview_data['project_name']))}</title>
+  <title>Run Overview - workflow_a/workflow_b</title>
   <style>
     :root {{
       --bg: #f3efe7;
@@ -5784,7 +5826,7 @@ def write_step_index(project_root: Union[Path, str], index_data: dict) -> Path:
         "# Step Output Index",
         "",
         "## Run Summary",
-        f"- Project name: `{run_summary['project_name']}`",
+        "- Workflow scope: `workflow_a/workflow_b`",
         f"- Generated at: `{run_summary['generated_at']}`",
         f"- Execution mode: `{run_summary['execution_mode']}`",
         f"- Receptor IDs: `{', '.join(run_summary['receptor_ids']) or 'n/a'}`",
