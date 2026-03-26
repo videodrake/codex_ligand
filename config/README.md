@@ -52,11 +52,39 @@ Do not assume that the whole repository already shares one unified config schema
 
 | Field | Meaning |
 |------|------|
-| `project_name` | Labels reports/run metadata; canonical outputs now live under `workflow_a` and `workflow_b` |
+| `project_name` | Identifier label for reports/run metadata only; it does **not** determine the canonical output root path |
 | `output_root` | Root directory under which the project output tree is created |
 | `mode` | Current Vina operating mode for the routine lane |
 | `max_workers` | Parallel worker ceiling; treat `16` as the routine safe bound |
 | `experimental` | Reserved area for non-baseline experiments; `null` means inactive |
+
+### Output Root Canonical Rule
+
+Treat workflow roots as canonical output roots:
+
+- `output/workflow_a/` for the routine production baseline (Vina/PPI postprocess/verdict/report/validation)
+- `output/workflow_b/` for advanced phase-separated lanes
+
+Do **not** treat `project_name` as a directory-routing key for canonical outputs.
+
+### Step View `root_mode` (Default + Override)
+
+For operations, treat step-view root selection as two conceptual modes:
+
+- `workflow` mode (**default**): read canonical payload from workflow roots (`output/workflow_a`, `output/workflow_b`) and write step-view artifacts as a derived layer.
+- `legacy` mode (compatibility): interpret outputs with old `output/{project_name}` assumptions only for legacy-run inspection/backfill.
+
+How to override in practice:
+
+- Keep default `workflow` behavior by doing nothing (recommended baseline).
+- Temporarily skip derived step-view generation with CLI `--disable-step-view` in `run_production.py`.
+- Persistently disable/enable derived step-view generation in config via either:
+  - `step_output_view.enabled: false|true`
+  - `step_output_view_enabled: false|true` (legacy compatibility key)
+
+Operational precedence:
+
+- If workflow-root and legacy-root interpretations disagree, prioritize workflow-root canonical paths.
 
 ### `receptors`
 
