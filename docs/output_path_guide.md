@@ -68,6 +68,16 @@ output/workflow_b/
 **진입점:** `run_production.py --lane adv-phase{N}`
 **경로 함수:** `paths.wb_phase{N}_*(config)`
 
+## Historical Reference Data (Non-Runtime)
+
+`pilot_data_reference.csv` 같은 historical 참조 데이터는 **실행 입력(runtime input)이 아니다**.
+
+- historical 항목은 `legacy_reference.*` 또는 `historical_reference.*` 네임스페이스 키로만 기록한다.
+- 실행 파이프라인에서 쓰는 일반 키(`results_dir`, `runtime_inputs`)는 historical 레코드에서 직접 재사용하지 않는다.
+  - 불가피하게 동일 키를 써야 한다면 `historical_only=true`를 반드시 포함해야 한다.
+- downstream consumer는 다음 조건을 만족하는 항목만 historical로 읽어야 한다.
+  - `historical_only == true AND status == historical_reference_only`
+
 ## Comparison Output
 
 Workflow A↔B 비교 결과 (Group 5).
