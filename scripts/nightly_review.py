@@ -74,7 +74,7 @@ def review_units() -> List[ReviewUnit]:
                 "Check skip/resume/force semantics and operational phase numbering.",
                 "Review status output and recovery behavior for incomplete runs.",
             ),
-            tests=("tests/test_smoke_cli.py", "tests/test_run_production.py", "tests/test_validation_smoke.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("README.md", "docs/runbook.md", "docs/manual_execution.md", "docs/architecture.md"),
         ),
         unit(
@@ -88,7 +88,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review residue-numbering helpers and shared metadata handling.",
                 "Look for duplicated runtime logic or fragile helper behavior.",
             ),
-            tests=("tests/test_vina_project_config.py", "tests/test_validation_smoke.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("config/README.md", "docs/architecture.md"),
         ),
         unit(
@@ -102,7 +102,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review local-shell versus scheduler portability assumptions.",
                 "Confirm helper scripts preserve canonical outputs and expected state.",
             ),
-            tests=("tests/test_precheck_guard.py", "tests/test_rebuild_step_views.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/pre_qsub_test_line.md", "config/run_pre_qsub_checks.pbs"),
         ),
         unit(
@@ -116,7 +116,7 @@ def review_units() -> List[ReviewUnit]:
                 "Check manifest freshness, stale-step handling, and regeneration safety.",
                 "Look for drift between output docs, manifest fields, and code behavior.",
             ),
-            tests=("tests/test_output_steps.py", "tests/test_step_e2e.py", "tests/test_step_modes.py", "tests/test_rebuild_step_views.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/architecture.md", "docs/output_artifact_map.md", "output/README.md"),
         ),
         unit(
@@ -130,7 +130,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review reproducibility controls such as seeds and search parameters.",
                 "Look for silent failures around missing binaries or malformed inputs.",
             ),
-            tests=("tests/test_vina_runtime.py", "tests/test_vina_project_config.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/manual_vina.md", "config/example-project.yaml"),
         ),
         unit(
@@ -144,7 +144,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review pocket merge heuristics and cross-state comparison contracts.",
                 "Look for unstable thresholds that could distort downstream verdicts.",
             ),
-            tests=("tests/test_vina_postprocess.py", "tests/test_verdict.py", "tests/test_report_outputs.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/output_artifact_map.md", "docs/data_flow_guide.md"),
         ),
         unit(
@@ -158,7 +158,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review user-facing reporting for overstated claims or stale references.",
                 "Confirm validation coverage matches the current output contract.",
             ),
-            tests=("tests/test_verdict.py", "tests/test_report_outputs.py", "tests/test_validation_smoke.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/output_artifact_map.md", "docs/runbook.md", "docs/architecture.md"),
         ),
         unit(
@@ -172,7 +172,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review separation between active PyRosetta paths and legacy AFM compatibility.",
                 "Look for mismatches between prepared inputs, extraction outputs, and scheduler helpers.",
             ),
-            tests=("tests/test_postprocess_ppi.py", "tests/test_pyrosetta_extract.py", "tests/test_phase1_smoke.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/manual_pyrosetta.md", "docs/data_inventory.md"),
         ),
         unit(
@@ -186,7 +186,7 @@ def review_units() -> List[ReviewUnit]:
                 "Check cluster and final ranking outputs consumed by downstream layers.",
                 "Look for partial-run behaviors that can silently corrupt downstream assumptions.",
             ),
-            tests=("tests/test_pyrosetta_metadata.py", "tests/test_pyrosetta_extract.py", "tests/test_phase1_smoke.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/manual_pyrosetta.md", "docs/architecture.md"),
         ),
         unit(
@@ -200,7 +200,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review output schema compatibility with the rest of the pipeline.",
                 "Look for lightly-tested code living outside the main package tree.",
             ),
-            tests=("tests/test_md_interface_analysis.py",),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/manual_execution.md",),
         ),
         unit(
@@ -214,7 +214,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review generated config correctness and per-state output routing.",
                 "Look for hidden assumptions about monomer/dimer constructs or seed layout.",
             ),
-            tests=("tests/test_phase1_smoke.py",),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/phase1_pyrosetta_execution_note.md", "docs/phase1_output_chain_note.md"),
         ),
         unit(
@@ -228,7 +228,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review cross-state robustness tables and LightDock secondary validation handling.",
                 "Look for report claims that outrun the underlying evidence or test coverage.",
             ),
-            tests=("tests/test_phase1_orientation_filter.py", "tests/test_cluster_consensus.py", "tests/test_compare_states.py", "tests/test_lightdock_validation.py", "tests/test_lightdock_orientation.py", "tests/test_review_report.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/orientation_filter_design.md", "docs/phase1_lightdock_validation_note.md", "docs/phase1_sampling_rationale.md"),
         ),
         unit(
@@ -242,7 +242,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review merge rules for overlapping pockets and provenance tracking.",
                 "Look for brittle behavior when state coverage is partial or sparse.",
             ),
-            tests=("tests/test_patch_ingestion_md_gate.py", "tests/test_pocket_proposal_fpocket.py", "tests/test_phase2.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/data_flow_guide.md", "docs/phase1_ppi_handoff_note.md"),
         ),
         unit(
@@ -256,7 +256,7 @@ def review_units() -> List[ReviewUnit]:
                 "Check druggability confidence semantics and cross-state classification output.",
                 "Verify Phase 3 export completeness and field naming stability.",
             ),
-            tests=("tests/test_patch_relationship_state_scope.py", "tests/test_phase2.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/output_artifact_map.md", "docs/data_flow_guide.md"),
         ),
         unit(
@@ -270,7 +270,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review pose attribution, diversity metrics, and pending-vs-complete evidence states.",
                 "Verify Phase 4 handoff fields remain stable and internally consistent.",
             ),
-            tests=("tests/test_run_diverse_docking_execution.py", "tests/test_phase3.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/output_artifact_map.md", "docs/data_flow_guide.md"),
         ),
         unit(
@@ -284,7 +284,7 @@ def review_units() -> List[ReviewUnit]:
                 "Check final ranking tables and review/report outputs for contract drift.",
                 "Look for narrative outputs that blur exploratory and robust evidence.",
             ),
-            tests=("tests/test_phase4.py", "tests/test_phase4_affinity_cap.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/output_artifact_map.md", "docs/current_pipeline_status.md"),
         ),
         unit(
@@ -298,7 +298,7 @@ def review_units() -> List[ReviewUnit]:
                 "Review active-baseline versus legacy-key ambiguity and resource defaults.",
                 "Look for config fields referenced in code but undocumented in current docs.",
             ),
-            tests=("tests/test_vina_project_config.py", "tests/test_run_production.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/first_time_environment_setup.md", "docs/runbook.md"),
         ),
         unit(
@@ -325,7 +325,7 @@ def review_units() -> List[ReviewUnit]:
                 "Check output docs for stale filenames or misleading reading-order guidance.",
                 "Look for mismatches between output contracts and validation logic.",
             ),
-            tests=("tests/test_output_steps.py", "tests/test_rebuild_step_views.py", "tests/test_step_e2e.py", "tests/test_validation_smoke.py"),
+            tests=("tests/unit/*.py", "tests/integration/*.py"),
             docs=("docs/output_artifact_map.md", "docs/data_inventory.md", "docs/architecture.md"),
         ),
         unit(
@@ -587,6 +587,12 @@ def build_unit_entries(
         if changed_matches:
             review_score -= 35
 
+        pytest_command = (
+            "pytest " + " ".join(related_tests)
+            if related_tests
+            else "pytest -m 'unit and not slow' tests/unit -q"
+        )
+
         entries.append(
             {
                 **asdict(current),
@@ -599,7 +605,7 @@ def build_unit_entries(
                 "missing_docs": missing_docs,
                 "changed_files": changed_matches,
                 "newest_modified_at": newest_modified_at,
-                "pytest_command": "pytest " + " ".join(related_tests) if related_tests else "",
+                "pytest_command": pytest_command,
                 "review_score": review_score,
                 **python_stats,
             }

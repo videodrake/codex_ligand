@@ -229,7 +229,6 @@ def _print_completion_summary(
         ("보고서", wa_phase6_report(config) / "project_report.txt"),
         ("판정", wa_phase5_verdict(config) / "valid_sites.csv"),
         ("포켓", wa_phase4_vina_postprocess(config) / "vina_pocket_table.csv"),
-        ("검증", wa_phase7_validation(config) / "validation_summary.txt"),
     ]
     for label, path in result_files:
         exists = "✓" if path.exists() else "✗"
@@ -343,7 +342,8 @@ PHASE_CORE_OUTPUTS = {
         ("Report", "project_report.txt"),
     ],
     7: [
-        ("Validation", "validation_summary.txt"),
+        # run_validation() currently reports to console and returns structured
+        # result object; it does not persist validation_summary.txt.
     ],
 }
 
@@ -1314,6 +1314,32 @@ def phase7_validate():
     return result
 
 
+def _check_verdict_prerequisites(config: dict) -> None:
+    """Ensure finalize lane prerequisites are complete before running verdict."""
+    from egfr_pipeline.paths import (
+        wa_phase2_ppi_docking,
+        wa_phase3_ppi_postprocess,
+        wa_phase4_vina_postprocess,
+    )
+
+    phase4_dir = wa_phase4_vina_postprocess(config)
+    phase3_dir = wa_phase3_ppi_postprocess(config)
+    phase2_dir = wa_phase2_ppi_docking(config)
+
+    missing: List[str] = []
+    if not (phase4_dir / "vina_pocket_table.csv").exists():
+        missing.append("Phase 4 (Vina 후처리)")
+
+    phase2_has_results = phase2_dir.exists() and any(phase2_dir.rglob("final_ranking.csv"))
+    if phase2_has_results and not (phase3_dir / "ppi_pyrosetta_residues.csv").exists():
+        missing.append("Phase 3 (PPI 후처리)")
+
+    if missing:
+        raise RuntimeError(
+            f"Verdict 실행 불가 — 선행 Phase 미완료: {', '.join(missing)}"
+        )
+
+
 def _phase3_override_dirs() -> dict:
     overrides = {}
     for target in PPI_TARGETS:
@@ -1422,6 +1448,7 @@ def phase3_ppi_postprocess():
 
 
 def _finalize_lane() -> object:
+    _check_verdict_prerequisites(_load_config())
     phase5_verdict()
     phase6_report()
     return phase7_validate()

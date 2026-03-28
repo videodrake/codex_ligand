@@ -15,12 +15,65 @@ Usage:
 """
 
 import argparse
+import json
+import re
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from egfr_pipeline import paths
+from egfr_pipeline.config import load_config
 from egfr_pipeline.ppi.prepare_dimer_pdb import restore_chains, restore_csv
+
+
+def _slugify_partner_name(value: str) -> str:
+    token = (value or "").strip() or "unknown_partner"
+    slug = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in token).strip("_")
+    return slug or "unknown_partner"
+
+
+def _write_legacy_migration_marker(legacy_dir: Path, restored_dir: Path) -> None:
+    marker_path = legacy_dir / "MOVED_TO.txt"
+    if marker_path.exists():
+        return
+    marker_path.write_text(
+        "This legacy restored directory is deprecated.\n"
+        f"Current restored outputs are written to: {restored_dir}\n",
+        encoding="utf-8",
+    )
+
+
+def _parse_run_dir_context(docking_dir: Path) -> tuple[str, str]:
+    match = re.match(r"(?P<run_type>.+)_seed(?P<seed>\d+)$", docking_dir.name)
+    if not match:
+        return "", ""
+    return match.group("run_type"), match.group("seed")
+
+
+def _write_restored_manifest(
+    restored_dir: Path,
+    *,
+    source_docking_dir: Path,
+    receptor_id: str,
+    partner_name: str,
+) -> Path:
+    run_type, seed = _parse_run_dir_context(source_docking_dir)
+    state = source_docking_dir.parent.name if source_docking_dir.parent != source_docking_dir else ""
+    payload = {
+        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "source_docking_dir": str(source_docking_dir),
+        "source_state": state,
+        "source_run_type": run_type,
+        "source_seed": seed,
+        "receptor_id": receptor_id,
+        "partner_name": partner_name,
+        "restored_dir": str(restored_dir),
+    }
+    path = restored_dir / "restored_manifest.json"
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -30,13 +83,14 @@ from egfr_pipeline.ppi.prepare_dimer_pdb import restore_chains, restore_csv
 def restore_all_results(
     docking_dir: Path,
     mapping_csv: Path,
+    restored_root: Optional[Path] = None,
 ) -> Path:
     """Restore original chain IDs in all docking output files.
 
-    Creates a ``restored/`` subdirectory with restored PDBs and CSVs.
+    Creates a restored output directory with restored PDBs and CSVs.
     Returns the path to the restored directory.
     """
-    restored_dir = docking_dir / "restored"
+    restored_dir = restored_root if restored_root is not None else docking_dir / "restored"
     restored_dir.mkdir(parents=True, exist_ok=True)
 
     n_pdb = 0
@@ -122,6 +176,10 @@ def _update_config_ppi_dir(
     partner_name: str = "",
     construct_type: str = "full_kinase_domain",
     orientation_validation_status: str = "not_available",
+    source_manifest_path: str = "",
+    source_state: str = "",
+    source_run_type: str = "",
+    source_seed: str = "",
 ) -> None:
     """Append a PPI result entry to config's pyrosetta_result_dirs list.
 
@@ -137,7 +195,7 @@ def _update_config_ppi_dir(
     Migrates legacy string values to list format automatically.
     Upserts if the same path+partner entry already exists.
     """
-    from egfr_pipeline.config import load_config, save_config
+    from egfr_pipeline.config import save_config
 
     config = load_config(config_path)
     ppi = config.get("ppi") or {}
@@ -160,6 +218,10 @@ def _update_config_ppi_dir(
         "partner": partner_name,
         "construct_type": construct_type,
         "orientation_validation_status": orientation_validation_status,
+        "source_manifest_path": source_manifest_path,
+        "source_state": source_state,
+        "source_run_type": source_run_type,
+        "source_seed": source_seed,
     }
     updated = False
     for entry in existing:
@@ -191,6 +253,7 @@ def postprocess_ppi_results(
     partner_name: str = "",
     construct_type: str = "full_kinase_domain",
     orientation_validation_status: str = "not_available",
+    restored_root: Optional[str] = None,
     skip_extract: bool = False,
     skip_report: bool = False,
 ) -> Path:
@@ -204,6 +267,7 @@ def postprocess_ppi_results(
         partner_name: Partner name for labeling.
         construct_type: Receptor/partner system label for downstream handoff.
         orientation_validation_status: Current orientation filter status.
+        restored_root: Optional explicit destination root for restored files.
         skip_extract: If True, skip PPI residue extraction.
         skip_report: If True, skip report regeneration.
 
@@ -221,13 +285,47 @@ def postprocess_ppi_results(
         print(f"[ERROR] Mapping CSV not found: {mapping_path}", file=sys.stderr)
         return Path()
 
+    config = load_config(config_path)
+
+    partner_slug = _slugify_partner_name(partner_name or docking_path.name)
+
+    if restored_root:
+        restored_output_dir = Path(restored_root)
+    else:
+        restored_output_dir = (
+            paths.wa_phase3_ppi_postprocess(config)
+            / "restored_runs"
+            / receptor_id
+            / partner_slug
+        )
+        print(f"[postprocess] Default restored output path: {restored_output_dir}")
+
     print(f"\n{'='*60}")
     print(f"  PPI Post-Processing: {partner_name or docking_path.name}")
     print(f"{'='*60}")
 
     # Step 1: Restore chains
     print("\n--- Step 1: Chain restoration ---")
-    restored_dir = restore_all_results(docking_path, mapping_path)
+    restored_dir = restore_all_results(
+        docking_path,
+        mapping_path,
+        restored_root=restored_output_dir,
+    )
+    manifest_path = _write_restored_manifest(
+        restored_dir,
+        source_docking_dir=docking_path,
+        receptor_id=receptor_id,
+        partner_name=partner_name,
+    )
+    source_run_type, source_seed = _parse_run_dir_context(docking_path)
+    source_state = docking_path.parent.name if docking_path.parent != docking_path else ""
+    legacy_restored_dir = docking_path / "restored"
+    if restored_dir != legacy_restored_dir and legacy_restored_dir.exists():
+        print(
+            "[postprocess] Legacy restored directory already exists at "
+            f"{legacy_restored_dir}; new outputs are written to {restored_dir}."
+        )
+        _write_legacy_migration_marker(legacy_restored_dir, restored_dir)
 
     # Step 2: Update config with restored dir
     print("\n--- Step 2: Register in config ---")
@@ -238,6 +336,10 @@ def postprocess_ppi_results(
         partner_name,
         construct_type=construct_type,
         orientation_validation_status=orientation_validation_status,
+        source_manifest_path=str(manifest_path),
+        source_state=source_state,
+        source_run_type=source_run_type,
+        source_seed=source_seed,
     )
 
     # Step 3: PPI residue extraction
@@ -297,6 +399,11 @@ def main():
         default="not_available",
         help="Orientation validation status to persist in config",
     )
+    parser.add_argument(
+        "--restored-root",
+        default=None,
+        help="Optional destination root for restored outputs",
+    )
     parser.add_argument("--skip-extract", action="store_true", help="Skip residue extraction")
     parser.add_argument("--skip-report", action="store_true", help="Skip report regeneration")
 
@@ -309,6 +416,7 @@ def main():
         partner_name=args.partner_name,
         construct_type=args.construct_type,
         orientation_validation_status=args.orientation_validation_status,
+        restored_root=args.restored_root,
         skip_extract=args.skip_extract,
         skip_report=args.skip_report,
     )

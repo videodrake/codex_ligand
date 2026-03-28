@@ -26,6 +26,7 @@ Outputs:
   - valid_sites.csv             (evidence classification per pocket)
 """
 import csv
+import logging
 import math
 import re
 from collections import defaultdict
@@ -1507,6 +1508,25 @@ def generate_verdict(
     ppi_post = paths.wa_phase3_ppi_postprocess(config)
     out_dir = Path(output_dir) if output_dir else paths.wa_phase5_verdict(config)
     thresholds = _get_thresholds(config)
+
+    # Defensive precheck: if Phase 2 has docking outputs, Phase 3 residue/summary
+    # tables must exist before running verdict.
+    ppi_residue_file = ppi_post / "ppi_pyrosetta_residues.csv"
+    ppi_summary_file = ppi_post / "ppi_pyrosetta_summary.csv"
+    if not ppi_residue_file.exists() or not ppi_summary_file.exists():
+        phase2_dir = paths.wa_phase2_ppi_docking(config)
+        phase2_has_results = phase2_dir.exists() and any(phase2_dir.rglob("final_ranking.csv"))
+        if phase2_has_results:
+            raise RuntimeError(
+                "Phase 2 PPI 도킹 결과가 존재하지만 Phase 3 후처리 CSV가 없습니다.\n"
+                f"  Phase 2: {phase2_dir}\n"
+                f"  Phase 3 expected: {ppi_post}\n"
+                "  → Phase 3 (PPI 후처리)를 먼저 실행하세요."
+            )
+        logging.warning(
+            "PPI 데이터 없음 — VINA-ONLY 모드로 진행합니다. "
+            "PPI 축(20점)은 반영되지 않습니다."
+        )
 
     # Load evidence
     evidence = load_all_evidence(vina_post, ppi_post)

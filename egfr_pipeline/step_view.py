@@ -7,7 +7,6 @@ of truth; step folders are curated copies and indexes for interpretation.
 
 from __future__ import annotations
 
-import configparser
 import csv
 import json
 import re
@@ -22,9 +21,9 @@ from tempfile import NamedTemporaryFile
 from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 from urllib.parse import urlencode
 
-from egfr_pipeline.config import load_config
+from egfr_pipeline.config import compat_allow_legacy_ppi_paths, load_config
 from egfr_pipeline import paths
-from egfr_pipeline.pyrosetta_docking.run_metadata import build_output_root_name
+from egfr_pipeline.ppi import path_registry as ppi_path_registry
 
 
 @dataclass(frozen=True)
@@ -490,7 +489,47 @@ def resolve_project_root(
     if not root.is_absolute():
         root = base / root
     project_name = config_data.get("project_name")
+    step_view_cfg = config_data.get("step_output_view") or {}
+    root_mode = str(step_view_cfg.get("root_mode", "workflow_a_step_views")).strip().lower()
+    if root_mode in {"workflow_a_step_views", "workflow_a"}:
+        view_root = root / "workflow_a" / "step_views"
+        return view_root / project_name if project_name else view_root
     return root / project_name if project_name else root
+
+
+def _legacy_project_root_path(
+    *,
+    config: dict,
+    repo_root: Path,
+) -> Path:
+    root = Path(config.get("output_root", "./output"))
+    if not root.is_absolute():
+        root = repo_root / root
+    project_name = config.get("project_name")
+    return root / project_name if project_name else root
+
+
+def _step_view_root_mode(config: dict) -> str:
+    step_view_cfg = config.get("step_output_view") if isinstance(config.get("step_output_view"), dict) else {}
+    mode = str((step_view_cfg or {}).get("root_mode", "workflow_a_step_views")).strip().lower()
+    if mode in {"workflow_a_step_views", "workflow_a"}:
+        return "workflow_a_step_views"
+    return "legacy_project_root"
+
+
+def _write_step_view_migration_notice(
+    *,
+    legacy_project_root: Path,
+    current_project_root: Path,
+) -> None:
+    marker = legacy_project_root / "MOVED_TO_WORKFLOW_A_STEP_VIEWS.txt"
+    if marker.exists():
+        return
+    marker.write_text(
+        "Step-view outputs were moved to workflow_a step_views.\n"
+        f"Current location: {current_project_root}\n",
+        encoding="utf-8",
+    )
 
 
 def _display_path(
@@ -770,6 +809,13 @@ def _collect_base_context(
     config = load_config(str(config_path))
     repo_root_path = _repo_root_for(config_path, repo_root)
     project_root = resolve_project_root(config_path, config=config, repo_root=repo_root_path)
+    if _step_view_root_mode(config) == "workflow_a_step_views":
+        legacy_project_root = _legacy_project_root_path(config=config, repo_root=repo_root_path)
+        if legacy_project_root != project_root and legacy_project_root.exists():
+            _write_step_view_migration_notice(
+                legacy_project_root=legacy_project_root,
+                current_project_root=project_root,
+            )
     if create_project_root:
         project_root.mkdir(parents=True, exist_ok=True)
     return config_path, repo_root_path, config, project_root
@@ -835,61 +881,50 @@ def _step2_target_slug(name: str) -> str:
     return name.replace("-", "_").replace(" ", "_")
 
 
+def _record_legacy_ppi_warning(
+    warnings: List[str],
+    warning_codes: List[dict],
+    *,
+    artifact: str,
+    path: Path,
+    repo_root: Path,
+    target_name: Optional[str] = None,
+) -> None:
+    """Append both human warning text and structured legacy warning code."""
+    display_path = _display_path(path, repo_root)
+    if target_name:
+        warnings.append(f"Legacy {artifact} layout used for {target_name}: {display_path}")
+    else:
+        warnings.append(f"Historical reference used for {artifact}: {display_path}")
+    item = {
+        "code": "LEGACY_PPI_PATH_USED",
+        "artifact": artifact,
+        "path": display_path,
+    }
+    if target_name:
+        item["target_name"] = target_name
+    warning_codes.append(item)
+
+
 def _resolve_ppi_target_dir(
     target: dict,
     repo_root: Path,
 ) -> Optional[Path]:
-    direct_dir = target.get("docking_dir")
-    if direct_dir:
-        path = Path(str(direct_dir))
-        return path if path.is_absolute() else repo_root / path
-
-    config_ini = target.get("config_ini")
-    input_pdb_hint = target.get("input_pdb")
-    if not config_ini or not input_pdb_hint:
-        return None
-
-    config_path = repo_root / str(config_ini)
-    if not config_path.exists():
-        return None
-
-    parser = configparser.ConfigParser()
-    parser.read(config_path, encoding="utf-8")
-
-    input_pdb_rel = parser.get("Path", "input_pdb_name", fallback=str(input_pdb_hint))
-    input_pdb = repo_root / input_pdb_rel
-    if not input_pdb.exists():
-        alt_input = repo_root / str(input_pdb_hint)
-        if alt_input.exists():
-            input_pdb = alt_input
-        else:
-            return None
-
-    root_name = build_output_root_name(parser, str(input_pdb), input_pdb.stem)
-    return repo_root / root_name
+    """Backward-compatible wrapper around the centralized path registry."""
+    return ppi_path_registry.resolve_target_run_dir(target, repo_root).path
 
 
 def _ppi_target_ranking_path(run_dir: Path) -> Path:
-    preferred = run_dir / "final_result" / "final_ranking.csv"
-    if preferred.exists():
-        return preferred
-    fallback = run_dir / "final_ranking.csv"
-    return preferred if preferred.exists() else fallback
+    """Backward-compatible wrapper that returns the preferred ranking candidate."""
+    resolved = ppi_path_registry.resolve_ranking_path(run_dir)
+    if resolved.source_type != "missing" and resolved.path is not None:
+        return resolved.path
+    return run_dir / "final_ranking.csv"
 
 
 def _ppi_target_metadata_path(run_dir: Path, explicit_path: Optional[Union[Path, str]] = None) -> Optional[Path]:
-    if explicit_path:
-        path = _as_path(explicit_path)
-        if path.exists():
-            return path
-    for candidate in (
-        run_dir / "pyrosetta_run_metadata.json",
-        run_dir / "final_result" / "pyrosetta_run_metadata.json",
-        run_dir / "restored" / "pyrosetta_run_metadata.json",
-    ):
-        if candidate.exists():
-            return candidate
-    return None
+    """Backward-compatible wrapper around metadata path resolution."""
+    return ppi_path_registry.resolve_metadata_path(run_dir, explicit_path).path
 
 
 def _resolve_project_artifact_path(project_root: Path, name: str) -> Optional[Path]:
@@ -915,14 +950,67 @@ def _resolve_project_artifact_path(project_root: Path, name: str) -> Optional[Pa
     return None
 
 
-def _phase1_interface_report_path(repo_root: Path) -> Optional[Path]:
-    # New layout
-    new_path = repo_root / "output" / "workflow_b" / "phase1_ppi_analysis" / "phase1_interface_report.md"
-    if new_path.exists():
-        return new_path
-    # Legacy fallback
-    legacy = repo_root / "output" / "phase1_ppi" / "phase1_interface_report.md"
-    return legacy if legacy.exists() else None
+def _collect_phase2_ppi_targets(config: dict, repo_root: Path) -> List[dict]:
+    """Auto-discover phase2 run directories when explicit targets are not provided."""
+    phase2_root = paths.wa_phase2_ppi_docking(config)
+    if not phase2_root.is_absolute():
+        phase2_root = repo_root / phase2_root
+    if not phase2_root.exists():
+        return []
+
+    targets: List[dict] = []
+    for state_dir in sorted(path for path in phase2_root.iterdir() if path.is_dir()):
+        if state_dir.name == "runtime_inputs":
+            continue
+        for run_dir in sorted(path for path in state_dir.iterdir() if path.is_dir()):
+            run_name = run_dir.name
+            run_type = ""
+            seed = ""
+            match = re.match(r"(?P<run_type>.+)_seed(?P<seed>\d+)$", run_name)
+            if match:
+                run_type = match.group("run_type")
+                seed = match.group("seed")
+            targets.append(
+                {
+                    "name": f"{state_dir.name}_{run_name}",
+                    "docking_dir": run_dir,
+                    "state": state_dir.name,
+                    "run_type": run_type,
+                    "seed": seed,
+                }
+            )
+    return targets
+
+
+def _collect_restored_source_manifests(config: dict, repo_root: Path) -> Tuple[Dict[str, dict], List[str]]:
+    """Load source restored manifests referenced by ppi.pyrosetta_result_dirs entries."""
+    manifests: Dict[str, dict] = {}
+    warnings: List[str] = []
+    ppi_cfg = config.get("ppi") if isinstance(config.get("ppi"), dict) else {}
+    result_dirs = ppi_cfg.get("pyrosetta_result_dirs") if isinstance(ppi_cfg, dict) else {}
+    if not isinstance(result_dirs, dict):
+        return manifests, warnings
+
+    for receptor_id, entries in result_dirs.items():
+        normalized_entries = entries if isinstance(entries, list) else [entries]
+        for idx, entry in enumerate(normalized_entries):
+            if not isinstance(entry, dict):
+                continue
+            source_manifest = str(entry.get("source_manifest_path", "")).strip()
+            if not source_manifest:
+                continue
+            manifest_path = Path(source_manifest)
+            if not manifest_path.is_absolute():
+                manifest_path = repo_root / manifest_path
+            key = f"{receptor_id}:{entry.get('partner', '') or idx}"
+            if manifest_path.exists():
+                try:
+                    manifests[key] = _read_json(manifest_path)
+                except (json.JSONDecodeError, OSError) as exc:
+                    warnings.append(f"Unable to read source restored manifest for {key}: {exc}")
+            else:
+                warnings.append(f"Source restored manifest missing for {key}: {_display_path(manifest_path, repo_root)}")
+    return manifests, warnings
 
 
 def _validation_message_groups(messages: Sequence[str]) -> Tuple[List[str], List[str]]:
@@ -1506,6 +1594,7 @@ def _build_step_manifest(
     artifact_entries: Sequence[dict],
     missing_files: Sequence[str],
     warnings: Sequence[str],
+    warning_codes: Optional[Sequence[dict]] = None,
     notes: str,
     regenerated: bool,
 ) -> dict:
@@ -1519,6 +1608,7 @@ def _build_step_manifest(
         "generated_at": utc_now_iso(),
         "project_name": config.get("project_name", project_root.name),
         "project_root": _display_path(project_root, repo_root),
+        "step_view_root_mode": _step_view_root_mode(config),
         "workflow_roots": _workflow_roots(repo_root),
         "source_config": _display_path(config_path, repo_root),
         "receptor_ids": _config_receptor_ids(config),
@@ -1529,6 +1619,7 @@ def _build_step_manifest(
         "status": _manifest_status(missing_files, copied_required_count),
         "missing_files": list(missing_files),
         "warnings": list(warnings),
+        "warning_codes": list(warning_codes or []),
         "source_artifacts": list(artifact_entries),
     }
     manifest["historical_reference"] = {
@@ -1799,9 +1890,10 @@ def record_step2_outputs(
         repo_root=repo_root,
     )
     spec = _step_spec(2)
-    targets = list(ppi_targets or [])
+    targets = list(ppi_targets or _collect_phase2_ppi_targets(config, repo_root_path))
     missing_required: List[str] = []
     warnings: List[str] = []
+    warning_codes: List[dict] = []
     raw_run_rows: List[dict] = []
     metadata_records: Dict[str, dict] = {}
 
@@ -1813,8 +1905,18 @@ def record_step2_outputs(
             target_slug = _step2_target_slug(target_name)
             step_ranking_name = f"{target_slug}_final_ranking.csv"
             run_dir = _resolve_ppi_target_dir(target, repo_root_path)
+            ranking_resolved = ppi_path_registry.resolve_ranking_path(run_dir) if run_dir else None
             ranking_path = _ppi_target_ranking_path(run_dir) if run_dir else Path()
             ranking_exists = bool(run_dir) and ranking_path.exists()
+            if ranking_resolved and ranking_resolved.source_type == "legacy" and ranking_resolved.path:
+                _record_legacy_ppi_warning(
+                    warnings,
+                    warning_codes,
+                    artifact="final_ranking.csv",
+                    path=ranking_resolved.path,
+                    repo_root=repo_root_path,
+                    target_name=target_name,
+                )
 
             if ranking_exists:
                 copy_artifact_if_exists(ranking_path, temp_dir / step_ranking_name, [], step_ranking_name)
@@ -1831,7 +1933,21 @@ def record_step2_outputs(
                 }
             )
 
+            metadata_resolved = (
+                ppi_path_registry.resolve_metadata_path(run_dir, target.get("metadata_path"))
+                if run_dir
+                else None
+            )
             metadata_path = _ppi_target_metadata_path(run_dir, target.get("metadata_path")) if run_dir else None
+            if metadata_resolved and metadata_resolved.source_type == "legacy" and metadata_resolved.path:
+                _record_legacy_ppi_warning(
+                    warnings,
+                    warning_codes,
+                    artifact="pyrosetta_run_metadata.json",
+                    path=metadata_resolved.path,
+                    repo_root=repo_root_path,
+                    target_name=target_name,
+                )
             if metadata_path:
                 try:
                     metadata_records[target_name] = {
@@ -1850,6 +1966,9 @@ def record_step2_outputs(
                     "final_ranking_csv": _display_path(ranking_path, repo_root_path) if ranking_exists else "",
                     "metadata_json": _display_path(metadata_path, repo_root_path) if metadata_path else "",
                     "source": "canonical_output" if ranking_exists else "missing",
+                    "state": str(target.get("state", "")),
+                    "run_type": str(target.get("run_type", "")),
+                    "seed": str(target.get("seed", "")),
                 }
             )
 
@@ -1868,6 +1987,9 @@ def record_step2_outputs(
                 "final_ranking_csv",
                 "metadata_json",
                 "source",
+                "state",
+                "run_type",
+                "seed",
             ],
         )
         artifact_entries.append(
@@ -1905,6 +2027,7 @@ def record_step2_outputs(
             artifact_entries=artifact_entries,
             missing_files=missing_required,
             warnings=warnings,
+            warning_codes=warning_codes,
             notes=notes,
             regenerated=existed,
         )
@@ -1968,6 +2091,13 @@ def record_step3_outputs(
     spec = _step_spec(3)
     missing_required: List[str] = []
     warnings: List[str] = []
+    warning_codes: List[dict] = []
+    allow_legacy_ppi_paths = compat_allow_legacy_ppi_paths(config)
+    restored_source_manifests, restored_manifest_warnings = _collect_restored_source_manifests(
+        config,
+        repo_root_path,
+    )
+    warnings.extend(restored_manifest_warnings)
 
     with _staged_step_dir(project_root, 3) as (temp_dir, _, existed):
         artifact_entries: List[dict] = []
@@ -2024,7 +2154,26 @@ def record_step3_outputs(
                 entry["historical_reference"] = historical_reference
             artifact_entries.append(entry)
 
-        interface_report = _phase1_interface_report_path(repo_root_path)
+        if restored_source_manifests:
+            _atomic_write_json(
+                temp_dir / "source_restored_manifests.json",
+                restored_source_manifests,
+            )
+            artifact_entries.append(
+                {
+                    "name": "source_restored_manifests.json",
+                    "required": False,
+                    "status": "generated",
+                    "canonical_path": "",
+                    "step_path": "source_restored_manifests.json",
+                }
+            )
+
+        interface_report_resolved = ppi_path_registry.resolve_phase1_interface_report(
+            repo_root_path,
+            allow_legacy_paths=allow_legacy_ppi_paths,
+        )
+        interface_report = interface_report_resolved.path
         if interface_report is not None:
             copy_artifact_if_exists(
                 interface_report,
@@ -2039,15 +2188,24 @@ def record_step3_outputs(
                 "canonical_path": _display_path(interface_report, repo_root_path),
                 "step_path": "phase1_interface_report.md",
             }
-            if "output/phase1_ppi/" in interface_entry["canonical_path"]:
+            if interface_report_resolved.source_type == "legacy":
                 interface_entry["historical_reference"] = interface_entry["canonical_path"]
-                warnings.append(
-                    "Historical reference used for phase1_interface_report.md: "
-                    f"{interface_entry['canonical_path']}"
+                _record_legacy_ppi_warning(
+                    warnings,
+                    warning_codes,
+                    artifact="phase1_interface_report.md",
+                    path=interface_report,
+                    repo_root=repo_root_path,
                 )
             artifact_entries.append(interface_entry)
         else:
             warnings.append("Optional Phase 1 interface report is not available.")
+            legacy_report = repo_root_path / "output" / "phase1_ppi" / "phase1_interface_report.md"
+            if legacy_report.exists() and not allow_legacy_ppi_paths:
+                warnings.append(
+                    "Legacy Phase 1 interface report exists but is disabled by "
+                    "compat.allow_legacy_ppi_paths=false."
+                )
 
         notes = (
             "Step 3 reflects the aggregated residue evidence used by verdict/report plus "
@@ -2062,6 +2220,7 @@ def record_step3_outputs(
             artifact_entries=artifact_entries,
             missing_files=missing_required,
             warnings=warnings,
+            warning_codes=warning_codes,
             notes=notes,
             regenerated=existed,
         )
@@ -2097,6 +2256,13 @@ def record_step3_outputs(
                         "status": "",
                     }
                 )
+        if restored_source_manifests:
+            key_files.append(
+                {
+                    "path": "source_restored_manifests.json",
+                    "description": "Config-linked source manifests tying restored outputs back to phase2 runs.",
+                }
+            )
         if interface_report is not None:
             key_files.append(
                 {
@@ -2432,10 +2598,21 @@ def build_current_run_manifest(
     for step_num in stale_step_numbers:
         step_status[f"step{step_num}"] = "stale"
 
+    legacy_project_root = _legacy_project_root_path(config=config, repo_root=repo_root_path)
+    legacy_notice = {
+        "exists": bool(legacy_project_root.exists() and legacy_project_root != project_root),
+        "path": _display_path(legacy_project_root, repo_root_path),
+        "marker_path": _display_path(
+            legacy_project_root / "MOVED_TO_WORKFLOW_A_STEP_VIEWS.txt",
+            repo_root_path,
+        ),
+    }
+
     return {
         "project_name": config.get("project_name", project_root.name),
         "generated_at": utc_now_iso(),
         "project_root": _display_path(project_root, repo_root_path),
+        "step_view_root_mode": _step_view_root_mode(config),
         "workflow_roots": _workflow_roots(repo_root_path),
         "receptors": _config_receptor_ids(config),
         "ligands": _config_ligand_ids(config),
@@ -2446,6 +2623,7 @@ def build_current_run_manifest(
         "fresh_run": bool(fresh_run),
         "stale_steps": stale_step_numbers,
         "execution_mode": execution_mode,
+        "legacy_step_view_root": legacy_notice,
         "historical_reference": {
             "project_name": config.get("project_name", project_root.name),
         },

@@ -31,20 +31,13 @@ See [server_environment_setup.md](./server_environment_setup.md).
 
 ```bash
 cd ~/codex_ligand
-bash scripts/run_pre_qsub_checks.sh
-```
-
-If you prefer your normal PBS workflow, use:
-
-```bash
-cd ~/codex_ligand
 qsub config/run_pre_qsub_checks.pbs
 ```
 
 On success, the PBS lane now writes a status marker to:
 
 ```bash
-output/pre_qsub_status/last_pass.json
+output/precheck/last_pass.json
 ```
 
 The script runs:
@@ -53,12 +46,8 @@ The script runs:
 2. UTF-8 CLI smoke checks for:
    - `python main.py --help`
    - `python main.py validate --help`
-3. `pytest` on:
-   - `tests/test_phase2.py`
-   - `tests/test_phase3.py`
-   - `tests/test_phase4.py`
-   - `tests/test_smoke_cli.py`
-   - `tests/test_validation_smoke.py`
+3. marker-based baseline `pytest` run:
+   - `pytest -m "unit and not slow" tests/unit -q`
 
 ## 3. What this means
 
@@ -70,20 +59,7 @@ If this line passes, the repository is in a much safer state for:
 
 If this line fails, fix the code first and do not spend cluster resources yet.
 
-## 4. Suggested server workflow
-
-```bash
-git clone <repo-url>
-cd codex_ligand
-conda activate pyrosetta
-bash scripts/setup_test_env.sh
-bash scripts/run_pre_qsub_checks.sh
-# if green, then proceed to qsub-based runs
-```
-
-## 5. Qsub-first workflow
-
-If you want the whole preflight to run through the scheduler instead of directly through `bash`, use:
+## 4. Suggested server workflow (Qsub-first)
 
 ```bash
 cd ~/codex_ligand
@@ -115,7 +91,7 @@ If you intentionally need to bypass the guard, do it explicitly:
 qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
 ```
 
-## 6. Current server baseline
+## 5. Current server baseline
 
 The repository no longer treats `.venv-tests` or a separate test-only conda env as the official server test path.
 The current baseline is:
