@@ -1,0 +1,79 @@
+bootstrap:
+  n_replicates: 20
+  sample_fraction: 0.8
+  seed: 42
+experimental: null
+ligands:
+- id: '173940'
+  pdbqt: input/ligands/173940_ligand.pdbqt
+  sdf: input/ligands/173940_ligand.sdf
+max_workers: 2
+mode: blind
+output_root: ./output_smoke
+resources:
+  scheduler: pbs
+  detect_from_env: true
+  vina:
+    cpu_per_job: 1
+    parallel_receptors: 1
+  ppi:
+    cpu_per_job: 1
+  lightdock:
+    cpu_per_job: 1
+  phase3:
+    cpu_per_job: 1
+  gpu:
+    enabled: false
+    engine: gnina
+    cpu_per_job: 1
+    devices: auto
+postprocess:
+  cluster_max_iterations: 5
+  cluster_pockets: true
+  compare_pockets: true
+  comparison_centroid_cutoff: 12.0
+  contact_cutoff: 4.0
+  extract_contacts: true
+  extract_ppi_residues: false
+  generate_report: false
+  keep_chain: false
+  merge_by_residue: true
+  merge_centroid_fallback: 8.0
+  merge_jaccard: 0.25
+  merge_overlap: 0.4
+  min_pocket_size: 2
+  parse_results: true
+  pocket_cutoff: 7.0
+  same_patch_centroid_cutoff: 8.0
+  same_patch_jaccard: 0.3
+  same_patch_overlap: 0.5
+  max_poses_per_pocket: 20
+  phase3_bridge: true
+  phase3_primary_cutoff: -7.0
+  phase3_secondary_cutoff: -5.0
+  phase3_skip_cutoff: -3.0
+  summarize_pockets: true
+ppi:
+  afm_models: null
+  afm_settings:
+    contact_cutoff: 8.0
+    partner_chain: B
+    receptor_chain: A
+  pyrosetta_result_dirs: {}
+project_name: egfr_myo1d_smoke
+receptors:
+- chain: A
+  id: 3GT8_raw
+  pdb: input/receptors/3GT8_raw.pdb
+  pdbqt: input/receptors/3GT8_raw_receptor.pdbqt
+  source_type: raw_3GT8
+vina:
+  cpu: 1
+  energy_range: 3.0
+  exhaustiveness: 8
+  min_box: 60.0
+  mode: blind
+  n_poses: 10
+  parallel_receptors: 1
+  padding: 3.0
+  seed: 20260316

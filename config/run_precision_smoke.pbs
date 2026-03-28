@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N precision_smoke
+#PBS -l nodes=node05:ppn=4
+#PBS -l walltime=02:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/precision_smoke.o
+#PBS -e ${PBS_O_WORKDIR}/precision_smoke.e
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+set +u
+source ~/.bashrc
+set -u
+conda activate pyrosetta
+
+echo "============================================"
+echo "  Precision Smoke Lane (PBS)"
+echo "  Started: $(date)"
+echo "  Node: $(hostname)"
+echo "  Cores: $(nproc)"
+echo "============================================"
+
+bash scripts/run_precision_smoke.sh
+
+echo ""
+echo "============================================"
+echo "  Precision Smoke Finished: $(date)"
+echo "============================================"

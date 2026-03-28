@@ -1,71 +1,52 @@
 # Test Suite Triage
 
-This repository now uses two practical test lanes instead of treating every test as equally blocking.
+현재 저장소의 테스트는 **marker 기반 경량 베이스라인**으로 운영합니다.
 
-## Keep as blocking pre-qsub tests
+## 현재 테스트 레인
 
-These tests directly protect code paths that would waste compute time if broken:
+### 1) Pre-qsub blocking lane (기본 게이트)
 
-- phase 2 core logic and schema tests
-- phase 3 core logic and schema tests
-- phase 4 core scoring and schema tests
-- CLI smoke tests
-- validation smoke tests
+- 대상: `tests/unit/`
+- 마커: `unit and not slow`
+- 목적: 경로 해석/호환 플래그/manifest·marker helper처럼
+  최근 변경 위험이 높은 로직을 빠르게 검증
 
-These remain in the pre-qsub lane because they guard:
-
-- schema contracts
-- data handoff between phases
-- deterministic job construction
-- scoring behavior
-- entrypoint safety
-
-## Keep, but move out of pre-qsub blocking lane
-
-The following tests are still useful, but they are not the best gate before spending cluster resources:
-
-- report-generation tests
-- review-table formatting tests
-- presentation-summary tests
-
-They are marked with `@pytest.mark.reporting`.
-
-Why they stay in the repository:
-
-- they still protect user-facing artifacts
-- they still catch drift in summaries and presentation outputs
-
-Why they are excluded from the pre-qsub lane:
-
-- they do not usually predict whether a heavy compute submission will fail
-- they are lower priority than schema, handoff, and execution safety
-
-## Current decision
-
-No existing test was deleted in this cleanup.
-
-Reason:
-
-- the large synthetic phase tests are still doing valuable contract work
-- the lower-value group is small enough to keep
-- classification is safer than deletion at this stage
-
-## Commands
-
-Pre-qsub lane:
+실행:
 
 ```bash
 bash scripts/run_pre_qsub_checks.sh
 ```
 
-Full regression lane:
+또는 직접:
 
 ```bash
-python -m pytest tests -q
+python -m pytest -m "unit and not slow" tests/unit -q
 ```
 
-Reporting-only lane:
+### 2) Reporting lane (선택적/비차단)
+
+- 마커: `reporting`
+- 목적: 사용자-facing 리포트/표현물 포맷 검증
+
+실행:
 
 ```bash
 python -m pytest -m reporting tests -q
 ```
+
+## 마커 정책
+
+- `unit`: 빠르고 결정적인 단위 테스트
+- `integration`: 모듈 간 연동 검증 (파일시스템 wiring 포함)
+- `e2e`: 시나리오 기반 end-to-end 검증
+- `slow`: PR 기본 게이트에서 제외되는 장시간 테스트
+- `reporting`: 보고서/표현물 검증
+
+`pytest.ini`에 위 마커가 정의되어 있으며, 기본 pre-qsub는
+`unit and not slow`만 실행합니다.
+
+## 운영 원칙
+
+1. PR 기본 게이트는 빠른 `unit` 중심으로 유지합니다.
+2. 통합/시나리오 테스트(`integration`, `e2e`)는 별도 레인(예: nightly)에서 확장합니다.
+3. 새 테스트 추가 시 파일명보다 **마커 계약**을 우선합니다.

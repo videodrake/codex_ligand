@@ -69,10 +69,10 @@ ppi:
     receptor_chain: A
   pyrosetta_result_dirs:
     3GT8_raw:
-    - partner: MYO1D_TH1
-      path: /work4/hwang/onepack/codex_ligand/EGFR_dimer_TH1_wt/restored
-    - partner: MYO1D_beta
-      path: /work4/hwang/onepack/codex_ligand/EGFR_dimer_beta_meander_wt/restored
+    - partner: ext_TH1
+      path: output/workflow_a/phase3_ppi_postprocess/restored_runs/3GT8_raw/ext_th1
+    - partner: ext_beta_meander
+      path: output/workflow_a/phase3_ppi_postprocess/restored_runs/3GT8_raw/ext_beta_meander
 project_name: egfr_myo1d_workflow
 # verdict 섹션: 아래 값은 모두 기본값. 필요한 키만 오버라이드하면 됨.
 # verdict:

@@ -77,6 +77,13 @@ Key artifacts include:
 - `output/workflow_a/phase2_ppi_docking/<state>/orientation_filter_log.csv` (state-dependent)
 - `output/workflow_a/phase2_ppi_docking/<state>/lightdock/lightdock_interface_support_table.csv` (when present)
 
+`ppi-postprocess` 체인 복원 산출물은 기본적으로 다음 경로에 기록됩니다.
+
+- `output/workflow_a/phase3_ppi_postprocess/restored_runs/{receptor_id}/{partner_name}/`
+
+Legacy 위치인 `{docking_dir}/restored/`는 기본 저장 경로가 아니며, 기존 legacy 디렉토리가 이미 있으면
+이동 안내용 `MOVED_TO.txt`가 남을 수 있습니다.
+
 ## 5. Minimal Run Patterns
 
 ### 5.1 Local/interactive Phase 1 run

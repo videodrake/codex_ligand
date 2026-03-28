@@ -19,6 +19,20 @@ qsub config/run_advanced_pipeline.pbs
 
 상세 실행 방법: [docs/runbook.md](docs/runbook.md)
 
+## 테스트 빠른 실행
+
+현재 기본 테스트 게이트는 marker 기반 경량 unit suite입니다.
+
+```bash
+# 서버 제출 기본 경로
+qsub config/run_pre_qsub_checks.pbs
+```
+
+```bash
+# pre-qsub 기본 게이트와 동일
+python -m pytest -m "unit and not slow" tests/unit -q
+```
+
 ## 문서 안내
 
 | 문서 | 내용 | 대상 |
@@ -59,6 +73,22 @@ PPI 도킹 → 포켓 분석(fpocket/P2Rank) → Focused Vina → 4축 스코어
 ```
 
 상세 설명: [docs/PROJECT_USAGE_OVERVIEW.md](docs/PROJECT_USAGE_OVERVIEW.md)
+
+## Legacy PPI 경로 호환 모드
+
+Step-view의 Step 3는 기본적으로 legacy 경로(`output/phase1_ppi/`)를 사용하지 않습니다.
+legacy fallback이 꼭 필요하면 config에 아래 값을 명시하세요.
+
+```json
+{
+  "compat": {
+    "allow_legacy_ppi_paths": true
+  }
+}
+```
+
+legacy 경로가 실제로 사용되면 `step_manifest.json`에
+`warning_codes[].code = "LEGACY_PPI_PATH_USED"`가 기록됩니다.
 
 ## 레포 구조
 

@@ -104,3 +104,14 @@ def resolve_resource_config(config: dict) -> tuple[dict, list[str]]:
         merged["vina"]["parallel_receptors"] = int(legacy_parallel)
 
     return merged, warnings
+
+
+def compat_allow_legacy_ppi_paths(config: dict) -> bool:
+    """Return whether legacy PPI fallback paths are explicitly allowed."""
+    compat = config.get("compat")
+    if not isinstance(compat, dict):
+        return False
+    value = compat.get("allow_legacy_ppi_paths", False)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)

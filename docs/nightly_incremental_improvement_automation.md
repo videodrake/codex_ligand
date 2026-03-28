@@ -179,9 +179,9 @@ python scripts/nightly_review.py --label nightly-auto
 
 예시:
 
-- `step_view.py` 수정: `tests/test_output_steps.py`, 필요 시 `tests/test_step_modes.py`
-- `run_production.py` 수정: `tests/test_run_production.py`, 필요 시 `tests/test_run_production_lanes.py`
-- `scripts/nightly_review.py` 수정: `tests/test_nightly_review.py`
+- `step_view.py` 수정: `pytest -m "unit and not slow" tests/unit -q` + 필요 시 `pytest -m integration tests/integration -q`
+- `run_production.py` 수정: `pytest -m "unit and not slow" tests/unit -q` + `pytest -m integration tests/integration -q`
+- `scripts/nightly_review.py` 수정: `pytest -m "unit and not slow" tests/unit -q`
 
 테스트가 없고 문서만 바꿨다면 테스트를 생략할 수 있지만, 그 이유를 리포트에 남겨야 한다.
 

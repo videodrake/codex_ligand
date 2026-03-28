@@ -113,6 +113,7 @@ qsub config/run_ppi_state_seed.pbs        # PPI docking (state/seed별)
 qsub config/run_ppi_postprocess.pbs       # PPI 후처리
 qsub config/run_vina_postprocess.pbs      # Vina 후처리
 qsub config/run_finalize.pbs              # Verdict + Report + Validate
+qsub config/run_precision_smoke.pbs       # 축소 입력 기반 빠른 production-like 검증
 ```
 
 #### LightDock 2차 검증 (Phase 1)

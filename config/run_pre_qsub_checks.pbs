@@ -41,6 +41,7 @@ echo "  Cores: $(nproc)"
 echo "  CONDA_ENV: pyrosetta"
 echo "============================================"
 
+# Delegate detailed checks to internal helper scripts.
 bash scripts/setup_test_env.sh
 bash scripts/run_pre_qsub_checks.sh
 

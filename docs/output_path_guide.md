@@ -15,6 +15,8 @@ output/workflow_a/
 │   ├── {state}/prod_seed{n}/     상태×시드별 도킹 결과
 │   └── runtime_inputs/           준비된 입력 파일
 ├── phase3_ppi_postprocess/       PPI 후처리 (잔기 추출, 스코어 표준화)
+│   └── restored_runs/{receptor}/{partner}/
+│                                postprocess 복원 산출물(restored PDB/CSV)
 ├── phase4_vina_postprocess/      Vina 후처리
 │   ├── vina_pose_table.csv       전체 포즈 테이블
 │   ├── vina_pocket_table.csv     포켓 요약 (centroid, affinity, depth)
@@ -33,6 +35,16 @@ output/workflow_a/
 
 **진입점:** `run_production.py --lane {phase}`
 **경로 함수:** `paths.wa_phase{N}_*(config)`
+
+### Step-view overlay (optional)
+
+Step-view를 활성화하면 요약/인덱스 폴더가 추가로 생성된다.
+
+- 기본(root_mode 미지정): `output/workflow_a/step_views/{project_name}/step{N}_*`
+- `step_output_view.root_mode = legacy_project_root`:
+  `output/{project_name}/step{N}_*`
+- 새 기본 모드에서 legacy 위치(`output/{project_name}`)가 이미 있으면
+  `MOVED_TO_WORKFLOW_A_STEP_VIEWS.txt` 안내 파일이 남을 수 있다.
 
 ## Workflow B — PPI-First Advanced Pipeline
 
@@ -77,6 +89,24 @@ output/workflow_b/
   - 불가피하게 동일 키를 써야 한다면 `historical_only=true`를 반드시 포함해야 한다.
 - downstream consumer는 다음 조건을 만족하는 항목만 historical로 읽어야 한다.
   - `historical_only == true AND status == historical_reference_only`
+
+## Legacy PPI Fallback Compatibility Mode
+
+Step-view Step 3(`step3_ppi_postprocess`)는 기본적으로 legacy 경로
+`output/phase1_ppi/phase1_interface_report.md`를 읽지 않는다.
+
+- 기본값: `compat.allow_legacy_ppi_paths = false`
+- 명시적으로 `true`를 설정한 경우에만 legacy Phase 1 report fallback 허용
+- legacy 경로를 실제로 사용하면 `step_manifest.json`의 `warning_codes`에
+  `LEGACY_PPI_PATH_USED` 코드가 기록됨
+
+```json
+{
+  "compat": {
+    "allow_legacy_ppi_paths": true
+  }
+}
+```
 
 ## Comparison Output
 

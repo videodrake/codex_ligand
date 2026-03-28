@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Internal helper script.
+# Canonical server submission entrypoint: qsub config/run_pre_qsub_checks.pbs
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -55,23 +57,10 @@ if [ "${CHECK_WORKFLOW_B:-0}" = "1" ]; then
   fi
 fi
 
-echo "[3/4] Pytest phase and smoke suite"
+echo "[3/4] Pytest baseline suite"
 python -m pytest \
-  -m "not reporting" \
-  "${ROOT_DIR}/tests/test_phase2.py" \
-  "${ROOT_DIR}/tests/test_phase3.py" \
-  "${ROOT_DIR}/tests/test_phase4.py" \
-  "${ROOT_DIR}/tests/test_cluster_consensus.py" \
-  "${ROOT_DIR}/tests/test_compare_states.py" \
-  "${ROOT_DIR}/tests/test_phase1_smoke.py" \
-  "${ROOT_DIR}/tests/test_precheck_guard.py" \
-  "${ROOT_DIR}/tests/test_review_report.py" \
-  "${ROOT_DIR}/tests/test_lightdock_validation.py" \
-  "${ROOT_DIR}/tests/test_pyrosetta_extract.py" \
-  "${ROOT_DIR}/tests/test_pyrosetta_metadata.py" \
-  "${ROOT_DIR}/tests/test_postprocess_ppi.py" \
-  "${ROOT_DIR}/tests/test_smoke_cli.py" \
-  "${ROOT_DIR}/tests/test_validation_smoke.py" \
+  -m "unit and not slow" \
+  "${ROOT_DIR}/tests/unit" \
   -q
 
 echo "[4/4] Pre-qsub checks passed"
