@@ -2560,10 +2560,17 @@ function sortTable(th) {
         elapsed = time.time() - t_start
         self.stage_times['Global Docking'] = elapsed
         self.logger.info(f"    [Time] Global Docking: {elapsed:.1f} sec")
+        self.logger.info(
+            f"    [Result] accepted={len(docking_results):,}, "
+            f"rejected={count_rejected:,}, errors={count_errors:,} "
+            f"(of {self.total_global:,} total)")
+        if count_errors > 0:
+            self.logger.warning(
+                f"    [!] {count_errors:,} docking errors — check workers.log for details")
         if count_rejected > 0:
             rej_pct = count_rejected / self.total_global * 100
             self.logger.info(
-                f"    > [Early Rejection] {count_rejected}/{self.total_global} "
+                f"    > [Early Rejection] {count_rejected:,}/{self.total_global:,} "
                 f"({rej_pct:.1f}%) rejected (excluded zone contact)")
 
         if not docking_results:
@@ -2602,6 +2609,7 @@ function sortTable(th) {
                       for d in docking_results)
 
         combined_data = []
+        _score_errors = 0
         n_dock = len(docking_results)
         _score_prog = max(100, min(2000, n_dock // 10))
 
@@ -2616,8 +2624,10 @@ function sortTable(th) {
                     score_res['pdb_data'] = origin['pdb_data']
                     combined_data.append(score_res)
                 else:
-                    self.logger.warning(
-                        f"Scoring Error (ID: {origin['id']}): {score_res.get('error')}")
+                    _score_errors += 1
+                    if _score_errors <= 3:
+                        self.logger.warning(
+                            f"Scoring Error (ID: {origin['id']}): {score_res.get('error')}")
                 docking_results[i] = None  # Free memory incrementally
                 done = i + 1
                 if done % _score_prog == 0 or done == n_dock:
@@ -2628,6 +2638,14 @@ function sortTable(th) {
 
         del docking_results
         gc.collect()
+
+        self.logger.info(
+            f"    [Result] scored={len(combined_data):,}, errors={_score_errors:,} "
+            f"(of {n_dock:,} total)")
+        if _score_errors > 3:
+            self.logger.warning(
+                f"    [!] {_score_errors:,} scoring errors (first 3 shown above) "
+                f"— check workers.log for details")
 
         if not combined_data:
             self.logger.critical("!!! CRITICAL: All scoring tasks failed.")
