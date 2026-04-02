@@ -30,6 +30,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -465,7 +467,7 @@ def run_budget_policy(
             f"Normalized pocket reference not found: {norm_path}\n"
             "Run TG 3.0 first."
         )
-    normalized = _load_csv(norm_path)
+    normalized = load_csv(norm_path)
     print(f"  Loaded {len(normalized)} pockets from normalized reference")
 
     # Load TG 3.1 job table
@@ -475,7 +477,7 @@ def run_budget_policy(
             f"Job table not found: {job_path}\n"
             "Run TG 3.1 first."
         )
-    jobs = _load_csv(job_path)
+    jobs = load_csv(job_path)
     print(f"  Loaded {len(jobs)} docking jobs")
 
     # Task 3.2.1-3.2.2: Initialize pocket search status
@@ -513,13 +515,6 @@ def run_budget_policy(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

@@ -34,6 +34,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 PHASE3_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase3_docking"
@@ -318,12 +320,12 @@ def run_review_report(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load all inputs
-    normalized = _load_csv(output_dir / "phase3_candidate_reference_normalized.csv")
-    jobs = _load_csv(output_dir / "phase3_docking_job_table.csv")
-    statuses = _load_csv(output_dir / "pocket_search_status.csv")
-    occupancy = _load_csv(output_dir / "phase3_pocket_occupancy_summary.csv")
-    diversity = _load_csv(output_dir / "phase3_diversity_metrics.csv")
-    evidence = _load_csv(output_dir / "phase4_docking_evidence_reference.csv")
+    normalized = load_csv(output_dir / "phase3_candidate_reference_normalized.csv")
+    jobs = load_csv(output_dir / "phase3_docking_job_table.csv")
+    statuses = load_csv(output_dir / "pocket_search_status.csv")
+    occupancy = load_csv(output_dir / "phase3_pocket_occupancy_summary.csv")
+    diversity = load_csv(output_dir / "phase3_diversity_metrics.csv")
+    evidence = load_csv(output_dir / "phase4_docking_evidence_reference.csv")
 
     metadata = {}
     meta_path = output_dir / "phase3_run_metadata.json"
@@ -349,13 +351,6 @@ def run_review_report(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 # ---------------------------------------------------------------------------
 # CLI

@@ -27,21 +27,11 @@ Usage:
 
 import argparse
 import json
-import re
-import sys
-import time
 from pathlib import Path
 from typing import Optional
 
 from egfr_pipeline import paths
-
-
-def _parse_tg(tg: str):
-    """Parse TG ID like '3.2' or '3.2s' into a comparable tuple."""
-    m = re.match(r"(\d+)\.(\d+)(.*)", tg)
-    if m:
-        return (int(m.group(1)), int(m.group(2)), m.group(3))
-    return (0, 0, tg)
+from egfr_pipeline.cascade_runner import run_cascade
 
 _CFG = {"output_root": str(paths.REPO_ROOT / "output")}
 
@@ -130,37 +120,19 @@ def run_phase3_cascade(
         )
         steps += post_steps + [review_step]
 
-    print("=" * 60)
-    print("  Phase 3 Cascade Runner")
-    print(f"  Output:   {output_dir}")
-    print(f"  Mode:     {mode}")
-    print(f"  From TG:  {from_tg}")
+    header_lines = [
+        f"Output:   {output_dir}",
+        f"Mode:     {mode}",
+    ]
     if round_id is not None:
-        print(f"  Round:    {round_id}")
-    print("=" * 60)
+        header_lines.append(f"Round:    {round_id}")
 
-    t0 = time.time()
-    for tg_id, label, func in steps:
-        if _parse_tg(tg_id) < _parse_tg(from_tg):
-            print(f"\n--- TG {tg_id} {label} --- SKIPPED (before --from-tg {from_tg})")
-            continue
-        print(f"\n{'=' * 60}")
-        print(f"  TG {tg_id}: {label}")
-        print(f"{'=' * 60}")
-        ts = time.time()
-        try:
-            func()
-        except Exception as e:
-            print(f"\n  [ERROR] TG {tg_id} failed: {e}")
-            print("  Cascade stopped.")
-            sys.exit(1)
-        elapsed = time.time() - ts
-        print(f"  TG {tg_id} done ({elapsed:.1f}s)")
-
-    total = time.time() - t0
-    print(f"\n{'=' * 60}")
-    print(f"  Phase 3 Cascade COMPLETE ({total:.1f}s)")
-    print(f"{'=' * 60}")
+    run_cascade(
+        phase_label="Phase 3 Cascade Runner",
+        steps=steps,
+        from_tg=from_tg,
+        header_lines=header_lines,
+    )
 
 
 # ---------------------------------------------------------------------------

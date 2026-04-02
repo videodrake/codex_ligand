@@ -26,6 +26,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_perturbation"
 
@@ -154,19 +157,19 @@ def compute_a1_ppi_interface(row: dict) -> float:
     - n_robust_hotspots (0-7 → 0-1): robustness support (20%)
     - n_method_agreement_both (0-7 → 0-1): multi-method (15%)
     """
-    overlap = _safe_float(row.get("hotspot_overlap_fraction", "0"))
+    overlap = safe_float(row.get("hotspot_overlap_fraction", "0"))
 
     # mean_hotspot_confidence: 1=low, 2=medium, 3=high → normalize to 0-1
-    raw_conf = _safe_float(row.get("mean_hotspot_confidence", "0"))
+    raw_conf = safe_float(row.get("mean_hotspot_confidence", "0"))
     conf_norm = min(max((raw_conf - 1.0) / 2.0, 0.0), 1.0) if raw_conf > 0 else 0.0
 
-    n_total = _safe_float(row.get("n_hotspot_residues", "1"))
+    n_total = safe_float(row.get("n_hotspot_residues", "1"))
     n_total = max(n_total, 1.0)
 
-    n_robust = _safe_float(row.get("n_robust_hotspots", "0"))
+    n_robust = safe_float(row.get("n_robust_hotspots", "0"))
     robust_frac = min(n_robust / n_total, 1.0)
 
-    n_both = _safe_float(row.get("n_method_agreement_both", "0"))
+    n_both = safe_float(row.get("n_method_agreement_both", "0"))
     both_frac = min(n_both / n_total, 1.0)
 
     score = (0.40 * overlap +
@@ -192,7 +195,7 @@ def compute_a2_druggability(row: dict) -> float:
     """
     tier = TIER_SCORES.get(row.get("overall_druggability_tier", ""), 0.0)
     conf = CONFIDENCE_SCORES.get(row.get("druggability_confidence", ""), 0.0)
-    raw_score = _safe_float(row.get("best_proposal_score", "0"))
+    raw_score = safe_float(row.get("best_proposal_score", "0"))
 
     score = 0.40 * tier + 0.30 * conf + 0.30 * raw_score
     return round(min(max(score, 0.0), 1.0), 4)
@@ -229,15 +232,15 @@ def compute_a3_perturbation_relevance(row: dict) -> float:
     """
     rel = RELATIONSHIP_SCORES.get(row.get("relationship_class", ""), 0.0)
 
-    overlap_count = _safe_float(row.get("hotspot_overlap_count", "0"))
-    n_hotspots = _safe_float(row.get("n_hotspot_residues", "1"))
+    overlap_count = safe_float(row.get("hotspot_overlap_count", "0"))
+    n_hotspots = safe_float(row.get("n_hotspot_residues", "1"))
     n_hotspots = max(n_hotspots, 1.0)
     overlap_norm = min(overlap_count / n_hotspots, 1.0)
 
     support = SUPPORT_SCORES.get(
         row.get("ligand_support_strength", "none"), 0.0)
 
-    pose_count = _safe_float(row.get("pose_support_count", "0"))
+    pose_count = safe_float(row.get("pose_support_count", "0"))
     # Cap at 10 poses for normalization
     pose_norm = min(pose_count / 10.0, 1.0)
 
@@ -272,7 +275,7 @@ def compute_a4_state_robustness(row: dict) -> float:
     state = STATE_CLASS_SCORES.get(
         row.get("state_class", ""), 0.3)
 
-    n_matched = _safe_float(row.get("n_states_matched", "1"))
+    n_matched = safe_float(row.get("n_states_matched", "1"))
     # Normalize: 1 state = 0.33, 2 = 0.67, 3 = 1.0
     n_matched_norm = min(n_matched / 3.0, 1.0)
 
@@ -287,7 +290,7 @@ def compute_a4_state_robustness(row: dict) -> float:
         # No docking evidence (skipped pocket)
         diversity = 0.0
 
-    coverage = _safe_float(row.get("coverage_fraction", "0"))
+    coverage = safe_float(row.get("coverage_fraction", "0"))
 
     score = (0.50 * state +
              0.25 * n_matched_norm +
@@ -457,7 +460,7 @@ def run_score_framework(
             "Run TG 4.0 (evidence_ingestion) first."
         )
 
-    normalized = _load_csv(norm_path)
+    normalized = load_csv(norm_path)
     print(f"  Loaded {len(normalized)} evidence rows")
 
     # Write axis definition table
@@ -494,20 +497,6 @@ def run_score_framework(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val: str) -> float:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

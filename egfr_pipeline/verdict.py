@@ -34,6 +34,8 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float, safe_int
 from egfr_pipeline.residue_utils import (
     normalize_residue_id,
     extract_resnum,
@@ -206,13 +208,6 @@ def _get_thresholds(config: dict) -> dict:
 # CSV I/O helpers
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
 def _write_csv(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -293,13 +288,13 @@ def _euclidean_dist(
 
 def load_all_evidence(vina_dir: Path, ppi_dir: Path) -> dict:
     return {
-        "pocket_table": _load_csv(vina_dir / "vina_pocket_table.csv"),
-        "drug_pocket_map": _load_csv(vina_dir / "vina_drug_pocket_map.csv"),
-        "pocket_comparison": _load_csv(vina_dir / "vina_pocket_comparison.csv"),
-        "ppi_residues": _load_csv(ppi_dir / "ppi_pyrosetta_residues.csv"),
-        "ppi_summary": _load_csv(ppi_dir / "ppi_pyrosetta_summary.csv"),
-        "afm_residues": _load_csv(ppi_dir / "ppi_afm_residues.csv"),
-        "afm_summary": _load_csv(ppi_dir / "ppi_afm_summary.csv"),
+        "pocket_table": load_csv(vina_dir / "vina_pocket_table.csv"),
+        "drug_pocket_map": load_csv(vina_dir / "vina_drug_pocket_map.csv"),
+        "pocket_comparison": load_csv(vina_dir / "vina_pocket_comparison.csv"),
+        "ppi_residues": load_csv(ppi_dir / "ppi_pyrosetta_residues.csv"),
+        "ppi_summary": load_csv(ppi_dir / "ppi_pyrosetta_summary.csv"),
+        "afm_residues": load_csv(ppi_dir / "ppi_afm_residues.csv"),
+        "afm_summary": load_csv(ppi_dir / "ppi_afm_summary.csv"),
     }
 
 
@@ -316,7 +311,7 @@ def _adapt_afm_to_ppi_format(afm_rows: List[dict]) -> List[dict]:
     """
     adapted = []
     for row in afm_rows:
-        dist = _safe_float(row.get("min_ca_distance"), 99.0)
+        dist = safe_float(row.get("min_ca_distance"), 99.0)
         # Sigmoid: closer distance = higher synthetic occupancy
         synthetic_occ = 1.0 / (1.0 + math.exp((dist - 8.0) / 2.0))
         adapted.append({
@@ -348,9 +343,9 @@ def _ppi_partner_name(row: dict) -> str:
 
 def _ppi_row_priority(row: dict) -> Tuple[float, float, float]:
     return (
-        _safe_float(row.get("frac_runs_supporting"), 0.0),
-        _safe_float(row.get("occupancy"), 0.0),
-        _safe_float(row.get("n_runs_supporting"), 0.0),
+        safe_float(row.get("frac_runs_supporting"), 0.0),
+        safe_float(row.get("occupancy"), 0.0),
+        safe_float(row.get("n_runs_supporting"), 0.0),
     )
 
 
@@ -361,8 +356,8 @@ def _best_summary_by_receptor(ppi_summary: List[dict]) -> Dict[str, dict]:
         if not rid:
             continue
         current = best.get(rid)
-        current_best = _safe_float(current.get("best_dg"), float("inf")) if current else float("inf")
-        candidate_best = _safe_float(row.get("best_dg"), float("inf"))
+        current_best = safe_float(current.get("best_dg"), float("inf")) if current else float("inf")
+        candidate_best = safe_float(row.get("best_dg"), float("inf"))
         if current is None or candidate_best < current_best:
             best[rid] = row
     return best
@@ -410,12 +405,12 @@ def _enrich_agreement_with_ppi_reproducibility(
             continue
 
         mean_frac = sum(
-            _safe_float(item.get("frac_runs_supporting"), 0.0)
+            safe_float(item.get("frac_runs_supporting"), 0.0)
             for item in matched
         ) / len(matched)
-        best_frac = max(_safe_float(item.get("frac_runs_supporting"), 0.0) for item in matched)
+        best_frac = max(safe_float(item.get("frac_runs_supporting"), 0.0) for item in matched)
         delta_values = [
-            _safe_float(item.get("best_interface_delta_e"), 0.0)
+            safe_float(item.get("best_interface_delta_e"), 0.0)
             for item in matched
             if item.get("best_interface_delta_e") not in ("", None)
         ]
@@ -491,7 +486,7 @@ def _build_ppi_partner_centroids(
     for row in ppi_residues:
         rid = row["receptor_id"]
         partner = _ppi_partner_name(row)
-        resnum = _safe_int(row.get("residue_num"), 0)
+        resnum = safe_int(row.get("residue_num"), 0)
         if resnum > 0:
             partner_resnums[(rid, partner)].add(resnum)
 
@@ -530,7 +525,7 @@ def _build_ppi_interface_centroids(
     ppi_resnums: Dict[str, Set[int]] = defaultdict(set)
     for row in merged:
         rid = row["receptor_id"]
-        resnum = _safe_int(row.get("residue_num"), 0)
+        resnum = safe_int(row.get("residue_num"), 0)
         if resnum > 0:
             ppi_resnums[rid].add(resnum)
 
@@ -588,7 +583,7 @@ def check_ppi_residue_offsets(ppi_residues: List[dict]) -> List[str]:
     """
     warnings = []
     for row in ppi_residues:
-        resnum = _safe_int(row.get("residue_num"), 0)
+        resnum = safe_int(row.get("residue_num"), 0)
         if resnum > 1700:
             warnings.append(
                 f"  Offset residue detected: {row.get('receptor_id')} "
@@ -773,16 +768,16 @@ def compute_cross_receptor_support(
             continue
         rec_a, rec_b = row["receptor_a"], row["receptor_b"]
         pkt_a, pkt_b = row["pocket_a"], row["pocket_b"]
-        centroid_dist = _safe_float(row.get("centroid_dist"), 999.0)
-        residue_jaccard = _safe_float(
+        centroid_dist = safe_float(row.get("centroid_dist"), 999.0)
+        residue_jaccard = safe_float(
             row.get("residue_jaccard", row.get("jaccard")),
             0.0,
         )
-        overlap_coeff = _safe_float(
+        overlap_coeff = safe_float(
             row.get("residue_overlap_coeff", row.get("overlap_coeff")),
             0.0,
         )
-        n_shared_ligands = _safe_int(row.get("n_shared_ligands"), 0)
+        n_shared_ligands = safe_int(row.get("n_shared_ligands"), 0)
 
         pair_strength = 0.40
         if centroid_dist <= 6.0:
@@ -924,14 +919,14 @@ def identify_consensus_sites(
             p = pocket_index.get(key, {})
             residues = parse_residue_set(p.get("union_contact_residues", ""))
             all_residues |= residues
-            aff = _safe_float(p.get("best_affinity"), 0.0)
+            aff = safe_float(p.get("best_affinity"), 0.0)
             if aff < best_aff:
                 best_aff = aff
-            total_ligand += _safe_int(p.get("n_ligand"), 0)
-            total_pose += _safe_int(p.get("n_pose"), 0)
-            cx = _safe_float(p.get("centroid_x"), None)
-            cy = _safe_float(p.get("centroid_y"), None)
-            cz = _safe_float(p.get("centroid_z"), None)
+            total_ligand += safe_int(p.get("n_ligand"), 0)
+            total_pose += safe_int(p.get("n_pose"), 0)
+            cx = safe_float(p.get("centroid_x"), None)
+            cy = safe_float(p.get("centroid_y"), None)
+            cz = safe_float(p.get("centroid_z"), None)
             if cx is not None and cy is not None and cz is not None:
                 centroids_x.append(cx)
                 centroids_y.append(cy)
@@ -1144,15 +1139,15 @@ def score_pocket(
     T = thresholds
 
     # ---- Axis 1: Vina Quality ----
-    affinity = _safe_float(pocket.get("best_affinity"), 0.0)
-    n_pose = _safe_int(pocket.get("n_pose"), 0)
-    n_ligand = _safe_int(pocket.get("n_ligand"), 0)
-    pocket_stability = _safe_float(pocket.get("pocket_exists_frac"), 0.0)
-    dominant_ligand_fraction = _safe_float(
+    affinity = safe_float(pocket.get("best_affinity"), 0.0)
+    n_pose = safe_int(pocket.get("n_pose"), 0)
+    n_ligand = safe_int(pocket.get("n_ligand"), 0)
+    pocket_stability = safe_float(pocket.get("pocket_exists_frac"), 0.0)
+    dominant_ligand_fraction = safe_float(
         pocket.get("dominant_ligand_fraction"),
         1.0 if n_ligand <= 1 else 0.0,
     )
-    ligand_pose_entropy = _safe_float(pocket.get("ligand_pose_entropy"), 0.0)
+    ligand_pose_entropy = safe_float(pocket.get("ligand_pose_entropy"), 0.0)
 
     vina_raw = 0.0
     affinity_pts = 0.0
@@ -1265,10 +1260,10 @@ def score_pocket(
 
     if has_ppi_data and ppi_agreement:
         spatial = ppi_agreement.get("spatial_proximity", "no_data")
-        n_shared = _safe_int(ppi_agreement.get("n_shared_residues"), 0)
+        n_shared = safe_int(ppi_agreement.get("n_shared_residues"), 0)
         spatial_dist = ppi_agreement.get("spatial_dist_A", "")
-        ppi_frac_runs = _safe_float(ppi_agreement.get("ppi_frac_runs_supporting"), 0.0)
-        ppi_best_delta_e = _safe_float(
+        ppi_frac_runs = safe_float(ppi_agreement.get("ppi_frac_runs_supporting"), 0.0)
+        ppi_best_delta_e = safe_float(
             ppi_agreement.get("ppi_best_interface_delta_e"),
             0.0,
         )
@@ -1296,7 +1291,7 @@ def score_pocket(
 
         # Residue overlap bonus (weak but informative)
         if T.get("ppi_residue_bonus") and n_shared > 0:
-            occ = _safe_float(ppi_agreement.get("ppi_mean_occupancy_of_shared"), 0)
+            occ = safe_float(ppi_agreement.get("ppi_mean_occupancy_of_shared"), 0)
             if occ >= 0.5:
                 overlap_pts = 4.0
                 reasons.append(f"shared_highocc={n_shared}")
@@ -1306,7 +1301,7 @@ def score_pocket(
                 reason_tags.append("ppi_shared")
 
         # Multi-partner corroboration bonus: near both beta_meander AND TH1
-        n_partners_near = _safe_int(ppi_agreement.get("n_ppi_partners_near"), 0)
+        n_partners_near = safe_int(ppi_agreement.get("n_ppi_partners_near"), 0)
         if n_partners_near >= 2:
             spatial_pts += 2.0
             reasons.append(f"multi_ppi={n_partners_near}partners")
@@ -1343,7 +1338,7 @@ def score_pocket(
     n_cross = len(cross_receptor_matches)
     cross_coverage_pts = 0.0
     cross_support_pts = 0.0
-    support_frac = _safe_float(
+    support_frac = safe_float(
         (cross_support or {}).get("support_frac"),
         0.0,
     )
@@ -1440,11 +1435,11 @@ def score_pocket(
         "dominant_ligand_fraction": dominant_ligand_fraction,
         "ligand_pose_entropy": ligand_pose_entropy,
         "ppi_frac_runs_supporting": (
-            _safe_float(ppi_agreement.get("ppi_frac_runs_supporting"), 0.0)
+            safe_float(ppi_agreement.get("ppi_frac_runs_supporting"), 0.0)
             if ppi_agreement else 0.0
         ),
         "ppi_best_interface_delta_e": (
-            _safe_float(ppi_agreement.get("ppi_best_interface_delta_e"), 0.0)
+            safe_float(ppi_agreement.get("ppi_best_interface_delta_e"), 0.0)
             if ppi_agreement else 0.0
         ),
         "cross_receptor_support": support_frac,
@@ -1596,7 +1591,7 @@ def generate_verdict(
     bootstrap_path = vina_post / "vina_pocket_bootstrap.csv"
     bootstrap_index: Dict[Tuple[str, str], dict] = {}
     if bootstrap_path.exists():
-        bootstrap_rows = _load_csv(bootstrap_path)
+        bootstrap_rows = load_csv(bootstrap_path)
         for brow in bootstrap_rows:
             bkey = (brow["receptor_id"], brow["pocket_id"])
             bootstrap_index[bkey] = brow
@@ -1638,7 +1633,7 @@ def generate_verdict(
         if ppi_agr:
             spatial_dist = ppi_agr.get("spatial_dist_A", "")
             closest_partner = ppi_agr.get("closest_ppi_partner", "")
-            n_partners_near = _safe_int(ppi_agr.get("n_ppi_partners_near"), 0)
+            n_partners_near = safe_int(ppi_agr.get("n_ppi_partners_near"), 0)
 
         cs_id = pocket_to_cs.get(key, "")
 
@@ -1667,7 +1662,7 @@ def generate_verdict(
             "n_ligand": pocket.get("n_ligand", ""),
             "dominant_ligand_fraction": (
                 raw_comp["dominant_ligand_fraction"]
-                if raw_comp["dominant_ligand_fraction"] not in (0.0, 1.0) or _safe_int(pocket.get("n_ligand"), 0) > 1
+                if raw_comp["dominant_ligand_fraction"] not in (0.0, 1.0) or safe_int(pocket.get("n_ligand"), 0) > 1
                 else pocket.get("dominant_ligand_fraction", "")
             ),
             "ligand_pose_entropy": raw_comp["ligand_pose_entropy"],
@@ -1752,22 +1747,6 @@ def _compute_exp_rank_impact(exp_corr: Optional[dict]) -> str:
     else:
         return "neutral"
 
-
-def _safe_float(val, default: float = 0.0) -> float:
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_int(val, default: int = 0) -> int:
-    try:
-        return int(val)
-    except (TypeError, ValueError):
-        try:
-            return int(float(val))
-        except (TypeError, ValueError):
-            return default
 
 
 def _print_summary(

@@ -28,6 +28,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_perturbation"
 
@@ -129,11 +132,11 @@ def classify_candidate(row: dict) -> Tuple[str, str, str]:
     Returns (mechanistic_class, classification_basis, confidence).
     """
     rel_class = row.get("relationship_class", "")
-    overlap = int(_safe_float(row.get("hotspot_overlap_count", "0")))
-    overlap_frac = _safe_float(row.get("hotspot_overlap_fraction", "0"))
+    overlap = int(safe_float(row.get("hotspot_overlap_count", "0"), 0.0))
+    overlap_frac = safe_float(row.get("hotspot_overlap_fraction", "0"), 0.0)
     tier = row.get("overall_druggability_tier", "")
     support = row.get("ligand_support_strength", "none")
-    pose_count = int(_safe_float(row.get("pose_support_count", "0")))
+    pose_count = int(safe_float(row.get("pose_support_count", "0"), 0.0))
 
     # Has any docking evidence (even pending)?
     has_docking = support not in ("none", "")
@@ -362,7 +365,7 @@ def run_mechanistic_classification(
             "Run TG 4.1 (score_framework) first."
         )
 
-    scored = _load_csv(scores_path)
+    scored = load_csv(scores_path)
     print(f"  Loaded {len(scored)} scored candidates")
 
     # Classify
@@ -390,20 +393,6 @@ def run_mechanistic_classification(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val: str) -> float:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

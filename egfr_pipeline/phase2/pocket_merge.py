@@ -32,6 +32,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -225,9 +228,9 @@ def _build_merged_pocket(
     # Centroid: weighted average by n_residues (or simple average)
     coords = []
     for p in group:
-        cx = _safe_float(p.get("centroid_x", ""))
-        cy = _safe_float(p.get("centroid_y", ""))
-        cz = _safe_float(p.get("centroid_z", ""))
+        cx = safe_float(p.get("centroid_x", ""))
+        cy = safe_float(p.get("centroid_y", ""))
+        cz = safe_float(p.get("centroid_z", ""))
         if cx is not None and cy is not None and cz is not None:
             coords.append((cx, cy, cz))
 
@@ -252,17 +255,17 @@ def _build_merged_pocket(
     res_nums = [str(_resnum_from_id(r)) for r in sorted_res]
 
     # Best scores
-    scores = [_safe_float(p.get("proposal_score", "")) for p in group]
+    scores = [safe_float(p.get("proposal_score", "")) for p in group]
     scores = [s for s in scores if s is not None]
-    drug_scores = [_safe_float(p.get("druggability_score", "")) for p in group]
+    drug_scores = [safe_float(p.get("druggability_score", "")) for p in group]
     drug_scores = [s for s in drug_scores if s is not None]
-    volumes = [_safe_float(p.get("volume_A3", "")) for p in group]
+    volumes = [safe_float(p.get("volume_A3", "")) for p in group]
     volumes = [v for v in volumes if v is not None]
 
     # Box: bounding box of all pocket atoms (use max box dimensions)
     box_sizes = []
     for dim in ("box_size_x", "box_size_y", "box_size_z"):
-        vals = [_safe_float(p.get(dim, "")) for p in group]
+        vals = [safe_float(p.get(dim, "")) for p in group]
         vals = [v for v in vals if v is not None]
         box_sizes.append(max(vals) if vals else 0.0)
 
@@ -300,12 +303,12 @@ def _build_merged_pocket(
 
 def _centroid_distance(a: dict, b: dict) -> float:
     """Euclidean distance between two pocket centroids."""
-    ax = _safe_float(a.get("centroid_x", "")) or 0.0
-    ay = _safe_float(a.get("centroid_y", "")) or 0.0
-    az = _safe_float(a.get("centroid_z", "")) or 0.0
-    bx = _safe_float(b.get("centroid_x", "")) or 0.0
-    by = _safe_float(b.get("centroid_y", "")) or 0.0
-    bz = _safe_float(b.get("centroid_z", "")) or 0.0
+    ax = safe_float(a.get("centroid_x", "")) or 0.0
+    ay = safe_float(a.get("centroid_y", "")) or 0.0
+    az = safe_float(a.get("centroid_z", "")) or 0.0
+    bx = safe_float(b.get("centroid_x", "")) or 0.0
+    by = safe_float(b.get("centroid_y", "")) or 0.0
+    bz = safe_float(b.get("centroid_z", "")) or 0.0
     return math.sqrt((ax - bx)**2 + (ay - by)**2 + (az - bz)**2)
 
 
@@ -331,7 +334,7 @@ def _best_score(pockets: List[dict], indices: List[int]) -> float:
     """Best proposal score among indexed pockets."""
     scores = []
     for i in indices:
-        s = _safe_float(pockets[i].get("proposal_score", ""))
+        s = safe_float(pockets[i].get("proposal_score", ""))
         if s is not None:
             scores.append(s)
     return max(scores) if scores else 0.0
@@ -354,7 +357,7 @@ def run_pocket_merge(output_dir: Path) -> Tuple[Path, Path, Path]:
             "Run TG 2.1 (pocket_proposal --parse) first."
         )
 
-    raw_pockets = _load_csv(raw_path)
+    raw_pockets = load_csv(raw_path)
     print(f"  Loaded {len(raw_pockets)} raw pockets from {raw_path.name}")
 
     # Merge
@@ -382,23 +385,12 @@ def run_pocket_merge(output_dir: Path) -> Tuple[Path, Path, Path]:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-
-
-def _safe_float(val) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
 
 
 def _resnum_from_id(residue_id: str) -> int:

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from egfr_pipeline import paths
+from egfr_pipeline.parsing_utils import safe_float, safe_int
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -209,7 +210,7 @@ def compute_cluster_consensus(
         representative_dG = None
         if valid_members:
             for m in valid_members:
-                dg = _safe_float(m.get("dG_separated", ""))
+                dg = safe_float(m.get("dG_separated", ""))
                 if dg is not None:
                     if representative_dG is None or dg < representative_dG:
                         representative = m.get("model_id", "")
@@ -264,7 +265,7 @@ def compute_cluster_consensus(
         for mid in valid_model_ids:
             for r in residues_by_model.get(mid, []):
                 key = (r.get("chain", ""), r.get("residue_id", ""))
-                de = _safe_float(r.get("delta_e_total", ""))
+                de = safe_float(r.get("delta_e_total", ""))
                 if de is not None:
                     residue_energies[key].append(de)
 
@@ -357,7 +358,7 @@ def compute_cluster_consensus(
             for key, meta in residue_meta.items():
                 ch, _ = key
                 if ch == "A":
-                    rn = _safe_int(meta.get("residue_num", ""))
+                    rn = safe_int(meta.get("residue_num", ""))
                     if rn is not None and rn in ca_coords:
                         cluster_receptor_resnums.add(rn)
 
@@ -373,7 +374,7 @@ def compute_cluster_consensus(
                     model_resnums = set()
                     for r in residues_by_model.get(mid, []):
                         if r.get("chain", "") == "A":
-                            rn = _safe_int(r.get("residue_num", ""))
+                            rn = safe_int(r.get("residue_num", ""))
                             if rn is not None and rn in ca_coords:
                                 model_resnums.add(rn)
                     if model_resnums:
@@ -437,7 +438,7 @@ def compute_cluster_consensus(
                        if total_orient_valid > 0 else 0)
 
         # Look up CA coordinate for receptor-side residues
-        resnum_int = _safe_int(info["residue_num"])
+        resnum_int = safe_int(info["residue_num"])
         if chain == "A" and resnum_int is not None and resnum_int in ca_coords:
             ca_x, ca_y, ca_z = ca_coords[resnum_int]
             ca_x_val = round(ca_x, 3)
@@ -574,22 +575,6 @@ def _compute_centroid_spread(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _safe_float(val: str) -> Optional[float]:
-    """Convert string to float, returning None on failure."""
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int(val) -> Optional[int]:
-    """Convert string/value to int, returning None on failure."""
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return None
-
-
 def _has_orientation_filter(models: List[dict]) -> bool:
     """Return True when non-empty orientation labels are available."""
     if not models:
@@ -647,7 +632,7 @@ def _collect_field_values(rows: List[dict], field: str) -> List[float]:
     """Collect all valid float values for *field* from *rows*."""
     values = []
     for r in rows:
-        v = _safe_float(r.get(field, ""))
+        v = safe_float(r.get(field, ""))
         if v is not None:
             values.append(v)
     return values

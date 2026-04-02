@@ -31,6 +31,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_perturbation"
 
@@ -317,10 +319,10 @@ def run_final_report(
     """Run full TG 4.6 pipeline. Returns report_path."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    review = _load_csv(output_dir / "phase4_final_review_table.csv")
-    expanded = _load_csv(output_dir / "phase4_expanded_evidence_table.csv")
-    axes = _load_csv(output_dir / "phase4_axis_definition_table.csv")
-    interpretation = _load_csv(output_dir / "phase4_state_interpretation.csv")
+    review = load_csv(output_dir / "phase4_final_review_table.csv")
+    expanded = load_csv(output_dir / "phase4_expanded_evidence_table.csv")
+    axes = load_csv(output_dir / "phase4_axis_definition_table.csv")
+    interpretation = load_csv(output_dir / "phase4_state_interpretation.csv")
 
     if not review:
         raise FileNotFoundError(
@@ -341,13 +343,6 @@ def run_final_report(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 # ---------------------------------------------------------------------------
 # CLI

@@ -5,6 +5,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.parsing_utils import safe_int
 from egfr_pipeline.vina.vina_executor import derive_docking_seed
 
 
@@ -120,13 +121,6 @@ def parse_pose_blocks(pdbqt_path: Path) -> List[dict]:
     return poses
 
 
-def _safe_int(value: object) -> Optional[int]:
-    if value in ("", None):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _pose_job_metadata(config: dict) -> Dict[str, object]:
@@ -145,8 +139,8 @@ def collect_pose_rows(config: dict) -> Tuple[List[dict], List[dict]]:
     vina_docking_root = paths.wa_phase1_vina_docking(config)
     metadata = _pose_job_metadata(config)
     mode = str(metadata["mode"])
-    requested_n_poses = _safe_int(metadata["requested_n_poses"])
-    base_seed = _safe_int(metadata["base_seed"])
+    requested_n_poses = safe_int(metadata["requested_n_poses"])
+    base_seed = safe_int(metadata["base_seed"])
     rows: List[dict] = []
     coverage_rows: List[dict] = []
 

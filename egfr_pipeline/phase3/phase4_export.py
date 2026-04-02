@@ -32,6 +32,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -390,11 +392,11 @@ def run_phase4_export(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load all inputs
-    pose_rows = _load_csv(output_dir / "vina_pose_table.csv")
-    occupancy = _load_csv(output_dir / "phase3_pocket_occupancy_summary.csv")
-    diversity = _load_csv(output_dir / "phase3_diversity_metrics.csv")
-    statuses = _load_csv(output_dir / "pocket_search_status.csv")
-    normalized = _load_csv(output_dir / "phase3_candidate_reference_normalized.csv")
+    pose_rows = load_csv(output_dir / "vina_pose_table.csv")
+    occupancy = load_csv(output_dir / "phase3_pocket_occupancy_summary.csv")
+    diversity = load_csv(output_dir / "phase3_diversity_metrics.csv")
+    statuses = load_csv(output_dir / "pocket_search_status.csv")
+    normalized = load_csv(output_dir / "phase3_candidate_reference_normalized.csv")
 
     print(f"  Loaded: {len(pose_rows)} poses, {len(occupancy)} occupancy, "
           f"{len(diversity)} diversity, {len(normalized)} pockets")
@@ -426,13 +428,6 @@ def run_phase4_export(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

@@ -30,6 +30,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -348,10 +350,10 @@ def run_phase3_export(output_dir: Path) -> Tuple[Path, Path]:
     Returns (export_csv, handoff_note_path).
     """
     # Load all upstream data
-    pockets = _load_csv(output_dir / "candidate_pockets.csv")
-    relationships = _load_csv(output_dir / "pocket_patch_relationship.csv")
-    druggability = _load_csv(output_dir / "druggability_proposal_summary.csv")
-    state_classes = _load_csv(output_dir / "candidate_pocket_state_classes.csv")
+    pockets = load_csv(output_dir / "candidate_pockets.csv")
+    relationships = load_csv(output_dir / "pocket_patch_relationship.csv")
+    druggability = load_csv(output_dir / "druggability_proposal_summary.csv")
+    state_classes = load_csv(output_dir / "candidate_pocket_state_classes.csv")
 
     if not pockets:
         raise FileNotFoundError("No candidate pockets found. Run TG 2.2 first.")
@@ -438,12 +440,6 @@ def run_phase3_export(output_dir: Path) -> Tuple[Path, Path]:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
 
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:

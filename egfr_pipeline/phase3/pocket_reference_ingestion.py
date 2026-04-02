@@ -27,6 +27,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -245,9 +248,9 @@ def normalize_for_phase3(rows: List[dict]) -> List[dict]:
             skip_reason = r.get("priority_basis", "skip priority")
 
         # Box size: use Phase 2 value or default
-        box_x = _safe_float(r.get("box_size_x", "")) or DEFAULT_BOX_SIZE
-        box_y = _safe_float(r.get("box_size_y", "")) or DEFAULT_BOX_SIZE
-        box_z = _safe_float(r.get("box_size_z", "")) or DEFAULT_BOX_SIZE
+        box_x = safe_float(r.get("box_size_x", "")) or DEFAULT_BOX_SIZE
+        box_y = safe_float(r.get("box_size_y", "")) or DEFAULT_BOX_SIZE
+        box_z = safe_float(r.get("box_size_z", "")) or DEFAULT_BOX_SIZE
 
         normalized.append({
             "receptor_id": r.get("receptor_id", ""),
@@ -413,7 +416,7 @@ def run_pocket_reference_ingestion(
             "Run Phase 2 TG 2.6 (phase3_export) first."
         )
 
-    rows = _load_csv(ref_path)
+    rows = load_csv(ref_path)
     print(f"  Loaded {len(rows)} candidate pockets from {ref_path.name}")
 
     # Task 3.0.2: Validate
@@ -446,25 +449,11 @@ def run_pocket_reference_ingestion(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-
-
-def _safe_float(val) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
 
 
 # ---------------------------------------------------------------------------

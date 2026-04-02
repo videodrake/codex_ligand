@@ -31,6 +31,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -296,9 +298,9 @@ def run_diversity_validation(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load inputs
-    pose_rows = _load_csv(output_dir / "vina_pose_table.csv")
-    pocket_statuses = _load_csv(output_dir / "pocket_search_status.csv")
-    normalized = _load_csv(output_dir / "phase3_candidate_reference_normalized.csv")
+    pose_rows = load_csv(output_dir / "vina_pose_table.csv")
+    pocket_statuses = load_csv(output_dir / "pocket_search_status.csv")
+    normalized = load_csv(output_dir / "phase3_candidate_reference_normalized.csv")
 
     print(f"  Loaded {len(pose_rows)} pose rows, "
           f"{len(pocket_statuses)} pocket statuses, "
@@ -335,13 +337,6 @@ def run_diversity_validation(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

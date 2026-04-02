@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from egfr_pipeline import paths
+from egfr_pipeline.parsing_utils import safe_float
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -152,7 +153,7 @@ def compare_across_states(
 
         for p in patches:
             key = (p.get("chain", ""), p.get("residue_id", ""))
-            max_occ = _safe_float(p.get("max_occupancy", "")) or 0.0
+            max_occ = safe_float(p.get("max_occupancy", "")) or 0.0
             n_clusters = int(p.get("n_clusters_present", 0) or 0)
 
             residue_state_data[key][state] = {
@@ -431,13 +432,6 @@ def generate_comparison_report(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val: str) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
 
 def _collapse_metadata_value(values: List[str], mixed_label: str) -> str:
     """Collapse repeated metadata values without hiding disagreements."""

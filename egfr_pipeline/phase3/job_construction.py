@@ -28,6 +28,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -304,7 +306,7 @@ def run_job_construction(
             "Run TG 3.0 (pocket_reference_ingestion) first."
         )
 
-    normalized = _load_csv(norm_path)
+    normalized = load_csv(norm_path)
     dockable = [n for n in normalized if n.get("dockable") == "True"]
     print(f"  Loaded {len(normalized)} pockets ({len(dockable)} dockable)")
 
@@ -353,13 +355,6 @@ def run_job_construction(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

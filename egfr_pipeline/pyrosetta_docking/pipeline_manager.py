@@ -87,7 +87,7 @@ class PipelineManager:
         )
         self.requested_cpus = req_cpus
         self.n_cpus = self.runtime_resources.effective_cpus
-        self.chunksize = 1
+        self.chunksize = max(1, self.n_cpus * 2)  # batch tasks to reduce IPC overhead
 
         if override_input_pdb:
             self.input_pdb = os.path.abspath(override_input_pdb)

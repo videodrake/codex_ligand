@@ -37,6 +37,17 @@ MIN_CHAINS = 2
 from .logging_config import get_worker_logger
 internal_logger = get_worker_logger()
 
+# ---- Worker-level cache (persists across tasks within a multiprocessing worker) ---- #
+_worker_scorefxn = None
+
+
+def _get_cached_scorefxn():
+    """Return a process-level cached ScoreFunction, creating it on first call."""
+    global _worker_scorefxn
+    if _worker_scorefxn is None:
+        _worker_scorefxn = create_score_function(SCORE_FUNCTION_NAME)
+    return _worker_scorefxn
+
 
 # ---- Private Helpers ---- #
 
@@ -167,17 +178,20 @@ def get_residue_energy_csv_string(pose: "Pose", scorefxn: Any) -> str:
                      f"{hb_sr_bb:.4f},{hb_lr_bb:.4f},{hb_bb_sc:.4f},{hb_sc:.4f},{dunbrack:.4f}")
     return "\n".join(lines)
 
-def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: float = 0.5) -> str:
+def get_interface_energy_csv_string(pose: "Pose", scorefxn: Any, threshold: float = 0.5, already_scored: bool = False) -> str:
     """
     Generates per-residue interface energy breakdown (DeltaE).
     DeltaE(i) = E_complex(i) - E_separated(i).
     Only residues with |DeltaE| > threshold are included.
     Uses split_by_chain() to obtain separated chains.
     Returns CSV string or empty string on failure.
+
+    If already_scored=True, skips redundant scorefxn(pose) call.
     """
     try:
-        # 1. Score complex
-        scorefxn(pose)
+        # 1. Score complex (skip if caller already scored)
+        if not already_scored:
+            scorefxn(pose)
         weights = scorefxn.weights()
 
         total_res = pose.total_residue()
@@ -641,7 +655,7 @@ def run_fast_scoring_task(args: tuple) -> Dict[str, Any]:
         interface_def = _get_interface_def(pose)
 
         step_status = "Scoring"
-        scorefxn = create_score_function(SCORE_FUNCTION_NAME)
+        scorefxn = _get_cached_scorefxn()
         total_score = scorefxn(pose)
 
         step_status = "InterfaceAnalyzer"
@@ -726,7 +740,7 @@ def run_intermediate_scoring_task(args: tuple) -> Dict[str, Any]:
         interface_def = _get_interface_def(pose)
 
         step_status = "Scoring"
-        scorefxn = create_score_function(SCORE_FUNCTION_NAME)
+        scorefxn = _get_cached_scorefxn()
         scorefxn(pose)
 
         step_status = "InterfaceAnalyzer (expensive)"
@@ -929,7 +943,7 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
                 internal_logger.debug(traceback.format_exc())
 
         step_status = "Calculating ScoreFunction"
-        scorefxn = create_score_function(SCORE_FUNCTION_NAME)
+        scorefxn = _get_cached_scorefxn()
         total_score = scorefxn(pose)
 
         step_status = f"Running InterfaceAnalyzer ({interface_def})"
@@ -990,7 +1004,7 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
             i_rmsd = -1.0
 
         step_status = "Generating Interface Energy CSV"
-        interface_csv_data = get_interface_energy_csv_string(pose, scorefxn)
+        interface_csv_data = get_interface_energy_csv_string(pose, scorefxn, already_scored=True)
 
         step_status = "Computing Contact Pair Distances"
         try:

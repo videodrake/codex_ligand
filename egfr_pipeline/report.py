@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.parsing_utils import safe_float
 
 
 # ---------------------------------------------------------------------------
@@ -30,20 +31,11 @@ def load_csv(path: Path) -> List[dict]:
         return list(csv.DictReader(f))
 
 
-def _safe_float(value: object, default: float = 0.0) -> float:
-    try:
-        if value in ("", None):
-            return default
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def _ppi_row_priority(row: dict) -> Tuple[float, float, float]:
     return (
-        _safe_float(row.get("frac_runs_supporting"), 0.0),
-        _safe_float(row.get("occupancy"), 0.0),
-        _safe_float(row.get("n_runs_supporting"), 0.0),
+        safe_float(row.get("frac_runs_supporting"), 0.0),
+        safe_float(row.get("occupancy"), 0.0),
+        safe_float(row.get("n_runs_supporting"), 0.0),
     )
 
 
@@ -319,14 +311,14 @@ def format_combined_residue_table(
                 }
             record = vina_residues[receptor_id][norm]
             record["vina_pockets"].append(pocket_id)
-            best_aff = _safe_float(record.get("vina_best_affinity"), float("inf"))
-            pocket_aff = _safe_float(pocket.get("best_affinity"), float("inf"))
+            best_aff = safe_float(record.get("vina_best_affinity"), float("inf"))
+            pocket_aff = safe_float(pocket.get("best_affinity"), float("inf"))
             if pocket_aff < best_aff:
                 record["vina_best_affinity"] = round(pocket_aff, 4)
 
             verdict = verdict_index.get((receptor_id, pocket_id), {})
-            current_conf = _safe_float(record.get("vina_best_confidence_score"), -1.0)
-            verdict_conf = _safe_float(verdict.get("confidence_score"), -1.0)
+            current_conf = safe_float(record.get("vina_best_confidence_score"), -1.0)
+            verdict_conf = safe_float(verdict.get("confidence_score"), -1.0)
             if verdict_conf > current_conf:
                 record["vina_best_confidence_score"] = (
                     round(verdict_conf, 4) if verdict_conf >= 0 else ""
@@ -338,11 +330,11 @@ def format_combined_residue_table(
                     "evidence_profile", ""
                 )
 
-            current_stability = _safe_float(
+            current_stability = safe_float(
                 record.get("vina_best_pocket_stability"),
                 -1.0,
             )
-            pocket_stability = _safe_float(
+            pocket_stability = safe_float(
                 verdict.get("pocket_stability", pocket.get("pocket_exists_frac")),
                 -1.0,
             )
@@ -621,7 +613,7 @@ def generate_report(
     recurrent = [r for r in verdict_rows if "recurrent" in str(r.get("evidence_profile", ""))]
     stable = [
         r for r in verdict_rows
-        if _safe_float(r.get("pocket_stability"), 0.0) >= 0.6
+        if safe_float(r.get("pocket_stability"), 0.0) >= 0.6
     ]
     report_lines.append(f"  Recurrent verdict-supported pockets: {len(recurrent)}")
     report_lines.append(f"  Stable Vina pockets (bootstrap >=0.6): {len(stable)}")

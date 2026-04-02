@@ -42,6 +42,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float, safe_int
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -122,7 +125,7 @@ def compute_patch_centroid(
             if chain and chain != "A":
                 continue
             resnum_str = line[22:26].strip()
-            resnum = _safe_int(resnum_str)
+            resnum = safe_int(resnum_str)
             if resnum is not None and resnum in patch_residue_nums:
                 try:
                     x = float(line[30:38])
@@ -169,9 +172,9 @@ def classify_pocket_patch_relationship(
     jaccard = len(overlap) / len(union) if union else 0.0
 
     # Centroid distance
-    pocket_cx = _safe_float(pocket.get("centroid_x", ""))
-    pocket_cy = _safe_float(pocket.get("centroid_y", ""))
-    pocket_cz = _safe_float(pocket.get("centroid_z", ""))
+    pocket_cx = safe_float(pocket.get("centroid_x", ""))
+    pocket_cy = safe_float(pocket.get("centroid_y", ""))
+    pocket_cz = safe_float(pocket.get("centroid_z", ""))
 
     if (patch_centroid is not None
             and pocket_cx is not None
@@ -384,8 +387,8 @@ def run_patch_relationship(
     Returns (relationship_csv, metrics_csv, note_path).
     """
     # Load inputs
-    pockets = _load_csv(output_dir / "candidate_pockets.csv")
-    patch_ref = _load_csv(output_dir / "phase2_patch_reference_normalized.csv")
+    pockets = load_csv(output_dir / "candidate_pockets.csv")
+    patch_ref = load_csv(output_dir / "phase2_patch_reference_normalized.csv")
 
     if not pockets:
         raise FileNotFoundError("No candidate pockets found. Run TG 2.2 first.")
@@ -405,7 +408,7 @@ def run_patch_relationship(
     patch_hotspot_ids = set()
     for r in patch_ref:
         rid = r.get("patch_residue_id", "")
-        rnum = _safe_int(r.get("residue_num", ""))
+        rnum = safe_int(r.get("residue_num", ""))
         if rid:
             patch_all_ids.add(rid)
         if _parse_bool(r.get("is_hotspot", "")) and rid:
@@ -471,32 +474,11 @@ def run_patch_relationship(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-
-
-def _safe_float(val) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int(val) -> Optional[int]:
-    try:
-        return int(float(val))
-    except (ValueError, TypeError):
-        return None
 
 
 def _parse_bool(val) -> bool:

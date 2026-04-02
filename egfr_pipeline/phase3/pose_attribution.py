@@ -29,6 +29,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -411,7 +413,7 @@ def run_pose_attribution(
         raise FileNotFoundError(
             f"Job table not found: {job_path}\nRun TG 3.1 first."
         )
-    jobs = _load_csv(job_path)
+    jobs = load_csv(job_path)
     print(f"  Loaded {len(jobs)} jobs")
 
     # Try to parse actual PDBQT outputs first
@@ -447,13 +449,6 @@ def run_pose_attribution(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

@@ -28,6 +28,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.parsing_utils import safe_float, safe_int
+
 from egfr_pipeline import paths
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -284,7 +286,7 @@ def validate_patch_reference(
         seen_residues.add(rid)
 
         # Residue number range
-        rnum = _safe_int(rnum_str)
+        rnum = safe_int(rnum_str)
         if rnum is None:
             messages["errors"].append(f"Row {i} ({rid}): non-integer residue_num '{rnum_str}'")
         elif not (RESIDUE_NUM_RANGE[0] <= rnum <= RESIDUE_NUM_RANGE[1]):
@@ -337,7 +339,7 @@ def validate_patch_reference(
             )
 
         # Occupancy range
-        occ = _safe_float(row.get("global_max_occupancy", ""))
+        occ = safe_float(row.get("global_max_occupancy", ""))
         if occ is not None and not (0.0 <= occ <= 1.0):
             messages["warnings"].append(
                 f"Row {i} ({rid}): global_max_occupancy {occ} outside [0, 1]"
@@ -432,16 +434,16 @@ def normalize_patch_reference(rows: List[dict]) -> List[dict]:
 
         normalized.append({
             "patch_residue_id": row.get("residue_id", ""),
-            "residue_num": _safe_int(row.get("residue_num", "")) or "",
+            "residue_num": safe_int(row.get("residue_num", "")) or "",
             "residue_name": row.get("residue_name", ""),
             "chain": row.get("chain", ""),
             "lobe": row.get("lobe_label", ""),
             "construct_type": row.get("construct_type", "full_kinase_domain"),
             "orientation_validated": is_orient_validated,
             "robustness": row.get("robustness_class", ""),
-            "n_states": _safe_int(row.get("n_states_present", "")) or 0,
+            "n_states": safe_int(row.get("n_states_present", "")) or 0,
             "states": row.get("states_present", ""),
-            "max_occupancy": _safe_float(row.get("global_max_occupancy", "")) or 0.0,
+            "max_occupancy": safe_float(row.get("global_max_occupancy", "")) or 0.0,
             "is_hotspot": _parse_bool(row.get("is_hotspot_any_state", "")),
             "pyrosetta_support": _parse_bool(row.get("pyrosetta_evidence", "")),
             "lightdock_support": _parse_bool(row.get("lightdock_evidence", "")),
@@ -678,20 +680,6 @@ def run_patch_ingestion(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val: str) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int(val: str) -> Optional[int]:
-    try:
-        return int(float(val))
-    except (ValueError, TypeError):
-        return None
-
 
 def _parse_bool(val) -> bool:
     if isinstance(val, bool):

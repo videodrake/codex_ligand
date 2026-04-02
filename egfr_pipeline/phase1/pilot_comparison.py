@@ -31,6 +31,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from egfr_pipeline import paths
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -107,8 +109,8 @@ def generate_pilot_comparison(
     state_data = {}
     for state in states:
         state_dir = output_base / state
-        patches = _load_csv(state_dir / "ppi_interface_patch_table.csv")
-        hotspots = _load_csv(state_dir / "ppi_hotspot_residues.csv")
+        patches = load_csv(state_dir / "ppi_interface_patch_table.csv")
+        hotspots = load_csv(state_dir / "ppi_hotspot_residues.csv")
         if patches or hotspots:
             state_data[state] = {"patches": patches, "hotspots": hotspots}
 
@@ -152,12 +154,12 @@ def check_val962_artifact(
             if (h.get("chain") == "B" and h.get("residue_id") == ARTIFACT_RESIDUE
                     and h.get("is_hotspot") in ("True", "true", True)):
                 val962_hotspot = True
-                occ = _safe_float(h.get("occupancy", ""))
+                occ = safe_float(h.get("occupancy", ""))
                 if occ and occ > val962_max_occ:
                     val962_max_occ = occ
 
         if val962_patch:
-            max_occ = _safe_float(val962_patch.get("max_occupancy", "")) or 0
+            max_occ = safe_float(val962_patch.get("max_occupancy", "")) or 0
             n_clusters = int(val962_patch.get("n_clusters_present", 0) or 0)
         else:
             max_occ = 0
@@ -348,18 +350,6 @@ def _build_comparison_note(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def _safe_float(val: str) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
 
 
 # ---------------------------------------------------------------------------

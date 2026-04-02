@@ -46,6 +46,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.parsing_utils import safe_float, safe_int
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -402,13 +404,13 @@ def _parse_fpocket_info(info_path: Path) -> List[dict]:
                 val = val.strip()
 
                 if key == "score":
-                    current["score"] = _safe_float(val) or ""
+                    current["score"] = safe_float(val) or ""
                 elif key == "druggability_score":
-                    current["druggability_score"] = _safe_float(val) or ""
+                    current["druggability_score"] = safe_float(val) or ""
                 elif key == "number_of_alpha_spheres":
-                    current["n_alpha_spheres"] = _safe_int(val) or ""
+                    current["n_alpha_spheres"] = safe_int(val) or ""
                 elif key == "volume":
-                    current["volume"] = _safe_float(val) or ""
+                    current["volume"] = safe_float(val) or ""
 
     if current is not None:
         pockets.append(current)
@@ -429,7 +431,7 @@ def _parse_pocket_pdb(pdb_path: Path) -> Tuple[List[str], List[Tuple[float, floa
             if line.startswith(("ATOM", "HETATM")):
                 resname = line[17:20].strip()
                 resnum_str = line[22:26].strip()
-                resnum = _safe_int(resnum_str)
+                resnum = safe_int(resnum_str)
 
                 if resname and resnum is not None:
                     residues.append(f"{resname}{resnum}")
@@ -479,13 +481,13 @@ def parse_p2rank_output(
     with open(pred_files[0], encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            rank = _safe_int(row.get("rank", "")) or 0
-            score = _safe_float(row.get("score", "")) or 0.0
-            prob = _safe_float(row.get("probability", "")) or 0.0
+            rank = safe_int(row.get("rank", "")) or 0
+            score = safe_float(row.get("score", "")) or 0.0
+            prob = safe_float(row.get("probability", "")) or 0.0
 
-            cx = _safe_float(row.get("center_x", "")) or 0.0
-            cy = _safe_float(row.get("center_y", "")) or 0.0
-            cz = _safe_float(row.get("center_z", "")) or 0.0
+            cx = safe_float(row.get("center_x", "")) or 0.0
+            cy = safe_float(row.get("center_y", "")) or 0.0
+            cz = safe_float(row.get("center_z", "")) or 0.0
 
             # P2Rank residue_ids format: "ALA_123 LEU_456 ..."
             raw_residues = row.get("residue_ids", "").strip()
@@ -506,7 +508,7 @@ def parse_p2rank_output(
             pocket_id = f"{state}_p2rank_P{rank:02d}"
 
             # Estimate box size from SAS points count (heuristic)
-            sas_points = _safe_int(row.get("sas_points", "")) or 0
+            sas_points = safe_int(row.get("sas_points", "")) or 0
             # Rough estimate: box_dim ≈ 2 * (sas_points)^(1/3) + padding
             estimated_dim = 2.0 * (sas_points ** (1.0/3.0)) + 2 * DEFAULT_BOX_PADDING if sas_points > 0 else 0.0
 
@@ -566,11 +568,11 @@ def parse_all_pocket_proposals(
 
             if pockets:
                 all_pockets.extend(pockets)
-                scores = [_safe_float(p.get("proposal_score", "")) for p in pockets]
+                scores = [safe_float(p.get("proposal_score", "")) for p in pockets]
                 scores = [s for s in scores if s is not None]
-                drug_scores = [_safe_float(p.get("druggability_score", "")) for p in pockets]
+                drug_scores = [safe_float(p.get("druggability_score", "")) for p in pockets]
                 drug_scores = [s for s in drug_scores if s is not None]
-                volumes = [_safe_float(p.get("volume_A3", "")) for p in pockets]
+                volumes = [safe_float(p.get("volume_A3", "")) for p in pockets]
                 volumes = [v for v in volumes if v is not None]
 
                 source_entries.append({
@@ -646,7 +648,7 @@ def build_proposal_note(
                 "| Pocket ID | Source | Rank | Score | Drugg. | Centroid | N res |",
                 "|-----------|--------|------|-------|--------|---------|-------|",
             ])
-            for p in sorted(pockets, key=lambda x: _safe_int(x.get("pocket_rank", "99")) or 99):
+            for p in sorted(pockets, key=lambda x: safe_int(x.get("pocket_rank", "99")) or 99):
                 centroid = f"({p['centroid_x']}, {p['centroid_y']}, {p['centroid_z']})"
                 lines.append(
                     f"| {p['candidate_pocket_id']} | {p['proposal_source']} | "
@@ -734,20 +736,6 @@ def run_pocket_proposal(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int(val) -> Optional[int]:
-    try:
-        return int(float(val))
-    except (ValueError, TypeError):
-        return None
-
 
 def _resnum_from_id(residue_id: str) -> int:
     """Extract residue number from ID like 'ASP855' → 855."""
