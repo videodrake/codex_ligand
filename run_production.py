@@ -167,12 +167,16 @@ def _print_completion_summary(
     from egfr_pipeline.paths import (
         wa_phase4_vina_postprocess, wa_phase5_verdict,
         wa_phase6_report, wa_phase7_validation, wa_logs,
-        create_log_index,
+        create_log_index, create_results_guide,
     )
 
-    # Log index 생성
+    # Log index + results guide 생성
     try:
         create_log_index(config)
+    except Exception:
+        pass
+    try:
+        create_results_guide(config)
     except Exception:
         pass
 

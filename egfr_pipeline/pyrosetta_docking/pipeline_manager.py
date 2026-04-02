@@ -4013,6 +4013,59 @@ function sortTable(th) {
         self.logger.info(f"    [Time] Selection & Save: {elapsed:.1f} sec")
         return ranking_df, final_csv_path
 
+    def _write_results_guide(self) -> None:
+        """Write RESULTS_GUIDE.txt at seed root to help users navigate output files."""
+        guide_path = os.path.join(self.root_dir, "RESULTS_GUIDE.txt")
+        try:
+            lines = [
+                "=" * 60,
+                "  결과 파일 가이드 (Results Guide)",
+                "=" * 60,
+                "",
+                "★ 핵심 결과 (이것만 보세요)",
+                "─" * 40,
+                "  final_result/final_ranking.csv",
+                "    → 최종 랭킹 모델 (dG, dSASA, sc 등 종합)",
+                "  final_result/view_results.pml",
+                "    → PyMOL 시각화 (B-factor 컬러링)",
+                "  1_OVERVIEW_Clusters.pml",
+                "    → 전체 결합 사이트 분포 (클러스터별 색상)",
+                "  docking_validation_report.txt",
+                "    → 품질 판정 (C1~C10 PASS/FAIL)",
+                "",
+                "◎ 분석용 (상세 확인 필요 시)",
+                "─" * 40,
+                "  cluster_results/cluster_summary.csv",
+                "    → 클러스터별 대표 모델 메트릭",
+                "  energy_funnel.png",
+                "    → L_RMSD vs dG 산점도",
+                "  final_result/Rank##_*_Energies.csv",
+                "    → 개별 모델 잔기별 에너지 분해",
+                "",
+                "◇ 재현성/디버깅용 (일반적으로 불필요)",
+                "─" * 40,
+                "  scored_all_models.csv",
+                "    → 전체 모델 스코어 (100K행, 재분석용)",
+                "  scored_stage2_models.csv",
+                "    → Stage 2 대상 모델 (비싼 메트릭 포함)",
+                "  all_scored_summary.csv",
+                "    → 에너지 퍼널 데이터 (L_RMSD 포함)",
+                "  filter_thresholds.csv",
+                "    → 사용된 필터 임계값 기록",
+                "  cluster_results/cluster_membership.csv",
+                "    → 전체 모델→클러스터 매핑",
+                "  cluster_results/dropped_candidates.csv",
+                "    → 중복제거로 제외된 후보",
+                "",
+                "─" * 40,
+                "  ★=필수  ◎=권장  ◇=선택",
+                "",
+            ]
+            with open(guide_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+        except Exception:
+            pass  # Non-critical; don't fail the pipeline
+
     def _step6_visualization(self, ranking_df: Any, final_csv_path: str, overall_start_time: float) -> None:
         """Step 6: Visualization & validation report."""
         self.logger.info("=" * 60)
@@ -4104,6 +4157,9 @@ function sortTable(th) {
             # Step 6: Visualization & Report
             self._step6_visualization(ranking_df, final_csv_path, overall_start_time)
             self._save_run_metadata("completed")
+
+            # Generate output guide for this seed
+            self._write_results_guide()
 
             gc.collect()
 

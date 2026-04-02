@@ -269,3 +269,64 @@ def create_log_index(config: Optional[dict] = None) -> Path:
     index_path.write_text("\n".join(lines), encoding="utf-8")
 
     return index_path
+
+
+def create_results_guide(config: Optional[dict] = None) -> Path:
+    """Create workflow_a/RESULTS_GUIDE.txt — file-level navigation for users."""
+    wa = _workflow_a_root(config)
+    guide_path = wa / "RESULTS_GUIDE.txt"
+    lines = [
+        "=" * 64,
+        "  Workflow A 결과 파일 가이드",
+        "=" * 64,
+        "",
+        "★ 최종 결과 (여기서 시작하세요)",
+        "─" * 50,
+        "  phase6_report/project_report.txt",
+        "    → Vina + PPI 통합 보고서",
+        "",
+        "  phase5_verdict/valid_sites.csv",
+        "    → 후보 결합 포켓 순위 (통합 스코어)",
+        "",
+        "  phase5_verdict/cross_method_agreement.csv",
+        "    → Vina/PPI 교차 검증 결과",
+        "",
+        "  phase7_validation/validation_summary.txt",
+        "    → 출력 품질 검증",
+        "",
+        "",
+        "◎ Phase별 핵심 결과",
+        "─" * 50,
+        "  [Vina]",
+        "  phase4_vina_postprocess/vina_pocket_table.csv",
+        "    → 포켓 요약 (위치, 친화도, 안정성)",
+        "  phase4_vina_postprocess/vina_drug_pocket_map.csv",
+        "    → 리간드→포켓 매핑",
+        "",
+        "  [PPI]",
+        "  phase2_ppi_docking/{state}/prod_seed{n}/RESULTS_GUIDE.txt",
+        "    → 시드별 상세 가이드 (시드 폴더 내)",
+        "  phase3_ppi_postprocess/ppi_pyrosetta_summary.csv",
+        "    → 전 시드 통합 인터페이스 요약",
+        "",
+        "",
+        "◇ 중간 데이터 (일반적으로 불필요)",
+        "─" * 50,
+        "  phase1_vina_docking/       원본 Vina 포즈 (.pdbqt)",
+        "  phase4_vina_postprocess/   Vina 후처리 상세 CSV 10+개",
+        "  phase2_ppi_docking/        시드별 PPI 중간 CSV 11+개",
+        "",
+        "",
+        "파일 수 참고:",
+        "  Workflow A 전체: ~30+ CSV (대부분 중간 결과)",
+        "  사용자가 볼 파일: 위 ★ 4개 + ◎ 3개 = 7개",
+        "",
+        "─" * 50,
+        "  ★=필수  ◎=권장  ◇=선택 (재현성/디버깅용)",
+        "",
+    ]
+    try:
+        guide_path.write_text("\n".join(lines), encoding="utf-8")
+    except OSError:
+        pass
+    return guide_path
