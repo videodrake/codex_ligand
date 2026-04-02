@@ -2472,7 +2472,9 @@ function sortTable(th) {
 
     def _step1_relax(self) -> Tuple[Optional[str], Optional[str]]:
         """Step 1: Check/run relaxed structure. Returns (relaxed_pdb, cache_path)."""
-        self.logger.info(">>> [Step 1] Check Relaxed Structure...")
+        self.logger.info("=" * 60)
+        self.logger.info(">>> [Step 1/7] Check Relaxed Structure")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         cache_filename = f"{os.path.splitext(self.filename)[0]}_relaxed.pdb"
@@ -2517,7 +2519,9 @@ function sortTable(th) {
                 f"{len(self.key_residues_B)} residues, "
                 f"bonus_weight={self.key_residue_bonus_weight}")
 
-        self.logger.info(f">>> [Step 2] Global Docking ({self.total_global} models)...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 2/7] Global Docking ({self.total_global:,} models)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         # Build task args with constraint info for early rejection
@@ -2533,13 +2537,17 @@ function sortTable(th) {
         count_rejected = 0
         count_errors = 0
 
+        # Adaptive progress interval: ~10 updates total, at least every 500, at most every 5000
+        _prog_interval = max(500, min(5000, self.total_global // 10))
+
         with multiprocessing.Pool(self.n_cpus) as pool:
             for res in pool.imap_unordered(movers.run_global_docking_task, tasks, chunksize=self.chunksize):
                 count_done += 1
-                if count_done % 2000 == 0:
+                if count_done % _prog_interval == 0 or count_done == self.total_global:
+                    pct = count_done / self.total_global * 100
                     self.logger.info(
-                        f"    > [Docking] {count_done}/{self.total_global} "
-                        f"(accepted={len(docking_results)}, rejected={count_rejected}, errors={count_errors})")
+                        f"    > [Docking] {count_done:,}/{self.total_global:,} ({pct:.0f}%) "
+                        f"accepted={len(docking_results):,}, rejected={count_rejected:,}, errors={count_errors}")
                 if res['status'] == 'success':
                     docking_results.append(res)
                 elif res['status'] == 'rejected':
@@ -2569,7 +2577,9 @@ function sortTable(th) {
 
     def _step2_5_scoring_filtering(self, docking_results: List[Dict], cache_path: str) -> Tuple[Optional[List[Dict]], Dict]:
         """Step 2.5: Fast scoring & multi-criteria filtering. Returns (cluster_candidates, constraints_dict) or None."""
-        self.logger.info(">>> [Step 2.5] Fast Scoring & Filtering...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 3/7] Fast Scoring & Filtering ({len(docking_results):,} models)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         constraints_dict = {
@@ -2592,6 +2602,8 @@ function sortTable(th) {
                       for d in docking_results)
 
         combined_data = []
+        n_dock = len(docking_results)
+        _score_prog = max(100, min(2000, n_dock // 10))
 
         with multiprocessing.Pool(self.n_cpus) as pool:
             score_iter = pool.imap(scoring.run_fast_scoring_task,
@@ -2607,6 +2619,12 @@ function sortTable(th) {
                     self.logger.warning(
                         f"Scoring Error (ID: {origin['id']}): {score_res.get('error')}")
                 docking_results[i] = None  # Free memory incrementally
+                done = i + 1
+                if done % _score_prog == 0 or done == n_dock:
+                    pct = done / n_dock * 100
+                    self.logger.info(
+                        f"    > [Fast Scoring] {done:,}/{n_dock:,} ({pct:.0f}%) "
+                        f"passed={len(combined_data):,}")
 
         del docking_results
         gc.collect()
@@ -3415,7 +3433,9 @@ function sortTable(th) {
     def _step3_full_scoring(self, cluster_candidates: List[Dict], cache_path: str, constraints_dict: Dict) -> Optional[List[Dict]]:
         """Step 3: Full scoring of filter survivors. Returns fully_scored list or None."""
         n = len(cluster_candidates)
-        self.logger.info(f">>> [Step 3] Full Scoring ({n} filter survivors)...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 4/7] Full Scoring ({n:,} filter survivors)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         score_tasks = ((d['pdb_data'], cache_path, self.contact_distance, constraints_dict)
@@ -3465,7 +3485,9 @@ function sortTable(th) {
     def _step4_clustering(self, cluster_candidates: List[Dict]) -> Optional[List[Dict]]:
         """Step 4: L_RMSD greedy clustering. Returns final_representatives or None."""
         n_cands = len(cluster_candidates)
-        self.logger.info(f">>> [Step 4] L_RMSD Greedy Clustering ({n_cands} candidates)...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 5/7] L_RMSD Greedy Clustering ({n_cands:,} candidates)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         centers = np.array([[c.get('center_x', 0), c.get('center_y', 0),
@@ -3722,7 +3744,9 @@ function sortTable(th) {
 
     def _step5_selection_and_save(self, final_representatives: List[Dict]) -> Tuple[Any, str]:
         """Step 5: Diversity-aware selection, dedup, and save. Returns (ranking_df, final_csv_path)."""
-        self.logger.info(">>> [Step 5] Diversity-Aware Selection & Deduplication...")
+        self.logger.info("=" * 60)
+        self.logger.info(">>> [Step 6/7] Diversity-Aware Selection & Deduplication")
+        self.logger.info("=" * 60)
         t_start_step6 = time.time()
         final_scores = final_representatives
 
@@ -3973,7 +3997,9 @@ function sortTable(th) {
 
     def _step6_visualization(self, ranking_df: Any, final_csv_path: str, overall_start_time: float) -> None:
         """Step 6: Visualization & validation report."""
-        self.logger.info(">>> [Step 6] Generating Visualization & Validation Report...")
+        self.logger.info("=" * 60)
+        self.logger.info(">>> [Step 7/7] Generating Visualization & Validation Report")
+        self.logger.info("=" * 60)
         self.plot_energy_funnel(final_csv_path)
         self.generate_cluster_overview()
         self.generate_per_cluster_views(final_csv_path)

@@ -9,6 +9,7 @@ Extracts the shared orchestration pattern from phase2/3/4 rerun_cascade.py:
 import re
 import sys
 import time
+import traceback
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 Step = Tuple[str, str, Callable[[], None]]  # (tg_id, label, func)
@@ -20,6 +21,17 @@ def parse_tg(tg: str) -> Tuple[int, int, str]:
     if m:
         return (int(m.group(1)), int(m.group(2)), m.group(3))
     return (0, 0, tg)
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    """Format seconds into human-readable duration."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    m, s = divmod(int(seconds), 60)
+    if m < 60:
+        return f"{m}m{s:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m{s:02d}s"
 
 
 def run_cascade(
@@ -50,25 +62,38 @@ def run_cascade(
 
     from_key = parse_tg(from_tg)
     t0 = time.time()
+    completed = 0
+    skipped = 0
+    total_steps = len(steps)
 
-    for tg_id, label, func in steps:
+    for step_idx, (tg_id, label, func) in enumerate(steps, 1):
         if parse_tg(tg_id) < from_key:
-            print(f"\n--- TG {tg_id} {label} --- SKIPPED (before --from-tg {from_tg})")
+            skipped += 1
+            print(f"\n  [{step_idx}/{total_steps}] TG {tg_id} {label} — SKIP")
             continue
+        cumulative = _fmt_elapsed(time.time() - t0)
         print(f"\n{'=' * 60}")
-        print(f"  TG {tg_id}: {label}")
-        print(f"{'=' * 60}")
+        print(f"  [{step_idx}/{total_steps}] TG {tg_id}: {label}")
+        print(f"  (누적 {cumulative})")
+        print("=" * 60)
         ts = time.time()
         try:
             func()
         except Exception as e:
-            print(f"\n  [ERROR] TG {tg_id} failed: {e}")
-            print("  Cascade stopped.")
+            elapsed = _fmt_elapsed(time.time() - ts)
+            cumulative = _fmt_elapsed(time.time() - t0)
+            print(f"\n  [ERROR] TG {tg_id} failed after {elapsed} ({e})")
+            print(f"  누적 시간: {cumulative}")
+            print()
+            traceback.print_exc()
+            print(f"\n  Cascade stopped at TG {tg_id} ({completed}/{total_steps} completed).")
             sys.exit(1)
-        elapsed = time.time() - ts
-        print(f"  TG {tg_id} done ({elapsed:.1f}s)")
+        elapsed = _fmt_elapsed(time.time() - ts)
+        completed += 1
+        print(f"  TG {tg_id} done ({elapsed})")
 
-    total = time.time() - t0
+    total = _fmt_elapsed(time.time() - t0)
     print(f"\n{'=' * 60}")
-    print(f"  {phase_label} COMPLETE ({total:.1f}s)")
-    print(f"{'=' * 60}")
+    print(f"  {phase_label} COMPLETE")
+    print(f"  {completed} completed, {skipped} skipped, 총 {total}")
+    print("=" * 60)
