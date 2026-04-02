@@ -876,7 +876,7 @@ def compute_contact_pair_distances(
         # Sort by distance ascending
         pairs.sort(key=lambda x: x[2])
 
-        lines = ["Residue_A,Residue_B,Min_Distance_A"]
+        lines = ["Residue_A,Residue_B,Min_Distance"]
         for label_a, label_b, dist in pairs:
             lines.append(f"{label_a},{label_b},{dist:.2f}")
         return "\n".join(lines)

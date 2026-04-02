@@ -1299,7 +1299,7 @@ class PipelineManager:
                 mr_ok = s.get('mini_refine_success', 0)
                 mr_ct = s.get('mini_refine_count', 0)
                 mr_mode = s.get('mini_refine_mode', 'pack_only')
-                mr_nr = s.get('mini_refine_n_rounds', 1)
+                mr_nr = s.get('mini_refine_n_rounds', 3)
                 a(f"  Mini Refinement     : {mr_ok:,}/{mr_ct:,}개 리파인됨 "
                   f"({mr_mode}, {mr_nr} rounds)")
             if stage1_surv > 0:
@@ -1356,7 +1356,7 @@ class PipelineManager:
             a("=" * W)
             a("")
             mr_mode = s.get('mini_refine_mode', 'pack_only')
-            mr_nr = s.get('mini_refine_n_rounds', 1)
+            mr_nr = s.get('mini_refine_n_rounds', 3)
             mr_ct = s.get('mini_refine_count', 0)
             mr_ok = s.get('mini_refine_success', 0)
             mr_time = s.get('mini_refine_time', 0)

@@ -27,12 +27,21 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Optional
 
 from egfr_pipeline import paths
+
+
+def _parse_tg(tg: str):
+    """Parse TG ID like '3.2' or '3.2s' into a comparable tuple."""
+    m = re.match(r"(\d+)\.(\d+)(.*)", tg)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), m.group(3))
+    return (0, 0, tg)
 
 _CFG = {"output_root": str(paths.REPO_ROOT / "output")}
 
@@ -132,7 +141,7 @@ def run_phase3_cascade(
 
     t0 = time.time()
     for tg_id, label, func in steps:
-        if tg_id < from_tg:
+        if _parse_tg(tg_id) < _parse_tg(from_tg):
             print(f"\n--- TG {tg_id} {label} --- SKIPPED (before --from-tg {from_tg})")
             continue
         print(f"\n{'=' * 60}")

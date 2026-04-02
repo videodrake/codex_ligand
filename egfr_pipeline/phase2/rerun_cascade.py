@@ -68,7 +68,7 @@ def run_phase2_cascade(
 
     t0 = time.time()
     for tg_id, label, func in steps:
-        if tg_id < from_tg:
+        if tuple(int(x) for x in tg_id.split(".")) < tuple(int(x) for x in from_tg.split(".")):
             print(f"\n--- TG {tg_id} {label} --- SKIPPED (before --from-tg {from_tg})")
             continue
         print(f"\n{'=' * 60}")
