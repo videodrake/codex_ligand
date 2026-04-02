@@ -1,11 +1,25 @@
 #!/bin/bash
 #PBS -q workq
 #PBS -N ppi_state_seed
-#PBS -l nodes=node05:ppn=16
+#PBS -l nodes=node05:ppn=32
 #PBS -l walltime=24:00:00
 #PBS -V
 #PBS -o ${PBS_O_WORKDIR}/ppi_state_seed.o
 #PBS -e ${PBS_O_WORKDIR}/ppi_state_seed.e
+
+# ============================================================
+# PPI Docking: Single state × seed
+#
+# Default: 32 cores for 1 seed (maximum throughput per seed).
+# Override with NCPUS for multi-seed parallelism:
+#
+#   # Strategy A: 1 seed, all 32 cores (fastest per seed)
+#   qsub -v STATE=3GT8_raw,SEED=0 config/run_ppi_state_seed.pbs
+#
+#   # Strategy B: 2 seeds simultaneously, 16 cores each
+#   qsub -v STATE=3GT8_raw,SEED=0,NCPUS=16 config/run_ppi_state_seed.pbs
+#   qsub -v STATE=3GT8_raw,SEED=1,NCPUS=16 config/run_ppi_state_seed.pbs
+# ============================================================
 
 set -eo pipefail
 
@@ -16,8 +30,15 @@ conda activate pyrosetta
 STATE="${STATE:?STATE is required, e.g. 3GT8_raw}"
 SEED="${SEED:?SEED is required, e.g. 0}"
 
+# NCPUS: override core count (default = all PBS-allocated cores)
+NCPUS="${NCPUS:-${PBS_NP:-32}}"
+
+echo "=== PPI Docking: ${STATE} seed${SEED} ==="
+echo "  Cores: ${NCPUS} (PBS_NP=${PBS_NP:-N/A})"
+echo "  Start: $(date)"
+
 python run_production.py \
   --lane ppi \
   --state "$STATE" \
   --seed "$SEED" \
-  --allocated-cpus "${PBS_NP:-16}"
+  --allocated-cpus "$NCPUS"

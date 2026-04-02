@@ -112,6 +112,34 @@ qsub config/run_vina_postprocess.pbs      # Vina 후처리
 qsub config/run_finalize.pbs              # Verdict + Report + Validate
 ```
 
+#### PPI 코어 활용 전략 (전용 32코어 노드)
+
+| 전략 | 코어 배분 | 시드/잡 | 잡 수 | 예상 시간 |
+|------|----------|---------|------|----------|
+| **A: 전코어 단일** | 32코어 × 1시드 | 1 | 15 | ~180시간 (순차) |
+| **B: 듀얼 시드** | 16코어 × 2시드 | 2 | 8+3=11 | ~96시간 (3 라운드) |
+| **C: 올인원 순차** | 32코어 × 1시드 (순차) | 1 | 1 | ~180시간 (단일 잡) |
+
+**권장: 전략 B (듀얼 시드)** — 코어를 균등 분할하여 2시드를 동시에 돌림.
+5시드를 2+2+1로 나누면 state당 3잡, 총 9잡으로 완료.
+
+```bash
+# 전략 A: 1시드에 32코어 전부 (시드당 최단 시간)
+qsub -v STATE=3GT8_raw,SEED=0 config/run_ppi_state_seed.pbs
+
+# 전략 B: 2시드 동시 (전체 완료 최단 시간, 권장)
+for state in 3GT8_raw EGFR_160-185 EGFR_170-200; do
+  qsub -v STATE=$state,SEED_A=0,SEED_B=1 config/run_ppi_dual_seed.pbs
+  qsub -v STATE=$state,SEED_A=2,SEED_B=3 config/run_ppi_dual_seed.pbs
+  qsub -v STATE=$state,SEED_A=4 config/run_ppi_state_seed.pbs
+done
+# → 9 PBS 잡, wall-clock = 시드당 시간 × 3 라운드
+```
+
+주의: 전략 B에서 `run_ppi_dual_seed.pbs`는 하나의 PBS 잡 안에서
+2개 Python 프로세스를 `&`로 백그라운드 실행합니다.
+각 프로세스가 `--allocated-cpus 16`으로 코어를 나눠 사용합니다.
+
 #### LightDock 2차 검증 (Phase 1)
 
 PyRosetta가 Phase 1 primary evidence이며, LightDock은 secondary validation입니다:

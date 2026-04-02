@@ -1,0 +1,84 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N ppi_dual
+#PBS -l nodes=node05:ppn=32
+#PBS -l walltime=48:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/ppi_dual.o
+#PBS -e ${PBS_O_WORKDIR}/ppi_dual.e
+
+# ============================================================
+# PPI Docking: 2 seeds in parallel on 32 cores (16 each)
+#
+# Runs SEED_A and SEED_B for the same STATE simultaneously,
+# each using 16 cores. Halves total wall-clock time vs sequential.
+#
+# Usage:
+#   # 2 seeds for one state
+#   qsub -v STATE=3GT8_raw,SEED_A=0,SEED_B=1 config/run_ppi_dual_seed.pbs
+#
+#   # All 5 seeds for one state (3 jobs: 0+1, 2+3, 4 alone)
+#   qsub -v STATE=3GT8_raw,SEED_A=0,SEED_B=1 config/run_ppi_dual_seed.pbs
+#   qsub -v STATE=3GT8_raw,SEED_A=2,SEED_B=3 config/run_ppi_dual_seed.pbs
+#   qsub -v STATE=3GT8_raw,SEED_A=4 config/run_ppi_state_seed.pbs
+#
+#   # All 3 states × 5 seeds = 8 dual jobs + 3 single jobs
+#   for state in 3GT8_raw EGFR_160-185 EGFR_170-200; do
+#     qsub -v STATE=$state,SEED_A=0,SEED_B=1 config/run_ppi_dual_seed.pbs
+#     qsub -v STATE=$state,SEED_A=2,SEED_B=3 config/run_ppi_dual_seed.pbs
+#     qsub -v STATE=$state,SEED_A=4 config/run_ppi_state_seed.pbs
+#   done
+#   # → 9 PBS jobs (vs 15 sequential), wall-clock ~3 jobs deep
+# ============================================================
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+STATE="${STATE:?STATE is required, e.g. 3GT8_raw}"
+SEED_A="${SEED_A:?SEED_A is required, e.g. 0}"
+SEED_B="${SEED_B:-}"  # optional; if empty, only SEED_A runs with 32 cores
+
+HALF_CORES=$(( ${PBS_NP:-32} / 2 ))
+
+echo "============================================================"
+echo "PPI Dual-Seed: ${STATE}"
+echo "  SEED_A=${SEED_A}  SEED_B=${SEED_B:-N/A}"
+echo "  Cores per seed: ${HALF_CORES} (total: ${PBS_NP:-32})"
+echo "  Start: $(date)"
+echo "============================================================"
+
+if [ -n "$SEED_B" ]; then
+    # Run two seeds in parallel, each with half the cores
+    echo "[Launching] ${STATE} seed${SEED_A} (${HALF_CORES} cores)..."
+    python run_production.py \
+      --lane ppi --state "$STATE" --seed "$SEED_A" \
+      --allocated-cpus "$HALF_CORES" &
+    PID_A=$!
+
+    echo "[Launching] ${STATE} seed${SEED_B} (${HALF_CORES} cores)..."
+    python run_production.py \
+      --lane ppi --state "$STATE" --seed "$SEED_B" \
+      --allocated-cpus "$HALF_CORES" &
+    PID_B=$!
+
+    # Wait for both
+    FAIL=0
+    wait $PID_A || { echo "[FAIL] seed${SEED_A} failed (exit $?)"; FAIL=1; }
+    wait $PID_B || { echo "[FAIL] seed${SEED_B} failed (exit $?)"; FAIL=1; }
+
+    echo ""
+    echo "============================================================"
+    echo "Dual-Seed finished: $(date)"
+    [ $FAIL -eq 0 ] && echo "  Status: BOTH OK" || echo "  Status: FAILURE (see above)"
+    echo "============================================================"
+    exit $FAIL
+else
+    # Single seed with all cores
+    echo "[Launching] ${STATE} seed${SEED_A} (${PBS_NP:-32} cores)..."
+    python run_production.py \
+      --lane ppi --state "$STATE" --seed "$SEED_A" \
+      --allocated-cpus "${PBS_NP:-32}"
+fi

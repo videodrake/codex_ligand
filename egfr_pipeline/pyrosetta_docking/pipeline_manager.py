@@ -101,13 +101,22 @@ class PipelineManager:
         self.config.read(config_file)
 
         req_cpus = self.config.getint('System', 'n_cpus', fallback=1)
+        # When allocated_cpus is explicitly provided (e.g. from PBS_NP),
+        # use it as the ceiling instead of the ini n_cpus value.
+        # This allows PBS to control resource usage at submission time:
+        #   ppn=32 → single seed uses all 32 cores
+        #   ppn=16 → two seeds can run simultaneously with 16 cores each
+        if allocated_cpus is not None and allocated_cpus > 0:
+            effective_request = allocated_cpus
+        else:
+            effective_request = req_cpus
         self.runtime_resources = resolve_runtime_resources(
-            requested_cpus=req_cpus,
+            requested_cpus=effective_request,
             allocated_cpus=allocated_cpus,
         )
         self.requested_cpus = req_cpus
         self.n_cpus = self.runtime_resources.effective_cpus
-        self.chunksize = max(1, self.n_cpus * 2)  # batch tasks to reduce IPC overhead
+        self.chunksize = max(1, self.n_cpus * 2)  # legacy fallback; adaptive used in steps
 
         if override_input_pdb:
             self.input_pdb = os.path.abspath(override_input_pdb)
