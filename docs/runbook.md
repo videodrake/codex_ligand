@@ -1,6 +1,6 @@
 # 실행 가이드 (Runbook)
 
-Last updated: 2026-03-17
+Last updated: 2026-04-02
 
 이 문서는 파이프라인 실행에 필요한 모든 절차와 명령어를 통합한 운영 가이드입니다.
 모든 무거운 연산(도킹, PPI)은 HPC 서버에서 qsub로 제출합니다. 로컬에서 도킹을 실행하지 마십시오.
@@ -61,7 +61,7 @@ Vina 중심 리간드 증거 흐름 + PPI 인터페이스 증거를 통합 실�
 | 2 | PPI docking (3 states x 5 seeds = 300K models) | `output/workflow_a/phase2_ppi_docking/{state}/prod_seed{n}/final_ranking.csv` |
 | 3 | PPI postprocess | `output/workflow_a/phase3_ppi_postprocess/` |
 | 4 | Vina postprocess | `output/workflow_a/phase4_vina_postprocess/vina_pocket_table.csv` |
-| 5 | Verdict (3축 통합 scoring) | `output/workflow_a/phase5_verdict/valid_sites.csv` |
+| 5 | Verdict (4축 적응형 scoring) | `output/workflow_a/phase5_verdict/valid_sites.csv` |
 | 6 | Report | `output/workflow_a/phase6_report/project_report.txt` |
 | 7 | Validate | `output/workflow_a/phase7_validation/` |
 
@@ -332,6 +332,8 @@ Canonical 출력은 `output/workflow_a/` 아래 phase별 디렉토리에 있으�
 | `pyrosetta`, `ppi-postprocess` | `output/workflow_a/phase2_ppi_docking/`, `phase3_ppi_postprocess/` |
 | pre-qsub PBS | `output/precheck/` |
 | advanced phases | `output/workflow_b/phase2_pocket_analysis/`, `phase3_focused_docking/`, `phase4_scoring/` (해당 lane이 범위 내일 때만) |
+| consensus scoring | `output/workflow_a/phase2_ppi_docking/{state}/prod_seed{n}/consensus_scores.csv` |
+| decoy enrichment | `output/decoy_controls/{state}/enrichment_report.csv` |
 
 ### 참조 출력 레이아웃
 
@@ -360,6 +362,9 @@ output/
 │   ├── phase2_pocket_analysis/
 │   ├── phase3_focused_docking/
 │   └── phase4_scoring/
+├── decoy_controls/                      # 디코이 농축 검증
+│   ├── scrambled_pdbs/                  #   scrambled partner PDB + mutation log
+│   └── {state}/                         #   컨트롤 도킹 결과 + enrichment_report.csv
 └── precheck/
 ```
 
@@ -384,6 +389,139 @@ output/
 
 ---
 
+## 신뢰성 검증 (Reliability Validation)
+
+기존 Workflow A/B 결과가 완료된 후, 결과의 통계적 신뢰성을 검증하는 추가 단계입니다.
+**모두 선택적이며, 기존 파이프라인 동작에 영향을 주지 않습니다.**
+
+### 변경된 verdict 스코어링 체계
+
+`verdict.py`가 **4축 적응형 스코어링**으로 확장되었습니다.
+기존 데이터로 verdict를 재실행하면 새 체계가 적용됩니다.
+
+| 축 | 내용 | 최대 점수 | 조건 |
+|----|------|----------|------|
+| Axis 1 | Vina Quality | 50 (PPI有) / 60 (PPI無) | 항상 |
+| Axis 2 | PPI Proximity + LightDock 보너스 | 20 | PPI 데이터 有 |
+| Axis 3 | Cross-Receptor Consistency | 30 (PPI有) / 40 (PPI無) | 항상 |
+| **Axis 4 (신규)** | **Experimental Correlation** | **15** | **실험 데이터 설정 시** |
+
+- 실험 데이터 없으면: 기존과 100% 동일 (분모 100, 3축)
+- 실험 데이터 있으면: 분모 115로 확장 후 100점으로 정규화 (4축)
+- LightDock convergence CSV 있으면: PPI 축에 최대 3점 보너스
+
+**`valid_sites.csv` 신규 컬럼:**
+
+| 컬럼 | 설명 |
+|------|------|
+| `exp_sensitivity_pts` | 실험 민감도 점수 (0/3/6) |
+| `exp_enrichment_pts` | 실험 농축 점수 (0/2.5/5) |
+| `exp_specificity_pts` | 실험 특이도 점수 (0/2/4) |
+| `exp_score` | 실험 축 정규화 점수 |
+
+### TODO: 체크리스트
+
+아래 항목을 순서대로 확인/실행하십시오.
+
+#### Phase A: 실험 데이터 설정 (Axis 4 활성화)
+
+- [ ] `config/example-project.yaml`에 실험 잔기 설정 추가:
+  ```yaml
+  experimental:
+    source: "실험명_또는_논문"
+    known_binding_residues: [잔기번호, ...]      # EGFR 결합 관련 잔기
+    known_non_binding_residues: [잔기번호, ...]   # 결합과 무관한 잔기
+  ```
+  - 데이터가 없으면 이 단계를 건너뛰어도 됩니다 (기존과 동일 동작)
+- [ ] verdict 재실행으로 Axis 4 적용 확인:
+  ```bash
+  python main.py -c config/example-project.yaml verdict
+  ```
+- [ ] `valid_sites.csv`에서 `exp_score` 컬럼이 0이 아닌지 확인
+- [ ] `decision_trace`에 `EXP[...]` 섹션이 추가되었는지 확인
+
+#### Phase B: LightDock 결과 verdict 통합
+
+- [ ] LightDock이 이미 실행 완료되었는지 확인:
+  ```bash
+  ls output/workflow_b/phase1_ppi_analysis/*/lightdock/.lightdock_complete
+  ```
+- [ ] LightDock convergence CSV 준비 (아직 없으면):
+  LightDock 실행 후 convergence 분석을 통해 `lightdock_convergence.csv` 생성:
+  ```bash
+  python -m egfr_pipeline.phase1.lightdock_validation --convergence --state 3GT8_raw
+  ```
+  결과 CSV를 `output/workflow_a/phase3_ppi_postprocess/lightdock_convergence.csv`에 복사
+- [ ] verdict 재실행 후 `reason_tags`에 `lightdock_validated` 태그 확인
+
+#### Phase C: 다중 스코어링 합의 (HPC 필요)
+
+- [ ] 기존 PPI 도킹 PDB 파일 존재 확인:
+  ```bash
+  ls output/workflow_a/phase2_ppi_docking/3GT8_raw/prod_seed0/filter_passed/*.pdb | wc -l
+  ```
+- [ ] HPC에서 재스코어링 실행 (재도킹 아님, 점수만 재계산):
+  ```bash
+  # 단일 시드
+  qsub -v STATE=3GT8_raw,SEED=0 config/run_consensus_scoring.pbs
+
+  # 전체 (3 states × 5 seeds = 15 잡)
+  for state in 3GT8_raw EGFR_160-185 EGFR_170-200; do
+    for s in 0 1 2 3 4; do
+      qsub -v STATE=$state,SEED=$s config/run_consensus_scoring.pbs
+    done
+  done
+  ```
+- [ ] 완료 후 결과 확인:
+  ```bash
+  # consensus_hit 비율 확인
+  awk -F, 'NR>1 && $NF=="yes"' output/workflow_a/phase2_ppi_docking/3GT8_raw/prod_seed0/consensus_scores.csv | wc -l
+  ```
+- [ ] `consensus_hit=yes`인 모델 목록을 최종 결과 해석에 참고
+
+#### Phase D: 디코이 농축 검증 (HPC 필요, 추가 도킹)
+
+- [ ] Scrambled partner PDB 생성 (개발 환경에서 가능):
+  ```bash
+  python -m egfr_pipeline.decoy_enrichment generate \
+      --partner_pdb input/PPI/phase1/MYO1D_TH1.pdb \
+      --output_dir output/decoy_controls/scrambled_pdbs/ \
+      --n_scrambles 5
+  ```
+- [ ] 생성된 PDB 및 mutation log 확인:
+  ```bash
+  ls output/decoy_controls/scrambled_pdbs/*.pdb
+  cat output/decoy_controls/scrambled_pdbs/scramble_mutations.csv | head
+  ```
+- [ ] HPC에서 컨트롤 도킹 실행 (**주의: 추가 도킹이 필요하므로 시간이 걸림**):
+  ```bash
+  qsub -v STATE=3GT8_raw config/run_decoy_docking.pbs
+  ```
+- [ ] 완료 후 통계 분석 (자동 실행되거나 수동 실행):
+  ```bash
+  python -m egfr_pipeline.decoy_enrichment analyse \
+      --real_scores output/workflow_a/phase2_ppi_docking/3GT8_raw/prod_seed0/scored_all_models.csv \
+      --control_dir output/decoy_controls/3GT8_raw/ \
+      --output output/decoy_controls/3GT8_raw/enrichment_report.csv \
+      --state 3GT8_raw --seed 0
+  ```
+- [ ] `enrichment_report.csv`에서 verdict 확인:
+  - **`significant`**: Z < -2, p < 0.05 → 결과가 통계적으로 유의미
+  - **`suggestive`**: Z < -1.5, p < 0.10 → 추가 컨트롤 필요
+  - **`no_enrichment`**: 결과가 무작위와 구분 불가 → 주의 필요
+
+### 결과 해석 가이드
+
+| 검증 결과 | 의미 | 조치 |
+|-----------|------|------|
+| Axis 4 exp_score > 8 | 실험과 높은 일치 | 해당 포켓 우선 검토 |
+| consensus_hit 비율 > 30% | 스코어링 함수 간 합의 | 높은 신뢰도 |
+| enrichment = significant | 무작위 대비 유의미 | 결과 신뢰 가능 |
+| enrichment = no_enrichment | 무작위와 구분 불가 | 결과 재검토 필요 |
+| lightdock_validated 태그 | 독립 방법 합의 | PPI 사이트 신뢰도 ↑ |
+
+---
+
 ## 흔한 실수
 
 - `-c config/example-project.yaml`을 빠뜨리고 의도하지 않은 config로 실행
@@ -393,6 +531,11 @@ output/
 - `output/workflow_a/`의 pointer stub 파일을 실제 payload로 착각
 - 과학적 Phase 번호와 production stage 번호를 혼동
 - 3개 receptor state를 요약/핸드오프 해석에서 너무 일찍 병합
+
+- 실험 잔기 데이터(`experimental` 섹션)를 설정하지 않고 Axis 4 점수가 반영되었다고 기대
+- `consensus_scoring.pbs`를 개발 환경에서 직접 실행 (반드시 HPC qsub 사용)
+- 디코이 농축 검증의 `significant` 결과를 개별 포즈의 정확성으로 해석 (이것은 분포 수준의 통계 검정)
+- LightDock convergence CSV를 `ppi_postprocess/` 외 다른 위치에 배치 (verdict가 인식 못함)
 
 ## 중단 및 에스컬레이션 조건
 

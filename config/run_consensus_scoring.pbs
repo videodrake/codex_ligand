@@ -1,0 +1,74 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N consensus_score
+#PBS -l nodes=node05:ppn=16
+#PBS -l walltime=24:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/consensus_scoring.o
+#PBS -e ${PBS_O_WORKDIR}/consensus_scoring.e
+
+# ============================================================
+# Multi-Scoring-Function Consensus Re-scoring (PBS)
+#
+# Re-scores existing docked PDB structures using 3 PyRosetta
+# energy functions (ref2015, beta_nov16, ref2015_cart) to
+# identify models that are consistently high-ranked ("consensus
+# hits") across different scoring parametrisations.
+#
+# Prerequisites:
+#   - Workflow A Phase 2 PPI docking completed
+#   - filter_passed/ or final_result/ PDBs available
+#
+# Usage:
+#   # Single seed
+#   qsub -v STATE=3GT8_raw,SEED=0 config/run_consensus_scoring.pbs
+#
+#   # All seeds for one state
+#   for s in 0 1 2 3 4; do
+#     qsub -v STATE=3GT8_raw,SEED=$s config/run_consensus_scoring.pbs
+#   done
+#
+#   # All states × seeds
+#   for state in 3GT8_raw EGFR_160-185 EGFR_170-200; do
+#     for s in 0 1 2 3 4; do
+#       qsub -v STATE=$state,SEED=$s config/run_consensus_scoring.pbs
+#     done
+#   done
+# ============================================================
+
+cd "${PBS_O_WORKDIR}" || exit 1
+
+CONFIG="config/example-project.yaml"
+STATE="${STATE:?ERROR: STATE not set (e.g. 3GT8_raw)}"
+SEED="${SEED:?ERROR: SEED not set (e.g. 0)}"
+WORKERS="${WORKERS:-16}"
+PERCENTILE="${PERCENTILE:-20}"
+
+INPUT_DIR="output/workflow_a/phase2_ppi_docking/${STATE}/prod_seed${SEED}"
+OUTPUT_CSV="${INPUT_DIR}/consensus_scores.csv"
+
+if [ ! -d "${INPUT_DIR}" ]; then
+    echo "ERROR: Input directory not found: ${INPUT_DIR}"
+    exit 1
+fi
+
+echo "============================================================"
+echo "Consensus Re-scoring: ${STATE} seed${SEED}"
+echo "  Input:  ${INPUT_DIR}"
+echo "  Output: ${OUTPUT_CSV}"
+echo "  Workers: ${WORKERS}  Percentile: ${PERCENTILE}%"
+echo "  Start:  $(date)"
+echo "============================================================"
+
+python -m egfr_pipeline.pyrosetta_docking.consensus_scoring \
+    --input_dir "${INPUT_DIR}" \
+    --output "${OUTPUT_CSV}" \
+    --workers "${WORKERS}" \
+    --percentile "${PERCENTILE}"
+
+RC=$?
+echo "============================================================"
+echo "Consensus Re-scoring finished: exit code ${RC}"
+echo "  End: $(date)"
+echo "============================================================"
+exit ${RC}
