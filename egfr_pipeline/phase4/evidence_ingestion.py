@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from egfr_pipeline import paths
+from egfr_pipeline.csv_utils import load_csv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -131,7 +132,7 @@ def load_phase1_patches(phase1_dir: Path) -> Tuple[List[dict], List[str]]:
         issues.append(f"WARNING: Phase 1 patch reference not found: {path}")
         return [], issues
 
-    patches = _load_csv(path)
+    patches = load_csv(path)
     if not patches:
         issues.append("WARNING: Phase 1 patch reference is empty")
         return [], issues
@@ -195,7 +196,7 @@ def load_phase2_data(phase2_dir: Path) -> Tuple[dict, List[str]]:
         issues.append(f"ERROR: Phase 2 relationship file not found: {rel_path}")
         return pockets, issues
 
-    relationships = _load_csv(rel_path)
+    relationships = load_csv(rel_path)
     missing = [c for c in PHASE2_RELATIONSHIP_REQUIRED
                if relationships and c not in relationships[0]]
     if missing:
@@ -215,7 +216,7 @@ def load_phase2_data(phase2_dir: Path) -> Tuple[dict, List[str]]:
     # Druggability
     drug_path = phase2_dir / "druggability_proposal_summary.csv"
     if drug_path.exists():
-        druggability = _load_csv(drug_path)
+        druggability = load_csv(drug_path)
         missing_d = [c for c in PHASE2_DRUGGABILITY_REQUIRED
                      if druggability and c not in druggability[0]]
         if missing_d:
@@ -236,7 +237,7 @@ def load_phase2_data(phase2_dir: Path) -> Tuple[dict, List[str]]:
     # State classes
     state_path = phase2_dir / "candidate_pocket_state_classes.csv"
     if state_path.exists():
-        states = _load_csv(state_path)
+        states = load_csv(state_path)
         missing_s = [c for c in PHASE2_STATE_CLASS_REQUIRED
                      if states and c not in states[0]]
         if missing_s:
@@ -273,7 +274,7 @@ def load_phase3_evidence(phase3_dir: Path) -> Tuple[List[dict], List[str]]:
         issues.append(f"WARNING: Phase 3 evidence not found: {path}")
         return [], issues
 
-    evidence = _load_csv(path)
+    evidence = load_csv(path)
     if not evidence:
         issues.append("WARNING: Phase 3 evidence is empty")
         return [], issues
@@ -641,13 +642,6 @@ def run_evidence_ingestion(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

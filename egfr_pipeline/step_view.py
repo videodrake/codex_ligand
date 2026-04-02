@@ -24,6 +24,7 @@ from urllib.parse import urlencode
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.parsing_utils import safe_float, safe_int
 from egfr_pipeline.pyrosetta_docking.run_metadata import build_output_root_name
 
 
@@ -1300,8 +1301,8 @@ def build_validation_recovery_plan(
         "rerun_commands": rerun_commands,
         "summary": {
             "issue_count": len(issues),
-            "failure_count": _safe_int(validation_status.get("failure_count"), 0),
-            "warning_count": _safe_int(validation_status.get("warning_count"), 0),
+            "failure_count": safe_int(validation_status.get("failure_count"), 0),
+            "warning_count": safe_int(validation_status.get("warning_count"), 0),
             "upstream_issue_count": len(
                 [issue for issue in issues if issue.get("phase_number") in STEP_SPECS and int(issue["phase_number"]) < 7]
             ),
@@ -2459,23 +2460,6 @@ def _load_csv_rows(path: Path) -> List[dict]:
         return []
 
 
-def _safe_float(value: object, default: float = 0.0) -> float:
-    try:
-        if value in ("", None):
-            return default
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_int(value: object, default: int = 0) -> int:
-    try:
-        if value in ("", None):
-            return default
-        return int(float(value))
-    except (TypeError, ValueError):
-        return default
-
 
 def _status_label(status: str) -> str:
     return str(status or "unknown").replace("_", " ").strip() or "unknown"
@@ -2917,7 +2901,7 @@ def _step_health_summary(current_manifest: Optional[dict], project_root: Path) -
 def _normalize_step_numbers(step_numbers: Optional[Iterable[object]]) -> List[int]:
     normalized: List[int] = []
     for item in step_numbers or []:
-        step_number = _safe_int(item, None)
+        step_number = safe_int(item, None)
         if step_number is None or step_number not in STEP_SPECS or step_number in normalized:
             continue
         normalized.append(step_number)
@@ -2993,7 +2977,7 @@ def _step_triage_items(recovery_radar: Mapping[str, object]) -> Dict[int, List[d
             "title": str(item.get("title", "Recovery group")),
             "source_kind": str(item.get("source_kind", "general")),
             "source_label": str(item.get("source_label", "General")),
-            "priority_rank": _safe_int(item.get("priority_rank"), 3),
+            "priority_rank": safe_int(item.get("priority_rank"), 3),
             "priority_label": str(item.get("priority_label", "low")),
             "scope_label": str(item.get("scope_label", "")),
             "recommended_command": str(item.get("recommended_command", "")).strip(),
@@ -3008,8 +2992,8 @@ def _step_triage_items(recovery_radar: Mapping[str, object]) -> Dict[int, List[d
         triage[step_number] = sorted(
             triage[step_number],
             key=lambda entry: (
-                _safe_int(entry.get("priority_rank"), 3),
-                _safe_int(entry.get("default_order"), 99),
+                safe_int(entry.get("priority_rank"), 3),
+                safe_int(entry.get("default_order"), 99),
                 str(entry.get("title", "")),
             ),
         )
@@ -3048,7 +3032,7 @@ def _step1_input_summary(project_root: Path) -> dict:
         for row in rows
         if not str(row.get("raw_pose_file", "")).strip()
     ]
-    model_counts = [_safe_int(row.get("n_models"), 0) for row in rows if _safe_int(row.get("n_models"), 0) > 0]
+    model_counts = [safe_int(row.get("n_models"), 0) for row in rows if safe_int(row.get("n_models"), 0) > 0]
     return {
         "title": "Step 1 Raw Pose Health",
         "available": True,
@@ -3137,9 +3121,9 @@ def _step3_evidence_summary(project_root: Path) -> dict:
 
     def _priority(row: dict) -> Tuple[float, float, float]:
         return (
-            _safe_float(row.get("frac_runs_supporting"), 0.0),
-            _safe_float(row.get("occupancy"), 0.0),
-            _safe_float(row.get("n_runs_supporting"), 0.0),
+            safe_float(row.get("frac_runs_supporting"), 0.0),
+            safe_float(row.get("occupancy"), 0.0),
+            safe_float(row.get("n_runs_supporting"), 0.0),
         )
 
     ranked = sorted(rows, key=_priority, reverse=True)
@@ -3178,8 +3162,8 @@ def _pocket_summary(project_root: Path) -> dict:
         }
 
     receptors = sorted({str(row.get("receptor_id", "")).strip() for row in rows if row.get("receptor_id")})
-    best_row = min(rows, key=lambda row: _safe_float(row.get("best_affinity"), default=9999.0))
-    multi_ligand = sum(1 for row in rows if _safe_int(row.get("n_ligand"), 0) >= 2)
+    best_row = min(rows, key=lambda row: safe_float(row.get("best_affinity"), default=9999.0))
+    multi_ligand = sum(1 for row in rows if safe_int(row.get("n_ligand"), 0) >= 2)
     coverage_rows = _load_csv_rows(project_root / "vina_postprocess_coverage.csv")
     parsed_pairs = sum(1 for row in coverage_rows if str(row.get("status", "")).strip().lower() == "parsed")
     comparison_rows = _load_csv_rows(project_root / "vina_pocket_comparison.csv")
@@ -3234,8 +3218,8 @@ def _verdict_summary(project_root: Path) -> dict:
     ranked = sorted(
         rows,
         key=lambda row: (
-            -_safe_float(row.get("confidence_score"), default=-1.0),
-            _safe_float(row.get("best_affinity"), default=9999.0),
+            -safe_float(row.get("confidence_score"), default=-1.0),
+            safe_float(row.get("best_affinity"), default=9999.0),
         ),
     )
     consensus_sites = {
@@ -3290,8 +3274,8 @@ def _validation_summary_for_overview(project_root: Path) -> dict:
     recovery_plan_path = project_root / STEP_SPECS[7].folder_name / "validation_recovery_plan.json"
     recovery_plan = _read_json(recovery_plan_path) if recovery_plan_path.exists() else {}
     status = str(payload.get("status", "unknown"))
-    warnings = _safe_int(payload.get("warning_count"), 0)
-    failures = _safe_int(payload.get("failure_count"), 0)
+    warnings = safe_int(payload.get("warning_count"), 0)
+    failures = safe_int(payload.get("failure_count"), 0)
     details: List[str] = []
     if payload.get("missing_files"):
         details.append(f"Missing artifacts: {len(payload['missing_files'])}.")
@@ -3303,8 +3287,8 @@ def _validation_summary_for_overview(project_root: Path) -> dict:
         details.append(f"Safest repair command: {recovery_plan['recommended_command']}.")
     if recovery_plan.get("recommended_phase_number") in STEP_SPECS:
         details.append(f"Earliest affected phase: {recovery_plan['recommended_phase_label']}.")
-    manual_review_count = _safe_int((recovery_plan.get("summary") or {}).get("manual_review_count"), 0)
-    action_group_count = _safe_int((recovery_plan.get("summary") or {}).get("action_group_count"), 0)
+    manual_review_count = safe_int((recovery_plan.get("summary") or {}).get("manual_review_count"), 0)
+    action_group_count = safe_int((recovery_plan.get("summary") or {}).get("action_group_count"), 0)
     if manual_review_count:
         details.append(f"Manual review findings: {manual_review_count}.")
     if action_group_count:
@@ -3356,9 +3340,9 @@ def _operational_recovery_summary_for_overview(
     recovery_plan: Optional[dict] = None,
 ) -> dict:
     plan = recovery_plan or build_operational_recovery_plan(project_root, current_manifest=current_manifest)
-    issue_count = _safe_int((plan.get("summary") or {}).get("issue_count"), 0)
-    action_group_count = _safe_int((plan.get("summary") or {}).get("action_group_count"), 0)
-    manual_review_count = _safe_int((plan.get("summary") or {}).get("manual_review_count"), 0)
+    issue_count = safe_int((plan.get("summary") or {}).get("issue_count"), 0)
+    action_group_count = safe_int((plan.get("summary") or {}).get("action_group_count"), 0)
+    manual_review_count = safe_int((plan.get("summary") or {}).get("manual_review_count"), 0)
     if issue_count == 0:
         return {
             "title": "Operational Recovery",
@@ -3404,7 +3388,7 @@ def _recovery_step_numbers(source_kind: str, group: Mapping[str, object]) -> Lis
     if explicit:
         return explicit
     if source_kind == "validation":
-        phase_number = _safe_int(group.get("phase_number"), None)
+        phase_number = safe_int(group.get("phase_number"), None)
         if phase_number is not None and phase_number in STEP_SPECS and phase_number != 7:
             return [phase_number, 7]
         return [7]
@@ -3438,12 +3422,12 @@ def _recovery_radar_item(
         "group_key": group_key,
         "title": str(group.get("category_label", "Recovery group")),
         "scope_label": scope_label,
-        "priority_rank": _safe_int(group.get("priority_rank"), 2),
+        "priority_rank": safe_int(group.get("priority_rank"), 2),
         "priority_label": str(group.get("priority_label", "medium")),
         "action_label": str(group.get("action_label", "Manual review")),
         "recommended_command": str(group.get("recommended_command", "")).strip(),
         "manual_review_required": bool(group.get("manual_review_required")),
-        "issue_count": _safe_int(group.get("issue_count"), len(messages)),
+        "issue_count": safe_int(group.get("issue_count"), len(messages)),
         "messages": messages[:2],
         "message_overflow_count": max(0, len(messages) - 2),
         "artifacts": artifacts[:2],
@@ -3683,7 +3667,7 @@ def _next_actions(
             validation_summary.get("playbook_path", "step7_validate/validation_recovery_playbook.md")
         )
         recommended_command = str(validation_summary.get("recommended_command", "")).strip()
-        manual_review_count = _safe_int(validation_summary.get("manual_review_count"), 0)
+        manual_review_count = safe_int(validation_summary.get("manual_review_count"), 0)
         return [
             (
                 f"Open `{playbook_path}` first. {manual_review_count} finding(s) require manual review before rerun."
@@ -3698,9 +3682,9 @@ def _next_actions(
             "After upstream fixes, rerun `python run_production.py --only 7` to confirm the outputs are healthy.",
             "Do not treat the report or verdict as final until validation passes.",
         ]
-    if _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0:
+    if safe_int(operational_recovery_summary.get("issue_count"), 0) > 0:
         recommended_command = str(operational_recovery_summary.get("recommended_command", "")).strip()
-        manual_review_count = _safe_int(operational_recovery_summary.get("manual_review_count"), 0)
+        manual_review_count = safe_int(operational_recovery_summary.get("manual_review_count"), 0)
         return [
             (
                 f"Open `operational_recovery_playbook.md` first. {manual_review_count} finding(s) need manual review."
@@ -3781,7 +3765,7 @@ def _command_suggestions(
             "Recheck output integrity after fixing missing files, schema issues, or manual validation blockers.",
         )
     operational_command = str(operational_recovery_summary.get("recommended_command", "")).strip()
-    if _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0 and operational_command:
+    if safe_int(operational_recovery_summary.get("issue_count"), 0) > 0 and operational_command:
         _add(
             "Repair upstream operational issues",
             operational_command,
@@ -3845,7 +3829,7 @@ def _guided_action_focus(
                 "source_kind": str(radar_item.get("source_kind", "general")),
                 "source_label": str(radar_item.get("source_label", "General")),
                 "priority_label": str(radar_item.get("priority_label", "low")),
-                "priority_rank": _safe_int(radar_item.get("priority_rank"), 3),
+                "priority_rank": safe_int(radar_item.get("priority_rank"), 3),
                 "manual_review_required": bool(radar_item.get("manual_review_required")),
                 "default_order": index,
             }
@@ -3919,13 +3903,13 @@ def _annotate_command_suggestions(
             best_group = min(
                 matched_groups,
                 key=lambda group: (
-                    _safe_int(group.get("priority_rank"), 3),
+                    safe_int(group.get("priority_rank"), 3),
                     0 if not group.get("manual_review_required") else 1,
                 ),
             )
             source_kind = str(best_group.get("source_kind", "general"))
             source_label = str(best_group.get("source_label", "General"))
-            priority_rank = _safe_int(best_group.get("priority_rank"), 3)
+            priority_rank = safe_int(best_group.get("priority_rank"), 3)
             priority_label = str(best_group.get("priority_label", _validation_priority_label(priority_rank)))
             manual_review_required = any(group.get("manual_review_required") for group in matched_groups)
             group_keys = [
@@ -3938,14 +3922,14 @@ def _annotate_command_suggestions(
             source_label = "Validation"
             priority_rank = 1 if validation_summary.get("status") in {"failed", "error"} else 2
             priority_label = _validation_priority_label(priority_rank)
-            manual_review_required = _safe_int(validation_summary.get("manual_review_count"), 0) > 0
+            manual_review_required = safe_int(validation_summary.get("manual_review_count"), 0) > 0
             group_keys = validation_group_keys
         elif operational_command and command_text == operational_command:
             source_kind = "operational"
             source_label = "Operational"
-            priority_rank = 0 if _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0 else 2
+            priority_rank = 0 if safe_int(operational_recovery_summary.get("issue_count"), 0) > 0 else 2
             priority_label = _validation_priority_label(priority_rank)
-            manual_review_required = _safe_int(operational_recovery_summary.get("manual_review_count"), 0) > 0
+            manual_review_required = safe_int(operational_recovery_summary.get("manual_review_count"), 0) > 0
             group_keys = operational_group_keys
         elif failed_phase_command and command_text == failed_phase_command:
             priority_rank = 0
@@ -3987,9 +3971,9 @@ def _annotate_quick_links(
     step_status = (current_manifest or {}).get("step_status") or {}
     stale_present = any(status == "stale" for status in step_status.values())
     validation_active = validation_summary.get("status") in {"failed", "error"}
-    operational_active = _safe_int(operational_recovery_summary.get("issue_count"), 0) > 0
-    validation_manual = _safe_int(validation_summary.get("manual_review_count"), 0) > 0
-    operational_manual = _safe_int(operational_recovery_summary.get("manual_review_count"), 0) > 0
+    operational_active = safe_int(operational_recovery_summary.get("issue_count"), 0) > 0
+    validation_manual = safe_int(validation_summary.get("manual_review_count"), 0) > 0
+    operational_manual = safe_int(operational_recovery_summary.get("manual_review_count"), 0) > 0
     validation_group_keys = [
         str(item.get("group_key", "")).strip()
         for item in recovery_radar.get("items") or []
@@ -4416,10 +4400,10 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
             f"data-source-kind=\"{escape(str(item.get('source_kind', 'overview')))}\" "
             f"data-manual-review=\"{'yes' if item.get('manual_review_required') else 'no'}\" "
             f"data-priority=\"{escape(str(item.get('priority_label', 'low')))}\" "
-            f"data-priority-rank=\"{escape(str(_safe_int(item.get('priority_rank'), 3)))}\" "
-            f"data-availability-rank=\"{escape(str(_safe_int(item.get('availability_rank'), 1)))}\" "
+            f"data-priority-rank=\"{escape(str(safe_int(item.get('priority_rank'), 3)))}\" "
+            f"data-availability-rank=\"{escape(str(safe_int(item.get('availability_rank'), 1)))}\" "
             f"data-group-keys=\"{escape(group_keys)}\" "
-            f"data-default-order=\"{escape(str(_safe_int(item.get('default_order'), 0)))}\">"
+            f"data-default-order=\"{escape(str(safe_int(item.get('default_order'), 0)))}\">"
             f"<div class=\"tone-row\">"
             f"<span class=\"tone tone-{escape(str(item.get('source_kind', 'overview')))}\">{escape(str(item.get('source_label', 'Overview')))}</span>"
             f"<span class=\"tone priority-{escape(str(item.get('priority_label', 'low')))}\">{escape(str(item.get('priority_label', 'low')).title())}</span>"
@@ -4464,8 +4448,8 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
         source_kind = escape(str(item.get("source_kind", "general")))
         manual_review = "yes" if item.get("manual_review_required") else "no"
         priority_label = escape(str(item.get("priority_label", "low")))
-        priority_rank = escape(str(_safe_int(item.get("priority_rank"), 3)))
-        default_order = escape(str(_safe_int(item.get("default_order"), 0)))
+        priority_rank = escape(str(safe_int(item.get("priority_rank"), 3)))
+        default_order = escape(str(safe_int(item.get("default_order"), 0)))
         chips = [
             f"<span class=\"tone tone-{source_kind}\">{escape(str(item.get('source_label', 'General')))}</span>",
             f"<span class=\"tone priority-{priority_label}\">{escape(str(item.get('priority_label', 'low')).title())}</span>",
@@ -5251,8 +5235,8 @@ def write_run_overview_html(project_root: Union[Path, str], overview_data: dict)
         source_kind = escape(str(item.get("source_kind", "general")))
         manual_review = "yes" if item.get("manual_review_required") else "no"
         priority_label = escape(str(item.get("priority_label", "low")))
-        priority_rank = escape(str(_safe_int(item.get("priority_rank"), 3)))
-        default_order = escape(str(_safe_int(item.get("default_order"), 0)))
+        priority_rank = escape(str(safe_int(item.get("priority_rank"), 3)))
+        default_order = escape(str(safe_int(item.get("default_order"), 0)))
         chips = [
             f"<span class=\"tone tone-{source_kind}\">{escape(str(item.get('source_label', 'General')))}</span>",
             f"<span class=\"tone priority-{priority_label}\">{escape(str(item.get('priority_label', 'low')).title())}</span>",

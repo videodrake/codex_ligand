@@ -29,6 +29,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_perturbation"
 
@@ -116,7 +119,7 @@ def compute_perturbation_score(
 
     contributions = {}
     for axis, weight in weights.items():
-        raw = _safe_float(row.get(axis, "0"))
+        raw = safe_float(row.get(axis, "0"), 0.0)
         contributions[axis] = round(raw * weight, 4)
 
     total = sum(contributions.values())
@@ -150,10 +153,10 @@ def apply_affinity_cap(
         return score
 
     # For irrelevant sites: cap the affinity-influenced axes (A2, A3)
-    a2 = _safe_float(row.get("A2_druggability", "0"))
-    a3 = _safe_float(row.get("A3_perturbation_relevance", "0"))
-    a1 = _safe_float(row.get("A1_ppi_interface", "0"))
-    a4 = _safe_float(row.get("A4_state_robustness", "0"))
+    a2 = safe_float(row.get("A2_druggability", "0"), 0.0)
+    a3 = safe_float(row.get("A3_perturbation_relevance", "0"), 0.0)
+    a1 = safe_float(row.get("A1_ppi_interface", "0"), 0.0)
+    a4 = safe_float(row.get("A4_state_robustness", "0"), 0.0)
 
     w = DEFAULT_WEIGHTS
     bio_component = a1 * w["A1_ppi_interface"] + a4 * w["A4_state_robustness"]
@@ -288,10 +291,10 @@ def build_ranking_note(
         lines.append(
             f"| {s['rank']} | {s['pocket_id']} | {lig} | "
             f"{short_class} | {s['perturbation_score']:.4f} | "
-            f"{_safe_float(s['A1_ppi_interface']):.3f} | "
-            f"{_safe_float(s['A2_druggability']):.3f} | "
-            f"{_safe_float(s['A3_perturbation_relevance']):.3f} | "
-            f"{_safe_float(s['A4_state_robustness']):.3f} |"
+            f"{safe_float(s['A1_ppi_interface'], 0.0):.3f} | "
+            f"{safe_float(s['A2_druggability'], 0.0):.3f} | "
+            f"{safe_float(s['A3_perturbation_relevance'], 0.0):.3f} | "
+            f"{safe_float(s['A4_state_robustness'], 0.0):.3f} |"
         )
     lines.append("")
 
@@ -355,7 +358,7 @@ def run_perturbation_scoring(
             "Run TG 4.2 (mechanistic_classification) first."
         )
 
-    classified = _load_csv(classes_path)
+    classified = load_csv(classes_path)
     print(f"  Loaded {len(classified)} classified candidates")
 
     # Score and rank
@@ -385,20 +388,6 @@ def run_perturbation_scoring(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val: str) -> float:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

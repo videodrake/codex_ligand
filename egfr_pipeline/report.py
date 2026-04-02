@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.parsing_utils import safe_float
 
 
 # ---------------------------------------------------------------------------
@@ -30,20 +31,11 @@ def load_csv(path: Path) -> List[dict]:
         return list(csv.DictReader(f))
 
 
-def _safe_float(value: object, default: float = 0.0) -> float:
-    try:
-        if value in ("", None):
-            return default
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def _ppi_row_priority(row: dict) -> Tuple[float, float, float]:
     return (
-        _safe_float(row.get("frac_runs_supporting"), 0.0),
-        _safe_float(row.get("occupancy"), 0.0),
-        _safe_float(row.get("n_runs_supporting"), 0.0),
+        safe_float(row.get("frac_runs_supporting"), 0.0),
+        safe_float(row.get("occupancy"), 0.0),
+        safe_float(row.get("n_runs_supporting"), 0.0),
     )
 
 
@@ -119,19 +111,27 @@ def format_receptor_pocket_section(
             lines.append(header)
             lines.append(divider)
         for p in sorted(pockets, key=lambda r: float(r.get("best_affinity", 0) or 0)):
+            best_aff = safe_float(p.get('best_affinity', ''))
+            mean_aff = safe_float(p.get('mean_affinity', ''))
             base = (
                 f"  {p['pocket_id']:<8} {p.get('n_pose',''):>6} {p.get('n_ligand',''):>5} "
-                f"{p.get('best_affinity',''):>9} {p.get('mean_affinity',''):>9} "
+                f"{best_aff:>9.2f} " if best_aff is not None else
+                f"  {p['pocket_id']:<8} {p.get('n_pose',''):>6} {p.get('n_ligand',''):>5} "
+                f"{'':>9} "
             )
+            base += f"{mean_aff:>9.2f} " if mean_aff is not None else f"{'':>9} "
             if has_uncertainty:
-                spread = p.get('centroid_spread_A', '')
-                aff_std = p.get('affinity_std', '')
-                base += f"{spread:>7} {aff_std:>7} "
+                spread = safe_float(p.get('centroid_spread_A', ''))
+                aff_std = safe_float(p.get('affinity_std', ''))
+                base += f"{spread:>7.2f} " if spread is not None else f"{'':>7} "
+                base += f"{aff_std:>7.2f} " if aff_std is not None else f"{'':>7} "
             if has_ligand_diversity:
-                lig_frac = p.get('dominant_ligand_fraction', '')
-                lig_entropy = p.get('ligand_pose_entropy', '')
-                base += f"{lig_frac:>7} {lig_entropy:>7} "
-            base += f"{p.get('top_residues','')[:40]}"
+                lig_frac = safe_float(p.get('dominant_ligand_fraction', ''))
+                lig_entropy = safe_float(p.get('ligand_pose_entropy', ''))
+                base += f"{lig_frac:>7.2f} " if lig_frac is not None else f"{'':>7} "
+                base += f"{lig_entropy:>7.2f} " if lig_entropy is not None else f"{'':>7} "
+            top_res = p.get('top_residues', '') or ''
+            base += top_res[:40] + ("..." if len(top_res) > 40 else "")
             lines.append(base)
         lines.append("")
 
@@ -319,14 +319,14 @@ def format_combined_residue_table(
                 }
             record = vina_residues[receptor_id][norm]
             record["vina_pockets"].append(pocket_id)
-            best_aff = _safe_float(record.get("vina_best_affinity"), float("inf"))
-            pocket_aff = _safe_float(pocket.get("best_affinity"), float("inf"))
+            best_aff = safe_float(record.get("vina_best_affinity"), float("inf"))
+            pocket_aff = safe_float(pocket.get("best_affinity"), float("inf"))
             if pocket_aff < best_aff:
                 record["vina_best_affinity"] = round(pocket_aff, 4)
 
             verdict = verdict_index.get((receptor_id, pocket_id), {})
-            current_conf = _safe_float(record.get("vina_best_confidence_score"), -1.0)
-            verdict_conf = _safe_float(verdict.get("confidence_score"), -1.0)
+            current_conf = safe_float(record.get("vina_best_confidence_score"), -1.0)
+            verdict_conf = safe_float(verdict.get("confidence_score"), -1.0)
             if verdict_conf > current_conf:
                 record["vina_best_confidence_score"] = (
                     round(verdict_conf, 4) if verdict_conf >= 0 else ""
@@ -338,11 +338,11 @@ def format_combined_residue_table(
                     "evidence_profile", ""
                 )
 
-            current_stability = _safe_float(
+            current_stability = safe_float(
                 record.get("vina_best_pocket_stability"),
                 -1.0,
             )
-            pocket_stability = _safe_float(
+            pocket_stability = safe_float(
                 verdict.get("pocket_stability", pocket.get("pocket_exists_frac")),
                 -1.0,
             )
@@ -445,9 +445,9 @@ def format_verdict_section(
     for r in verdict_rows:
         counts[r.get("verdict", "UNKNOWN")] += 1
     lines.append(f"  Total pockets evaluated: {len(verdict_rows)}")
-    lines.append(f"  STRONG: {counts.get('STRONG', 0)}  |  "
-                 f"MODERATE: {counts.get('MODERATE', 0)}  |  "
-                 f"WEAK: {counts.get('WEAK', 0)}")
+    lines.append(f"    STRONG:    {counts.get('STRONG', 0)}")
+    lines.append(f"    MODERATE:  {counts.get('MODERATE', 0)}")
+    lines.append(f"    WEAK:      {counts.get('WEAK', 0)}")
     lines.append("")
 
     # Scoring mode explanation
@@ -472,6 +472,11 @@ def format_verdict_section(
                  f"{'-----':>6} {'----':>5} {'---':>5} {'-----':>5} {'-------':<28}  -------")
     for r in verdict_rows:
         profile = str(r.get("evidence_profile", "")).replace("+", ",")
+        if len(profile) > 28:
+            profile = profile[:25] + "..."
+        reasons = str(r.get('reasons', ''))
+        if len(reasons) > 50:
+            reasons = reasons[:47] + "..."
         lines.append(
             f"  {r.get('receptor_id',''):<20} {r.get('pocket_id',''):<7} "
             f"{r.get('verdict',''):<11} "
@@ -479,8 +484,8 @@ def format_verdict_section(
             f"{r.get('vina_quality_score',''):>5} "
             f"{r.get('ppi_proximity_score',''):>5} "
             f"{r.get('cross_receptor_score',''):>5} "
-            f"{profile[:28]:<28}  "
-            f"{r.get('reasons','')}"
+            f"{profile:<28}  "
+            f"{reasons}"
         )
     lines.append("")
 
@@ -621,7 +626,7 @@ def generate_report(
     recurrent = [r for r in verdict_rows if "recurrent" in str(r.get("evidence_profile", ""))]
     stable = [
         r for r in verdict_rows
-        if _safe_float(r.get("pocket_stability"), 0.0) >= 0.6
+        if safe_float(r.get("pocket_stability"), 0.0) >= 0.6
     ]
     report_lines.append(f"  Recurrent verdict-supported pockets: {len(recurrent)}")
     report_lines.append(f"  Stable Vina pockets (bootstrap >=0.6): {len(stable)}")

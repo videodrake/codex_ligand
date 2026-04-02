@@ -16,12 +16,11 @@ Usage:
 """
 
 import argparse
-import sys
-import time
 from pathlib import Path
 from typing import Optional
 
 from egfr_pipeline import paths
+from egfr_pipeline.cascade_runner import run_cascade
 
 _CFG = {"output_root": str(paths.REPO_ROOT / "output")}
 PHASE1_INPUT_DIR = paths.REPO_ROOT / "input" / "PPI" / "phase1"
@@ -58,36 +57,16 @@ def run_phase2_cascade(
         ("2.7", "Review Report", lambda: _run_tg27(output_dir)),
     ]
 
-    print("=" * 60)
-    print("  Phase 2 Cascade Runner")
-    print(f"  Output:     {output_dir}")
-    print(f"  Parse-only: {parse_only}")
-    print(f"  From TG:    {from_tg}")
-    print(f"  FTMap dir:  {ftmap_dir or '(none)'}")
-    print("=" * 60)
-
-    t0 = time.time()
-    for tg_id, label, func in steps:
-        if tg_id < from_tg:
-            print(f"\n--- TG {tg_id} {label} --- SKIPPED (before --from-tg {from_tg})")
-            continue
-        print(f"\n{'=' * 60}")
-        print(f"  TG {tg_id}: {label}")
-        print(f"{'=' * 60}")
-        ts = time.time()
-        try:
-            func()
-        except Exception as e:
-            print(f"\n  [ERROR] TG {tg_id} failed: {e}")
-            print("  Cascade stopped.")
-            sys.exit(1)
-        elapsed = time.time() - ts
-        print(f"  TG {tg_id} done ({elapsed:.1f}s)")
-
-    total = time.time() - t0
-    print(f"\n{'=' * 60}")
-    print(f"  Phase 2 Cascade COMPLETE ({total:.1f}s)")
-    print(f"{'=' * 60}")
+    run_cascade(
+        phase_label="Phase 2 Cascade Runner",
+        steps=steps,
+        from_tg=from_tg,
+        header_lines=[
+            f"Output:     {output_dir}",
+            f"Parse-only: {parse_only}",
+            f"FTMap dir:  {ftmap_dir or '(none)'}",
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------

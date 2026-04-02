@@ -87,7 +87,7 @@ class PipelineManager:
         )
         self.requested_cpus = req_cpus
         self.n_cpus = self.runtime_resources.effective_cpus
-        self.chunksize = 1
+        self.chunksize = max(1, self.n_cpus * 2)  # batch tasks to reduce IPC overhead
 
         if override_input_pdb:
             self.input_pdb = os.path.abspath(override_input_pdb)
@@ -1299,7 +1299,7 @@ class PipelineManager:
                 mr_ok = s.get('mini_refine_success', 0)
                 mr_ct = s.get('mini_refine_count', 0)
                 mr_mode = s.get('mini_refine_mode', 'pack_only')
-                mr_nr = s.get('mini_refine_n_rounds', 1)
+                mr_nr = s.get('mini_refine_n_rounds', 3)
                 a(f"  Mini Refinement     : {mr_ok:,}/{mr_ct:,}개 리파인됨 "
                   f"({mr_mode}, {mr_nr} rounds)")
             if stage1_surv > 0:
@@ -1356,7 +1356,7 @@ class PipelineManager:
             a("=" * W)
             a("")
             mr_mode = s.get('mini_refine_mode', 'pack_only')
-            mr_nr = s.get('mini_refine_n_rounds', 1)
+            mr_nr = s.get('mini_refine_n_rounds', 3)
             mr_ct = s.get('mini_refine_count', 0)
             mr_ok = s.get('mini_refine_success', 0)
             mr_time = s.get('mini_refine_time', 0)
@@ -2472,7 +2472,9 @@ function sortTable(th) {
 
     def _step1_relax(self) -> Tuple[Optional[str], Optional[str]]:
         """Step 1: Check/run relaxed structure. Returns (relaxed_pdb, cache_path)."""
-        self.logger.info(">>> [Step 1] Check Relaxed Structure...")
+        self.logger.info("=" * 60)
+        self.logger.info(">>> [Step 1/7] Check Relaxed Structure")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         cache_filename = f"{os.path.splitext(self.filename)[0]}_relaxed.pdb"
@@ -2517,7 +2519,9 @@ function sortTable(th) {
                 f"{len(self.key_residues_B)} residues, "
                 f"bonus_weight={self.key_residue_bonus_weight}")
 
-        self.logger.info(f">>> [Step 2] Global Docking ({self.total_global} models)...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 2/7] Global Docking ({self.total_global:,} models)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         # Build task args with constraint info for early rejection
@@ -2533,13 +2537,17 @@ function sortTable(th) {
         count_rejected = 0
         count_errors = 0
 
+        # Adaptive progress interval: ~10 updates total, at least every 500, at most every 5000
+        _prog_interval = max(500, min(5000, self.total_global // 10))
+
         with multiprocessing.Pool(self.n_cpus) as pool:
             for res in pool.imap_unordered(movers.run_global_docking_task, tasks, chunksize=self.chunksize):
                 count_done += 1
-                if count_done % 2000 == 0:
+                if count_done % _prog_interval == 0 or count_done == self.total_global:
+                    pct = count_done / self.total_global * 100
                     self.logger.info(
-                        f"    > [Docking] {count_done}/{self.total_global} "
-                        f"(accepted={len(docking_results)}, rejected={count_rejected}, errors={count_errors})")
+                        f"    > [Docking] {count_done:,}/{self.total_global:,} ({pct:.0f}%) "
+                        f"accepted={len(docking_results):,}, rejected={count_rejected:,}, errors={count_errors}")
                 if res['status'] == 'success':
                     docking_results.append(res)
                 elif res['status'] == 'rejected':
@@ -2552,10 +2560,17 @@ function sortTable(th) {
         elapsed = time.time() - t_start
         self.stage_times['Global Docking'] = elapsed
         self.logger.info(f"    [Time] Global Docking: {elapsed:.1f} sec")
+        self.logger.info(
+            f"    [Result] accepted={len(docking_results):,}, "
+            f"rejected={count_rejected:,}, errors={count_errors:,} "
+            f"(of {self.total_global:,} total)")
+        if count_errors > 0:
+            self.logger.warning(
+                f"    [!] {count_errors:,} docking errors — check workers.log for details")
         if count_rejected > 0:
             rej_pct = count_rejected / self.total_global * 100
             self.logger.info(
-                f"    > [Early Rejection] {count_rejected}/{self.total_global} "
+                f"    > [Early Rejection] {count_rejected:,}/{self.total_global:,} "
                 f"({rej_pct:.1f}%) rejected (excluded zone contact)")
 
         if not docking_results:
@@ -2569,7 +2584,9 @@ function sortTable(th) {
 
     def _step2_5_scoring_filtering(self, docking_results: List[Dict], cache_path: str) -> Tuple[Optional[List[Dict]], Dict]:
         """Step 2.5: Fast scoring & multi-criteria filtering. Returns (cluster_candidates, constraints_dict) or None."""
-        self.logger.info(">>> [Step 2.5] Fast Scoring & Filtering...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 3/7] Fast Scoring & Filtering ({len(docking_results):,} models)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         constraints_dict = {
@@ -2592,6 +2609,9 @@ function sortTable(th) {
                       for d in docking_results)
 
         combined_data = []
+        _score_errors = 0
+        n_dock = len(docking_results)
+        _score_prog = max(100, min(2000, n_dock // 10))
 
         with multiprocessing.Pool(self.n_cpus) as pool:
             score_iter = pool.imap(scoring.run_fast_scoring_task,
@@ -2604,12 +2624,28 @@ function sortTable(th) {
                     score_res['pdb_data'] = origin['pdb_data']
                     combined_data.append(score_res)
                 else:
-                    self.logger.warning(
-                        f"Scoring Error (ID: {origin['id']}): {score_res.get('error')}")
+                    _score_errors += 1
+                    if _score_errors <= 3:
+                        self.logger.warning(
+                            f"Scoring Error (ID: {origin['id']}): {score_res.get('error')}")
                 docking_results[i] = None  # Free memory incrementally
+                done = i + 1
+                if done % _score_prog == 0 or done == n_dock:
+                    pct = done / n_dock * 100
+                    self.logger.info(
+                        f"    > [Fast Scoring] {done:,}/{n_dock:,} ({pct:.0f}%) "
+                        f"passed={len(combined_data):,}")
 
         del docking_results
         gc.collect()
+
+        self.logger.info(
+            f"    [Result] scored={len(combined_data):,}, errors={_score_errors:,} "
+            f"(of {n_dock:,} total)")
+        if _score_errors > 3:
+            self.logger.warning(
+                f"    [!] {_score_errors:,} scoring errors (first 3 shown above) "
+                f"— check workers.log for details")
 
         if not combined_data:
             self.logger.critical("!!! CRITICAL: All scoring tasks failed.")
@@ -3415,7 +3451,9 @@ function sortTable(th) {
     def _step3_full_scoring(self, cluster_candidates: List[Dict], cache_path: str, constraints_dict: Dict) -> Optional[List[Dict]]:
         """Step 3: Full scoring of filter survivors. Returns fully_scored list or None."""
         n = len(cluster_candidates)
-        self.logger.info(f">>> [Step 3] Full Scoring ({n} filter survivors)...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 4/7] Full Scoring ({n:,} filter survivors)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         score_tasks = ((d['pdb_data'], cache_path, self.contact_distance, constraints_dict)
@@ -3465,7 +3503,9 @@ function sortTable(th) {
     def _step4_clustering(self, cluster_candidates: List[Dict]) -> Optional[List[Dict]]:
         """Step 4: L_RMSD greedy clustering. Returns final_representatives or None."""
         n_cands = len(cluster_candidates)
-        self.logger.info(f">>> [Step 4] L_RMSD Greedy Clustering ({n_cands} candidates)...")
+        self.logger.info("=" * 60)
+        self.logger.info(f">>> [Step 5/7] L_RMSD Greedy Clustering ({n_cands:,} candidates)")
+        self.logger.info("=" * 60)
         t_start = time.time()
 
         centers = np.array([[c.get('center_x', 0), c.get('center_y', 0),
@@ -3722,7 +3762,9 @@ function sortTable(th) {
 
     def _step5_selection_and_save(self, final_representatives: List[Dict]) -> Tuple[Any, str]:
         """Step 5: Diversity-aware selection, dedup, and save. Returns (ranking_df, final_csv_path)."""
-        self.logger.info(">>> [Step 5] Diversity-Aware Selection & Deduplication...")
+        self.logger.info("=" * 60)
+        self.logger.info(">>> [Step 6/7] Diversity-Aware Selection & Deduplication")
+        self.logger.info("=" * 60)
         t_start_step6 = time.time()
         final_scores = final_representatives
 
@@ -3971,9 +4013,64 @@ function sortTable(th) {
         self.logger.info(f"    [Time] Selection & Save: {elapsed:.1f} sec")
         return ranking_df, final_csv_path
 
+    def _write_results_guide(self) -> None:
+        """Write RESULTS_GUIDE.txt at seed root to help users navigate output files."""
+        guide_path = os.path.join(self.root_dir, "RESULTS_GUIDE.txt")
+        try:
+            lines = [
+                "=" * 60,
+                "  결과 파일 가이드 (Results Guide)",
+                "=" * 60,
+                "",
+                "★ 핵심 결과 (이것만 보세요)",
+                "─" * 40,
+                "  final_result/final_ranking.csv",
+                "    → 최종 랭킹 모델 (dG, dSASA, sc 등 종합)",
+                "  final_result/view_results.pml",
+                "    → PyMOL 시각화 (B-factor 컬러링)",
+                "  1_OVERVIEW_Clusters.pml",
+                "    → 전체 결합 사이트 분포 (클러스터별 색상)",
+                "  docking_validation_report.txt",
+                "    → 품질 판정 (C1~C10 PASS/FAIL)",
+                "",
+                "◎ 분석용 (상세 확인 필요 시)",
+                "─" * 40,
+                "  cluster_results/cluster_summary.csv",
+                "    → 클러스터별 대표 모델 메트릭",
+                "  energy_funnel.png",
+                "    → L_RMSD vs dG 산점도",
+                "  final_result/Rank##_*_Energies.csv",
+                "    → 개별 모델 잔기별 에너지 분해",
+                "",
+                "◇ 재현성/디버깅용 (일반적으로 불필요)",
+                "─" * 40,
+                "  scored_all_models.csv",
+                "    → 전체 모델 스코어 (100K행, 재분석용)",
+                "  scored_stage2_models.csv",
+                "    → Stage 2 대상 모델 (비싼 메트릭 포함)",
+                "  all_scored_summary.csv",
+                "    → 에너지 퍼널 데이터 (L_RMSD 포함)",
+                "  filter_thresholds.csv",
+                "    → 사용된 필터 임계값 기록",
+                "  cluster_results/cluster_membership.csv",
+                "    → 전체 모델→클러스터 매핑",
+                "  cluster_results/dropped_candidates.csv",
+                "    → 중복제거로 제외된 후보",
+                "",
+                "─" * 40,
+                "  ★=필수  ◎=권장  ◇=선택",
+                "",
+            ]
+            with open(guide_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+        except Exception:
+            pass  # Non-critical; don't fail the pipeline
+
     def _step6_visualization(self, ranking_df: Any, final_csv_path: str, overall_start_time: float) -> None:
         """Step 6: Visualization & validation report."""
-        self.logger.info(">>> [Step 6] Generating Visualization & Validation Report...")
+        self.logger.info("=" * 60)
+        self.logger.info(">>> [Step 7/7] Generating Visualization & Validation Report")
+        self.logger.info("=" * 60)
         self.plot_energy_funnel(final_csv_path)
         self.generate_cluster_overview()
         self.generate_per_cluster_views(final_csv_path)
@@ -4060,6 +4157,9 @@ function sortTable(th) {
             # Step 6: Visualization & Report
             self._step6_visualization(ranking_df, final_csv_path, overall_start_time)
             self._save_run_metadata("completed")
+
+            # Generate output guide for this seed
+            self._write_results_guide()
 
             gc.collect()
 

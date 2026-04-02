@@ -77,6 +77,9 @@ def run_global_docking_task(args: tuple) -> Dict[str, Any]:
 
     if len(args) >= 5:
         idx, input_data, excluded_residues_A, exclusion_contact_dist, max_excluded_contacts = args[:5]
+    elif len(args) == 4:
+        idx, input_data, excluded_residues_A, exclusion_contact_dist = args
+        max_excluded_contacts = 0
     elif len(args) == 3:
         idx, input_data, excluded_residues_A = args
         exclusion_contact_dist = DEFAULT_EXCLUSION_DIST
@@ -239,7 +242,7 @@ def run_mini_refinement_task(args: tuple) -> Dict[str, Any]:
         idx, pdb_data, mode, n_rounds = args[:4]
     else:
         idx, pdb_data, mode = args
-        n_rounds = 1
+        n_rounds = 3
     step = "Init"
 
     try:

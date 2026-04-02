@@ -36,6 +36,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Set
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
@@ -49,16 +51,16 @@ RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 def run_review_report(output_dir: Path) -> Path:
     """Run full TG 2.7 pipeline. Returns report path."""
     # Load all Phase 2 outputs
-    raw_pockets = _load_csv(output_dir / "candidate_pockets_raw.csv")
-    merged_pockets = _load_csv(output_dir / "candidate_pockets.csv")
-    provenance = _load_csv(output_dir / "candidate_pocket_provenance.csv")
-    relationships = _load_csv(output_dir / "pocket_patch_relationship.csv")
-    rel_metrics = _load_csv(output_dir / "pocket_patch_relationship_metrics.csv")
-    druggability = _load_csv(output_dir / "druggability_proposal_summary.csv")
-    support_flags = _load_csv(output_dir / "candidate_pocket_support_flags.csv")
-    state_classes = _load_csv(output_dir / "candidate_pocket_state_classes.csv")
-    phase3_ref = _load_csv(output_dir / "phase3_candidate_pocket_reference.csv")
-    patch_ref = _load_csv(output_dir / "phase2_patch_reference_normalized.csv")
+    raw_pockets = load_csv(output_dir / "candidate_pockets_raw.csv")
+    merged_pockets = load_csv(output_dir / "candidate_pockets.csv")
+    provenance = load_csv(output_dir / "candidate_pocket_provenance.csv")
+    relationships = load_csv(output_dir / "pocket_patch_relationship.csv")
+    rel_metrics = load_csv(output_dir / "pocket_patch_relationship_metrics.csv")
+    druggability = load_csv(output_dir / "druggability_proposal_summary.csv")
+    support_flags = load_csv(output_dir / "candidate_pocket_support_flags.csv")
+    state_classes = load_csv(output_dir / "candidate_pocket_state_classes.csv")
+    phase3_ref = load_csv(output_dir / "phase3_candidate_pocket_reference.csv")
+    patch_ref = load_csv(output_dir / "phase2_patch_reference_normalized.csv")
 
     print(f"  Loaded: {len(raw_pockets)} raw, {len(merged_pockets)} merged, "
           f"{len(relationships)} relationships, {len(druggability)} druggability, "
@@ -511,13 +513,6 @@ def _build_report(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 # ---------------------------------------------------------------------------
 # CLI

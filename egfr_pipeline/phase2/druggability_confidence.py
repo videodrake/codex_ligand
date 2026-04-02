@@ -32,6 +32,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float, safe_int
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -116,7 +119,7 @@ def normalize_scores_within_state(
     """
     by_state: Dict[str, List[Tuple[str, float]]] = defaultdict(list)
     for p in pockets:
-        val = _safe_float(p.get(score_field, ""))
+        val = safe_float(p.get(score_field, ""))
         if val is not None:
             by_state[p["receptor_id"]].append((p["pocket_id"], val))
 
@@ -321,9 +324,9 @@ def run_druggability_confidence(
     Returns (summary_csv, support_csv, note_path).
     """
     # Load inputs
-    pockets = _load_csv(output_dir / "candidate_pockets.csv")
-    provenance = _load_csv(output_dir / "candidate_pocket_provenance.csv")
-    relationships = _load_csv(output_dir / "pocket_patch_relationship.csv")
+    pockets = load_csv(output_dir / "candidate_pockets.csv")
+    provenance = load_csv(output_dir / "candidate_pocket_provenance.csv")
+    relationships = load_csv(output_dir / "pocket_patch_relationship.csv")
 
     if not pockets:
         raise FileNotFoundError("No candidate pockets found. Run TG 2.2 first.")
@@ -360,8 +363,8 @@ def run_druggability_confidence(
         state = p["receptor_id"]
 
         # Raw scores
-        raw_proposal = _safe_float(p.get("best_proposal_score", ""))
-        raw_druggability = _safe_float(p.get("best_druggability_score", ""))
+        raw_proposal = safe_float(p.get("best_proposal_score", ""))
+        raw_druggability = safe_float(p.get("best_druggability_score", ""))
 
         # Normalized
         norm_p = norm_proposal.get(pid)
@@ -371,7 +374,7 @@ def run_druggability_confidence(
         confidence = assign_druggability_confidence(raw_druggability, norm_d)
 
         # Multi-source
-        n_sources = _safe_int(p.get("n_sources", "1")) or 1
+        n_sources = safe_int(p.get("n_sources", "1")) or 1
         sources = p.get("sources", "")
         multi_source = n_sources >= CONSENSUS_MIN_SOURCES
 
@@ -452,32 +455,11 @@ def run_druggability_confidence(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-
-
-def _safe_float(val) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
-def _safe_int(val) -> int:
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        return 0
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from egfr_pipeline import paths
 from egfr_pipeline.config import load_config
+from egfr_pipeline.parsing_utils import safe_float
 from egfr_pipeline.phase1.extract_interface import extract_run
 from egfr_pipeline.residue_utils import extract_resnum, normalize_residue_id
 
@@ -215,14 +216,6 @@ def _normalize_result_dirs(raw) -> List[dict]:
     return []
 
 
-def _safe_float(value: object) -> Optional[float]:
-    try:
-        if value in ("", None):
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
 
 def _normalize_seed_index(value: object) -> str:
     if value in ("", None):
@@ -363,7 +356,7 @@ def _sort_residue_rows(rows: List[dict]) -> List[dict]:
         key=lambda row: (
             row.get("receptor_id", ""),
             row.get("partner_id", ""),
-            _safe_float(row.get("residue_num")) or -999999,
+            safe_float(row.get("residue_num")) or -999999,
             row.get("chain", ""),
             row.get("residue_id", ""),
         ),
@@ -377,10 +370,10 @@ def _sort_long_rows(rows: List[dict]) -> List[dict]:
             row.get("receptor_id", ""),
             row.get("partner_id", ""),
             row.get("seed_index", ""),
-            _safe_float(row.get("rank")) or 999999,
+            safe_float(row.get("rank")) or 999999,
             row.get("model_id", ""),
             row.get("chain", ""),
-            _safe_float(row.get("residue_num")) or -999999,
+            safe_float(row.get("residue_num")) or -999999,
             row.get("residue_id", ""),
         ),
     )
@@ -428,10 +421,10 @@ def _aggregate_run_payloads(run_payloads: List[dict]) -> Tuple[List[dict], List[
         state["n_clusters_total"] += payload["cluster_row_count"]
 
         for model_row in payload["model_rows"]:
-            dg = _safe_float(model_row.get("dG_separated"))
+            dg = safe_float(model_row.get("dG_separated"))
             if dg is not None:
                 state["dg_values"].append(dg)
-            dsasa = _safe_float(model_row.get("dSASA"))
+            dsasa = safe_float(model_row.get("dSASA"))
             if dsasa is not None:
                 state["dsasa_values"].append(dsasa)
 
@@ -464,7 +457,7 @@ def _aggregate_run_payloads(run_payloads: List[dict]) -> Tuple[List[dict], List[
             agg["supporting_runs"].add(payload["run_label"])
             if payload["seed_index"]:
                 agg["supporting_seed_indices"].add(payload["seed_index"])
-            delta_e = _safe_float(row.get("delta_e_total"))
+            delta_e = safe_float(row.get("delta_e_total"))
             if delta_e is not None:
                 agg["energies"].append(delta_e)
 

@@ -278,7 +278,7 @@ def apply_config_to_args(args, config: dict):
     if args.region is None:
         args.region = config.get("region", vina_cfg.get("region"))
     if args.exclude_zone is None:
-        args.exclude_zone = config.get("exclude_zone", config.get("exclude_zones"))
+        args.exclude_zone = config.get("exclude_zone", config.get("exclude_zones"))  # singular preferred; plural is legacy alias
     if getattr(args, "n_pockets", None) is None:
         args.n_pockets = config.get("n_pockets", vina_cfg.get("n_pockets"))
 
@@ -1322,6 +1322,9 @@ def run_docking(
 # 결과 출력
 # ============================================================
 def print_results(name, mode, energies, center, box_size, display_n=None):
+    if not energies:
+        logger.info(f"{name} {mode.capitalize()} Docking: no poses returned")
+        return
     show_n = min(display_n or len(energies), len(energies))
     lines = [
         f"{name} {mode.capitalize()} Docking Results "
@@ -1339,6 +1342,9 @@ def print_results(name, mode, energies, center, box_size, display_n=None):
 def print_summary(all_results, out_dir):
     lines = ["Summary - Best Affinity per Ligand"]
     for name, energies in all_results.items():
+        if not energies:
+            lines.append(f"  {name:>12} {'N/A':>15}")
+            continue
         best = energies[0][0]
         lines.append(f"  {name:>12} {best:>15.2f} kcal/mol")
     lines.append(f"결과 저장: {out_dir}")

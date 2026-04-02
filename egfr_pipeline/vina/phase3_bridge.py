@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.parsing_utils import safe_float
 
 
 # ---------------------------------------------------------------------------
@@ -73,12 +74,6 @@ BOX_MAX = 30.0
 # ---------------------------------------------------------------------------
 # Core logic
 # ---------------------------------------------------------------------------
-
-def _safe_float(val, default=None):
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return default
 
 
 def classify_priority(
@@ -139,10 +134,10 @@ def build_phase3_reference(
         # Make pocket_id globally unique (Phase 3 requires unique IDs across receptors)
         pocket_id = f"{receptor_id}_{pocket_id_local}"
 
-        best_aff = _safe_float(row.get("best_affinity"))
+        best_aff = safe_float(row.get("best_affinity"))
         n_pose = int(row.get("n_pose", 0))
         n_ligand = int(row.get("n_ligand", 0))
-        spread = _safe_float(row.get("centroid_spread_A"))
+        spread = safe_float(row.get("centroid_spread_A"))
 
         priority, basis = classify_priority(
             best_aff, n_pose, n_ligand,

@@ -30,6 +30,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
@@ -201,8 +204,8 @@ def assign_state_classes(
     for c in comparisons:
         mt = c["match_type"]
         if mt in ("match", "shifted"):
-            dist = _safe_float(c["centroid_distance_A"])
-            jacc = _safe_float(c["residue_jaccard"])
+            dist = safe_float(c["centroid_distance_A"])
+            jacc = safe_float(c["residue_jaccard"])
             matches[c["pocket_id_a"]].append((
                 c["pocket_id_b"], c["receptor_id_b"], mt,
                 dist if dist is not None else 999.0,
@@ -451,12 +454,12 @@ def run_cross_state_alignment(
     Returns (comparison_csv, state_class_csv, note_path).
     """
     # Load inputs
-    pockets = _load_csv(output_dir / "candidate_pockets.csv")
+    pockets = load_csv(output_dir / "candidate_pockets.csv")
     if not pockets:
         raise FileNotFoundError("No candidate pockets found. Run TG 2.2 first.")
 
     # Load druggability summary if available (optional enrichment)
-    drug_rows = _load_csv(output_dir / "druggability_proposal_summary.csv")
+    drug_rows = load_csv(output_dir / "druggability_proposal_summary.csv")
     drug_map = {r["pocket_id"]: r for r in drug_rows}
 
     states_present = set(p["receptor_id"] for p in pockets)
@@ -502,13 +505,6 @@ def run_cross_state_alignment(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
@@ -516,20 +512,13 @@ def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
         w.writerows(rows)
 
 
-def _safe_float(val) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
 def _centroid_distance(a: dict, b: dict) -> Optional[float]:
-    ax = _safe_float(a.get("centroid_x", ""))
-    ay = _safe_float(a.get("centroid_y", ""))
-    az = _safe_float(a.get("centroid_z", ""))
-    bx = _safe_float(b.get("centroid_x", ""))
-    by = _safe_float(b.get("centroid_y", ""))
-    bz = _safe_float(b.get("centroid_z", ""))
+    ax = safe_float(a.get("centroid_x", ""))
+    ay = safe_float(a.get("centroid_y", ""))
+    az = safe_float(a.get("centroid_z", ""))
+    bx = safe_float(b.get("centroid_x", ""))
+    by = safe_float(b.get("centroid_y", ""))
+    bz = safe_float(b.get("centroid_z", ""))
     if any(v is None for v in (ax, ay, az, bx, by, bz)):
         return None
     return math.sqrt((ax - bx)**2 + (ay - by)**2 + (az - bz)**2)

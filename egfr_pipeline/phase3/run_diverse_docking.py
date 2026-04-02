@@ -42,6 +42,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
 from egfr_pipeline.runtime import cap_worker_count, resolve_runtime_resources
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -564,8 +565,8 @@ def run_setup(
     from egfr_pipeline.phase3.budget_policy import DEFAULT_BUDGET_POLICY
 
     # Load inputs
-    jobs = _load_csv(output_dir / "phase3_docking_job_table.csv")
-    pocket_statuses = _load_csv(output_dir / "pocket_search_status.csv")
+    jobs = load_csv(output_dir / "phase3_docking_job_table.csv")
+    pocket_statuses = load_csv(output_dir / "pocket_search_status.csv")
     policy = dict(DEFAULT_BUDGET_POLICY)
 
     if not jobs:
@@ -608,13 +609,6 @@ def run_setup(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -690,8 +684,8 @@ def main():
 
     elif args.dry_run:
         from egfr_pipeline.phase3.budget_policy import DEFAULT_BUDGET_POLICY
-        jobs = _load_csv(args.output_dir / "phase3_docking_job_table.csv")
-        statuses = _load_csv(args.output_dir / "pocket_search_status.csv")
+        jobs = load_csv(args.output_dir / "phase3_docking_job_table.csv")
+        statuses = load_csv(args.output_dir / "pocket_search_status.csv")
         messages = dry_run(jobs, statuses, dict(DEFAULT_BUDGET_POLICY))
         for m in messages:
             print(f"  {m}")
@@ -699,7 +693,7 @@ def main():
     elif args.execute:
         if args.round is None:
             parser.error("--execute requires --round")
-        jobs = _load_csv(args.output_dir / "phase3_docking_job_table.csv")
+        jobs = load_csv(args.output_dir / "phase3_docking_job_table.csv")
         results = execute_round(
             jobs,
             args.round,

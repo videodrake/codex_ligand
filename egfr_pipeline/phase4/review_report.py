@@ -29,6 +29,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_perturbation"
 
@@ -184,14 +186,14 @@ def run_review_output(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load all upstream tables
-    interp = _load_csv(output_dir / "phase4_state_interpretation.csv")
+    interp = load_csv(output_dir / "phase4_state_interpretation.csv")
     if not interp:
         raise FileNotFoundError(
             "State interpretation not found. Run TG 4.4 first.")
 
-    candidates = _load_csv(output_dir / "perturbation_candidate_table.csv")
-    evidence = _load_csv(output_dir / "phase4_evidence_normalized.csv")
-    classes = _load_csv(output_dir / "final_candidate_classes.csv")
+    candidates = load_csv(output_dir / "perturbation_candidate_table.csv")
+    evidence = load_csv(output_dir / "phase4_evidence_normalized.csv")
+    classes = load_csv(output_dir / "final_candidate_classes.csv")
 
     print(f"  Loaded: {len(interp)} interpreted, {len(candidates)} candidates, "
           f"{len(evidence)} evidence, {len(classes)} classes")
@@ -218,13 +220,6 @@ def run_review_output(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:

@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from egfr_pipeline import paths
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -64,20 +66,6 @@ PATCH_REFERENCE_COLUMNS = [
 # Data loading
 # ---------------------------------------------------------------------------
 
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def _safe_float(val: str) -> Optional[float]:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
-
-
 # ---------------------------------------------------------------------------
 # Report generation
 # ---------------------------------------------------------------------------
@@ -93,21 +81,21 @@ def generate_review_report(output_base: Path) -> tuple:
     for state in RECEPTOR_STATES:
         sd = output_base / state
         state_summaries[state] = {
-            "clusters": _load_csv(sd / "ppi_cluster_summary.csv"),
-            "hotspots": _load_csv(sd / "ppi_hotspot_residues.csv"),
-            "patches": _load_csv(sd / "ppi_interface_patch_table.csv"),
-            "orientation_log": _load_csv(sd / "orientation_filter_log.csv"),
-            "convergence": _load_csv(sd / "cross_method_convergence.csv"),
+            "clusters": load_csv(sd / "ppi_cluster_summary.csv"),
+            "hotspots": load_csv(sd / "ppi_hotspot_residues.csv"),
+            "patches": load_csv(sd / "ppi_interface_patch_table.csv"),
+            "orientation_log": load_csv(sd / "orientation_filter_log.csv"),
+            "convergence": load_csv(sd / "cross_method_convergence.csv"),
         }
 
     # Cross-state comparison
-    robustness = _load_csv(output_base / "ppi_patch_state_robustness.csv")
-    cross_state = _load_csv(output_base / "ppi_patch_cross_state_comparison.csv")
+    robustness = load_csv(output_base / "ppi_patch_state_robustness.csv")
+    cross_state = load_csv(output_base / "ppi_patch_cross_state_comparison.csv")
 
     # Input metadata
     metadata_dir = _phase1_metadata_dir()
-    receptor_meta = _load_csv(metadata_dir / "receptor_metadata.csv")
-    partner_meta = _load_csv(metadata_dir / "partner_metadata.csv")
+    receptor_meta = load_csv(metadata_dir / "receptor_metadata.csv")
+    partner_meta = load_csv(metadata_dir / "partner_metadata.csv")
 
     # --- Build report ---
     lines = _build_report(state_summaries, robustness, cross_state,
@@ -333,7 +321,7 @@ def _section_hotspots(state_summaries) -> List[str]:
         ])
 
         for h in sorted(receptor_hs, key=lambda x: (
-            x.get("cluster_id", ""), -(_safe_float(x.get("occupancy", "")) or 0)
+            x.get("cluster_id", ""), -(safe_float(x.get("occupancy", "")) or 0)
         )):
             lines.append(
                 f"| {h.get('cluster_id', '')} | {h.get('residue_id', '')} | "
@@ -552,7 +540,7 @@ def _build_patch_reference(
 
         rob_class = r.get("robustness_class", "")
         n_states = int(r.get("n_states_present", 0) or 0)
-        max_occ = _safe_float(r.get("global_max_occupancy", "")) or 0
+        max_occ = safe_float(r.get("global_max_occupancy", "")) or 0
         is_hotspot = r.get("is_hotspot_any_state") in ("True", "true", True)
 
         # Method agreement
@@ -600,7 +588,7 @@ def _build_patch_reference(
     conf_rank = {"high": 0, "medium": 1, "low": 2}
     rows.sort(key=lambda r: (
         conf_rank.get(r.get("confidence", "low"), 3),
-        -(_safe_float(r.get("global_max_occupancy", "")) or 0),
+        -(safe_float(r.get("global_max_occupancy", "")) or 0),
     ))
 
     return rows
@@ -652,7 +640,7 @@ def main():
     print(f"  Patch reference: {patch_path}")
 
     # Count patch reference rows
-    rows = _load_csv(patch_path)
+    rows = load_csv(patch_path)
     n_high = sum(1 for r in rows if r.get("confidence") == "high")
     n_medium = sum(1 for r in rows if r.get("confidence") == "medium")
     n_low = sum(1 for r in rows if r.get("confidence") == "low")

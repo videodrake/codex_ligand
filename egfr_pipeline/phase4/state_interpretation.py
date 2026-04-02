@@ -29,6 +29,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from egfr_pipeline.csv_utils import load_csv
+from egfr_pipeline.parsing_utils import safe_float
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 PHASE4_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase4_perturbation"
 
@@ -99,7 +102,7 @@ def interpret_state(row: dict) -> dict:
     Returns dict with state interpretation fields.
     """
     state_class = row.get("state_class", "")
-    n_matched = int(_safe_float(row.get("n_states_matched", "1")))
+    n_matched = int(safe_float(row.get("n_states_matched", "1"), 0.0))
 
     label_info = STATE_LABELS.get(state_class, {
         "interpretation": "unknown",
@@ -172,7 +175,7 @@ def check_cryptic_caution(row: dict) -> str:
     """Flag potential cryptic sites that deserve cautious treatment."""
     state_class = row.get("state_class", "")
     mech_class = row.get("mechanistic_class", "")
-    n_matched = int(_safe_float(row.get("n_states_matched", "1")))
+    n_matched = int(safe_float(row.get("n_states_matched", "1"), 0.0))
 
     if (state_class == "state_specific_pocket" and
             mech_class == "allosteric_modulator_candidate"):
@@ -227,7 +230,7 @@ def interpret_all(candidates: List[dict], evidence: List[dict]) -> List[dict]:
             base_conf,
             state_info["confidence_modifier"],
             merged.get("state_class", ""),
-            int(_safe_float(merged.get("n_states_matched", "1"))),
+            int(safe_float(merged.get("n_states_matched", "1"), 0.0)),
         )
 
         result = {
@@ -376,11 +379,11 @@ def run_state_interpretation(
             f"Candidate table not found: {cand_path}\n"
             "Run TG 4.3 (perturbation_scoring) first."
         )
-    candidates = _load_csv(cand_path)
+    candidates = load_csv(cand_path)
 
     # Load normalized evidence for additional context
     ev_path = output_dir / "phase4_evidence_normalized.csv"
-    evidence = _load_csv(ev_path) if ev_path.exists() else []
+    evidence = load_csv(ev_path) if ev_path.exists() else []
 
     print(f"  Loaded {len(candidates)} candidates, "
           f"{len(evidence)} evidence rows")
@@ -410,20 +413,6 @@ def run_state_interpretation(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _safe_float(val) -> float:
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return 0.0
-
-
-def _load_csv(path: Path) -> List[dict]:
-    if not path.exists():
-        return []
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
 
 def _write_csv(path: Path, columns: List[str], rows: List[dict]) -> None:
     with open(path, "w", newline="", encoding="utf-8") as f:
