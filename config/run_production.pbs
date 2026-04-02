@@ -35,7 +35,7 @@
 #   qsub -v SKIP_PRECHECK_GUARD=1 config/run_production.pbs
 # ============================================================
 
-cd $PBS_O_WORKDIR
+cd "$PBS_O_WORKDIR"
 
 source ~/.bashrc
 conda activate pyrosetta
@@ -88,8 +88,11 @@ case "$MODE" in
         python run_production.py
         ;;
 esac
+RC=$?
 
 echo ""
 echo "============================================"
 echo "  Finished: $(date)"
+echo "  Exit code: $RC"
 echo "============================================"
+exit $RC

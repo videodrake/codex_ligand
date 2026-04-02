@@ -54,8 +54,9 @@ echo ""
 PREV_JOB=""
 
 # Helper: extract numeric job ID from qsub output
+# Uses sed instead of grep -oP for portability (some PBS nodes lack Perl regex)
 get_job_id() {
-    echo "$1" | grep -oP '^\d+(\.\S+)?' | head -1
+    echo "$1" | sed -n 's/^\([0-9][0-9]*[^ ]*\).*/\1/p' | head -1
 }
 
 # --- Phase 1: PPI Analysis ---

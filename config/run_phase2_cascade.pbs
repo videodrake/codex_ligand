@@ -7,7 +7,9 @@
 #PBS -o ${PBS_O_WORKDIR}/phase2_cascade.o
 #PBS -e ${PBS_O_WORKDIR}/phase2_cascade.e
 
-cd $PBS_O_WORKDIR
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
 
 # Conda 환경 활성화
 source ~/.bashrc

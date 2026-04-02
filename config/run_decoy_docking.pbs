@@ -30,7 +30,11 @@
 #   qsub -v STATE=3GT8_raw config/run_decoy_docking.pbs
 # ============================================================
 
+set -eo pipefail
+
 cd "${PBS_O_WORKDIR}" || exit 1
+source ~/.bashrc
+conda activate pyrosetta
 
 STATE="${STATE:?ERROR: STATE not set (e.g. 3GT8_raw)}"
 CONFIG="config/example-project.yaml"
@@ -61,6 +65,7 @@ echo "Found ${N_SCRAMBLES} scrambled partners"
 
 # Run docking for each scrambled partner
 # Uses a reduced decoy count (N_DECOYS) since this is statistical validation
+FAIL=0
 for SCRAMBLED_PDB in "${SCRAMBLE_DIR}"/*.pdb; do
     SCRAMBLE_NAME=$(basename "${SCRAMBLED_PDB}" .pdb)
     OUT_DIR="${CONTROL_DIR}/${STATE}/${SCRAMBLE_NAME}"
@@ -81,7 +86,9 @@ for SCRAMBLED_PDB in "${SCRAMBLE_DIR}"/*.pdb; do
         --n_decoys "${N_DECOYS}" \
         2>&1 | tail -5
 
-    echo "  Done: ${SCRAMBLE_NAME} (exit code: $?)"
+    RC=$?
+    echo "  Done: ${SCRAMBLE_NAME} (exit code: ${RC})"
+    [ ${RC} -ne 0 ] && FAIL=1
 done
 
 # Run enrichment analysis
@@ -104,3 +111,4 @@ fi
 echo "============================================================"
 echo "Decoy Enrichment finished: $(date)"
 echo "============================================================"
+exit ${FAIL}
