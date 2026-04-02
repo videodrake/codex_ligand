@@ -80,5 +80,5 @@ else
     echo "[Launching] ${STATE} seed${SEED_A} (${PBS_NP:-32} cores)..."
     python run_production.py \
       --lane ppi --state "$STATE" --seed "$SEED_A" \
-      --allocated-cpus "${PBS_NP:-32}"
+      --allocated-cpus "${PBS_NP:-32}" || exit 1
 fi

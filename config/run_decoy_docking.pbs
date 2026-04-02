@@ -65,7 +65,9 @@ echo "Found ${N_SCRAMBLES} scrambled partners"
 
 # Run docking for each scrambled partner
 # Uses a reduced decoy count (N_DECOYS) since this is statistical validation
+# Temporarily disable set -e so individual scramble failures don't abort the loop
 FAIL=0
+set +e
 for SCRAMBLED_PDB in "${SCRAMBLE_DIR}"/*.pdb; do
     SCRAMBLE_NAME=$(basename "${SCRAMBLED_PDB}" .pdb)
     OUT_DIR="${CONTROL_DIR}/${STATE}/${SCRAMBLE_NAME}"
@@ -83,13 +85,13 @@ for SCRAMBLED_PDB in "${SCRAMBLE_DIR}"/*.pdb; do
         --seed 0 \
         --partner_pdb "${SCRAMBLED_PDB}" \
         --output_dir "${OUT_DIR}" \
-        --n_decoys "${N_DECOYS}" \
-        2>&1 | tail -5
+        --n_decoys "${N_DECOYS}"
 
     RC=$?
     echo "  Done: ${SCRAMBLE_NAME} (exit code: ${RC})"
     [ ${RC} -ne 0 ] && FAIL=1
 done
+set -e
 
 # Run enrichment analysis
 echo ""

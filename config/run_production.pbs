@@ -58,7 +58,7 @@ echo "  PRECHECK_STATUS_FILE: $PRECHECK_STATUS_FILE"
 echo "============================================"
 
 # Route by mode
-if [[ "$MODE" != "status" && "$SKIP_PRECHECK_GUARD" != "1" ]]; then
+if [ "$MODE" != "status" ] && [ "$SKIP_PRECHECK_GUARD" != "1" ]; then
     python scripts/precheck_guard.py \
         --workdir "$PBS_O_WORKDIR" \
         --mode "$MODE" \
