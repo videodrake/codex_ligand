@@ -39,6 +39,7 @@ internal_logger = get_worker_logger()
 
 # ---- Worker-level cache (persists across tasks within a multiprocessing worker) ---- #
 _worker_scorefxn = None
+_worker_ref_cache: Dict[str, Any] = {}   # path → Pose cache for reference structures
 
 
 def _get_cached_scorefxn():
@@ -47,6 +48,41 @@ def _get_cached_scorefxn():
     if _worker_scorefxn is None:
         _worker_scorefxn = create_score_function(SCORE_FUNCTION_NAME)
     return _worker_scorefxn
+
+
+def _get_cached_ref_pose(ref_path: str) -> Optional["Pose"]:
+    """Return a cached reference Pose, loading from disk on first access.
+
+    Reference PDBs (relaxed structure, best-dG structure) are identical across
+    all tasks within a worker, so caching eliminates thousands of redundant
+    disk reads per scoring stage.
+    """
+    if not ref_path or not os.path.exists(ref_path):
+        return None
+    cached = _worker_ref_cache.get(ref_path)
+    if cached is not None:
+        return cached
+    try:
+        ref = pose_from_pdb(ref_path)
+        _worker_ref_cache[ref_path] = ref
+        return ref
+    except Exception as e:
+        internal_logger.debug(f"Failed to load ref pose {ref_path}: {e}")
+        return None
+
+
+def _prepare_scoring_context(target: str) -> Tuple[Optional["Pose"], str, str, Any]:
+    """Common setup for all scoring tasks: load pose, validate, detect chains, get scorefxn.
+
+    Returns (pose, source_name, interface_def, scorefxn).
+    pose is None if loading or validation failed.
+    """
+    pose, source_name = _load_pose(target)
+    if pose is None or pose.num_chains() < MIN_CHAINS:
+        return None, source_name, "", None
+    interface_def = _get_interface_def(pose)
+    scorefxn = _get_cached_scorefxn()
+    return pose, source_name, interface_def, scorefxn
 
 
 # ---- Private Helpers ---- #
@@ -598,17 +634,17 @@ def run_lrmsd_dual_task(args: tuple) -> Dict[str, Any]:
                     "L_RMSD_best": RMSD_ERROR_VALUE}
 
         l_rmsd = RMSD_ERROR_VALUE
-        if relaxed_ref_path and os.path.exists(relaxed_ref_path):
+        ref_pose = _get_cached_ref_pose(relaxed_ref_path)
+        if ref_pose is not None:
             try:
-                ref_pose = pose_from_pdb(relaxed_ref_path)
                 l_rmsd = calculate_l_rmsd(pose.clone(), ref_pose)
             except Exception as e:
                 internal_logger.warning(f"L_RMSD vs relaxed ref failed: {e}")
 
         l_rmsd_best = RMSD_ERROR_VALUE
-        if best_ref_path and os.path.exists(best_ref_path):
+        best_pose = _get_cached_ref_pose(best_ref_path)
+        if best_pose is not None:
             try:
-                best_pose = pose_from_pdb(best_ref_path)
                 l_rmsd_best = calculate_l_rmsd(pose.clone(), best_pose)
             except Exception:
                 l_rmsd_best = RMSD_ERROR_VALUE
@@ -646,16 +682,11 @@ def run_fast_scoring_task(args: tuple) -> Dict[str, Any]:
 
     try:
         step_status = "Loading Pose"
-        pose, _ = _load_pose(target)
-
-        if pose is None or pose.num_chains() < MIN_CHAINS:
+        pose, _, interface_def, scorefxn = _prepare_scoring_context(target)
+        if pose is None:
             return {"status": "error", "error": "Invalid Pose or Chain count < 2"}
 
-        step_status = "Detecting Chains"
-        interface_def = _get_interface_def(pose)
-
         step_status = "Scoring"
-        scorefxn = _get_cached_scorefxn()
         total_score = scorefxn(pose)
 
         step_status = "InterfaceAnalyzer"
@@ -731,16 +762,11 @@ def run_intermediate_scoring_task(args: tuple) -> Dict[str, Any]:
 
     try:
         step_status = "Loading Pose"
-        pose = pyrosetta_init.string_to_pose(pdb_data_string)
-
-        if pose is None or pose.num_chains() < MIN_CHAINS:
+        pose, _, interface_def, scorefxn = _prepare_scoring_context(pdb_data_string)
+        if pose is None:
             return {"status": "error", "error": "Invalid Pose or Chain count < 2"}
 
-        step_status = "Detecting Chains"
-        interface_def = _get_interface_def(pose)
-
         step_status = "Scoring"
-        scorefxn = _get_cached_scorefxn()
         scorefxn(pose)
 
         step_status = "InterfaceAnalyzer (expensive)"
@@ -924,26 +950,21 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
 
     try:
         step_status = "Loading Pose"
-        pose, source_name = _load_pose(target)
-
-        if pose is None or pose.num_chains() < MIN_CHAINS:
+        pose, source_name, interface_def, scorefxn = _prepare_scoring_context(target)
+        if pose is None:
             return {"error": "Invalid Pose or Chain count < 2", "step": step_status, "status": "error"}
-
-        step_status = "Detecting Chains"
-        interface_def = _get_interface_def(pose)
 
         step_status = "Calculating RMSD"
         l_rmsd = 0.0
-        if ref_path and os.path.exists(ref_path):
+        ref_pose = _get_cached_ref_pose(ref_path)
+        if ref_pose is not None:
             try:
-                ref_pose = pose_from_pdb(ref_path)
                 l_rmsd = calculate_l_rmsd(pose, ref_pose)
             except Exception as e:
                 internal_logger.warning(f"Error calculating L_RMSD for pose {source_name} against ref {ref_path}: {e}")
                 internal_logger.debug(traceback.format_exc())
 
         step_status = "Calculating ScoreFunction"
-        scorefxn = _get_cached_scorefxn()
         total_score = scorefxn(pose)
 
         step_status = f"Running InterfaceAnalyzer ({interface_def})"
@@ -983,7 +1004,7 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
         try:
             br_b_str = binding_res_dict.get("B", "")
             if (br_b_str and br_b_str not in ("None", "Analysis_Failed", "No_Chain_2")
-                    and ref_path and os.path.exists(ref_path)):
+                    and ref_pose is not None):
                 # Parse PDB residue numbers from Binding_Residues_B
                 iface_res_b: Set[int] = set()
                 for token in br_b_str.split(','):
@@ -992,11 +1013,10 @@ def run_scoring_task(args: tuple) -> Dict[str, Any]:
                         iface_res_b.add(int(m.group(1)))
                 if iface_res_b:
                     try:
-                        ref_pose_for_irmsd = pose_from_pdb(ref_path)
                         mobile_clone = pose.clone()
-                        calpha_superimpose_pose(mobile_clone, ref_pose_for_irmsd)
+                        calpha_superimpose_pose(mobile_clone, ref_pose)
                         i_rmsd = calculate_interface_rmsd(
-                            mobile_clone, ref_pose_for_irmsd, iface_res_b)
+                            mobile_clone, ref_pose, iface_res_b)
                     except Exception as e_irmsd:
                         internal_logger.warning(f"I_RMSD calculation failed: {e_irmsd}")
                         i_rmsd = -1.0
