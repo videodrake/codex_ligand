@@ -63,6 +63,26 @@ QUALITY_THRESHOLDS = {
     "nres_check": {"good": 15, "marginal": 8},
 }
 
+# Max tasks a worker processes before being replaced (prevents memory leaks
+# in long-running PyRosetta workers that accumulate Pose/ScoreFunction objects).
+_MAX_TASKS_PER_CHILD = 2000
+
+
+def _optimal_chunksize(n_tasks: int, n_workers: int) -> int:
+    """Compute adaptive chunksize balancing IPC overhead vs load distribution.
+
+    For small batches (<100): chunksize=1 to avoid starvation.
+    For medium (100-5000): sqrt(n/workers) for balanced batching.
+    For large (>5000): cap at n_workers*4 to keep memory predictable.
+    """
+    if n_tasks <= 0 or n_workers <= 0:
+        return 1
+    if n_tasks < 100:
+        return 1
+    if n_tasks < 5000:
+        return max(1, int(math.sqrt(n_tasks / n_workers)))
+    return max(1, min(n_workers * 4, n_tasks // (n_workers * 4)))
+
 
 class PipelineManager:
     def __init__(
@@ -112,6 +132,7 @@ class PipelineManager:
 
         self.dir_cache = os.path.join(TOP_LEVEL_DIR, "relaxed_cache")
         os.makedirs(self.dir_cache, exist_ok=True)
+        self._cleanup_stale_cache()
 
         self.dir_filter = os.path.join(self.root_dir, "filter_passed")
         self.dir_cluster = os.path.join(self.root_dir, "cluster_results")
@@ -143,6 +164,34 @@ class PipelineManager:
             input_pdb=self.input_pdb,
             run_metadata=self.run_metadata,
         )
+
+    # ------------------------------------------------------------------ #
+    #  Cache Management
+    # ------------------------------------------------------------------ #
+    def _cleanup_stale_cache(self, max_age_days: int = 30) -> None:
+        """Remove relaxed cache files older than max_age_days.
+
+        Prevents unbounded cache growth on shared HPC storage.
+        Only removes .pdb files — metadata files are preserved.
+        """
+        if not os.path.isdir(self.dir_cache):
+            return
+        cutoff = time.time() - max_age_days * 86400
+        removed = 0
+        for fname in os.listdir(self.dir_cache):
+            if not fname.endswith('.pdb'):
+                continue
+            fpath = os.path.join(self.dir_cache, fname)
+            try:
+                if os.path.getmtime(fpath) < cutoff:
+                    os.remove(fpath)
+                    removed += 1
+            except OSError:
+                pass
+        if removed > 0:
+            logging.getLogger("pipeline").info(
+                f"    > [Cache] Cleaned {removed} stale cached PDBs "
+                f"(older than {max_age_days} days)")
 
     # ------------------------------------------------------------------ #
     #  Logging
@@ -926,10 +975,11 @@ class PipelineManager:
         )
 
         lrmsd_best_map = {}
-        with multiprocessing.Pool(self.n_cpus) as pool:
+        _cs_lrmsd = _optimal_chunksize(count, self.n_cpus)
+        with self._create_pool() as pool:
             lrmsd_iter = pool.imap(
                 scoring.run_lrmsd_dual_task,
-                lrmsd_tasks, chunksize=self.chunksize)
+                lrmsd_tasks, chunksize=_cs_lrmsd)
 
             for i, res in enumerate(lrmsd_iter):
                 d = survivor_pool[i]
@@ -2540,8 +2590,9 @@ function sortTable(th) {
         # Adaptive progress interval: ~10 updates total, at least every 500, at most every 5000
         _prog_interval = max(500, min(5000, self.total_global // 10))
 
-        with multiprocessing.Pool(self.n_cpus) as pool:
-            for res in pool.imap_unordered(movers.run_global_docking_task, tasks, chunksize=self.chunksize):
+        _cs = _optimal_chunksize(self.total_global, self.n_cpus)
+        with self._create_pool() as pool:
+            for res in pool.imap_unordered(movers.run_global_docking_task, tasks, chunksize=_cs):
                 count_done += 1
                 if count_done % _prog_interval == 0 or count_done == self.total_global:
                     pct = count_done / self.total_global * 100
@@ -2613,9 +2664,10 @@ function sortTable(th) {
         n_dock = len(docking_results)
         _score_prog = max(100, min(2000, n_dock // 10))
 
-        with multiprocessing.Pool(self.n_cpus) as pool:
+        _cs = _optimal_chunksize(n_dock, self.n_cpus)
+        with self._create_pool() as pool:
             score_iter = pool.imap(scoring.run_fast_scoring_task,
-                                   fast_tasks, chunksize=self.chunksize)
+                                   fast_tasks, chunksize=_cs)
 
             for i, score_res in enumerate(score_iter):
                 origin = docking_results[i]
@@ -2677,14 +2729,18 @@ function sortTable(th) {
         if cluster_candidates is None:
             return None, constraints_dict
 
-        # --- Save filtered models ---
+        # --- Save filtered models (batch I/O) ---
         if self.save_filter_max > 0:
             count_save = min(len(cluster_candidates), self.save_filter_max)
             self.logger.info(f"    > [Output] Saving Top {count_save} Filtered Models...")
+            _save_pairs = []
             for i, item in enumerate(cluster_candidates[:count_save]):
                 fname = f"F{i+1:04d}_S{item['dG_separated']:.2f}.pdb"
-                with open(os.path.join(self.dir_filter, fname), "w") as f:
-                    f.write(item['pdb_data'])
+                _save_pairs.append((os.path.join(self.dir_filter, fname), item['pdb_data']))
+            for fpath, data in _save_pairs:
+                with open(fpath, "w") as f:
+                    f.write(data)
+            del _save_pairs
 
         self.stage_times['Scoring & Filtering'] = time.time() - t_start
         return cluster_candidates, constraints_dict
@@ -2713,10 +2769,11 @@ function sortTable(th) {
 
         refined_pool = []
         n_refined = 0
-        with multiprocessing.Pool(self.n_cpus) as pool:
+        _cs = _optimal_chunksize(count, self.n_cpus)
+        with self._create_pool() as pool:
             refine_iter = pool.imap(
                 movers.run_mini_refinement_task,
-                refine_tasks, chunksize=self.chunksize)
+                refine_tasks, chunksize=_cs)
 
             for i, result in enumerate(refine_iter):
                 d = stage1_pool[i]
@@ -2754,10 +2811,11 @@ function sortTable(th) {
             for d in refined_pool
         )
 
-        with multiprocessing.Pool(self.n_cpus) as pool:
+        _cs_rescore = _optimal_chunksize(len(refined_pool), self.n_cpus)
+        with self._create_pool() as pool:
             score_iter = pool.imap(
                 scoring.run_fast_scoring_task,
-                score_tasks, chunksize=self.chunksize)
+                score_tasks, chunksize=_cs_rescore)
 
             for i, score_res in enumerate(score_iter):
                 d = refined_pool[i]
@@ -3045,10 +3103,11 @@ function sortTable(th) {
 
             inter_tasks = ((d['pdb_data'],) for d in stage2_cheap)
 
-            with multiprocessing.Pool(self.n_cpus) as pool:
+            _cs_inter = _optimal_chunksize(len(stage2_cheap), self.n_cpus)
+            with self._create_pool() as pool:
                 inter_iter = pool.imap(
                     scoring.run_intermediate_scoring_task,
-                    inter_tasks, chunksize=self.chunksize)
+                    inter_tasks, chunksize=_cs_inter)
 
                 stage2_full = []
                 for i, inter_res in enumerate(inter_iter):
@@ -3462,9 +3521,10 @@ function sortTable(th) {
         fully_scored = []
         n_errors = 0
 
-        with multiprocessing.Pool(self.n_cpus) as pool:
+        _cs_full = _optimal_chunksize(n, self.n_cpus)
+        with self._create_pool() as pool:
             score_iter = pool.imap(scoring.run_scoring_task,
-                                   score_tasks, chunksize=self.chunksize)
+                                   score_tasks, chunksize=_cs_full)
 
             for i, score_res in enumerate(score_iter):
                 origin = cluster_candidates[i]
@@ -4089,6 +4149,17 @@ function sortTable(th) {
     # ================================================================== #
     #  MAIN PIPELINE
     # ================================================================== #
+    def _create_pool(self, maxtasks: Optional[int] = _MAX_TASKS_PER_CHILD) -> multiprocessing.pool.Pool:
+        """Create a worker pool with memory-leak prevention.
+
+        maxtasksperchild causes workers to be replaced after processing
+        a set number of tasks, preventing PyRosetta memory accumulation.
+        """
+        return multiprocessing.Pool(
+            self.n_cpus,
+            maxtasksperchild=maxtasks,
+        )
+
     def execute(self) -> None:
         overall_start_time = time.time()
         try:
