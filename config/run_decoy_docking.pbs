@@ -1,0 +1,106 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N decoy_dock
+#PBS -l nodes=node05:ppn=32
+#PBS -l walltime=999:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/decoy_docking.o
+#PBS -e ${PBS_O_WORKDIR}/decoy_docking.e
+
+# ============================================================
+# Decoy Enrichment Validation — Control Docking (PBS)
+#
+# Runs PPI docking with scrambled partner PDBs as negative controls.
+# After completion, analyse with:
+#   python -m egfr_pipeline.decoy_enrichment analyse \
+#       --real_scores output/workflow_a/phase2_ppi_docking/${STATE}/prod_seed0/scored_all_models.csv \
+#       --control_dir output/decoy_controls/${STATE}/ \
+#       --output output/decoy_controls/${STATE}/enrichment_report.csv
+#
+# Prerequisites:
+#   1. Generate scrambled PDBs first (can run in dev env):
+#      python -m egfr_pipeline.decoy_enrichment generate \
+#          --partner_pdb input/PPI/phase1/MYO1D_TH1.pdb \
+#          --output_dir output/decoy_controls/scrambled_pdbs/ \
+#          --n_scrambles 5
+#
+#   2. Ensure real docking is already complete.
+#
+# Usage:
+#   qsub -v STATE=3GT8_raw config/run_decoy_docking.pbs
+# ============================================================
+
+cd "${PBS_O_WORKDIR}" || exit 1
+
+STATE="${STATE:?ERROR: STATE not set (e.g. 3GT8_raw)}"
+CONFIG="config/example-project.yaml"
+CONTROL_DIR="output/decoy_controls"
+SCRAMBLE_DIR="${CONTROL_DIR}/scrambled_pdbs"
+N_DECOYS="${N_DECOYS:-10000}"
+
+echo "============================================================"
+echo "Decoy Enrichment Control Docking: ${STATE}"
+echo "  Scrambled PDBs: ${SCRAMBLE_DIR}"
+echo "  N decoys per scramble: ${N_DECOYS}"
+echo "  Start: $(date)"
+echo "============================================================"
+
+# Check scrambled PDBs exist
+if [ ! -d "${SCRAMBLE_DIR}" ]; then
+    echo "ERROR: Scrambled PDB directory not found: ${SCRAMBLE_DIR}"
+    echo "Run: python -m egfr_pipeline.decoy_enrichment generate --partner_pdb <path> --output_dir ${SCRAMBLE_DIR}"
+    exit 1
+fi
+
+N_SCRAMBLES=$(ls -1 "${SCRAMBLE_DIR}"/*.pdb 2>/dev/null | wc -l)
+if [ "${N_SCRAMBLES}" -eq 0 ]; then
+    echo "ERROR: No scrambled PDBs found in ${SCRAMBLE_DIR}"
+    exit 1
+fi
+echo "Found ${N_SCRAMBLES} scrambled partners"
+
+# Run docking for each scrambled partner
+# Uses a reduced decoy count (N_DECOYS) since this is statistical validation
+for SCRAMBLED_PDB in "${SCRAMBLE_DIR}"/*.pdb; do
+    SCRAMBLE_NAME=$(basename "${SCRAMBLED_PDB}" .pdb)
+    OUT_DIR="${CONTROL_DIR}/${STATE}/${SCRAMBLE_NAME}"
+
+    if [ -f "${OUT_DIR}/scored_all_models.csv" ]; then
+        echo "  SKIP: ${SCRAMBLE_NAME} (already complete)"
+        continue
+    fi
+
+    echo "  Docking: ${SCRAMBLE_NAME} → ${OUT_DIR}"
+    python run_production.py \
+        -c "${CONFIG}" \
+        --lane ppi-single \
+        --state "${STATE}" \
+        --seed 0 \
+        --partner_pdb "${SCRAMBLED_PDB}" \
+        --output_dir "${OUT_DIR}" \
+        --n_decoys "${N_DECOYS}" \
+        2>&1 | tail -5
+
+    echo "  Done: ${SCRAMBLE_NAME} (exit code: $?)"
+done
+
+# Run enrichment analysis
+echo ""
+echo "Running enrichment analysis..."
+REAL_SCORES="output/workflow_a/phase2_ppi_docking/${STATE}/prod_seed0/scored_all_models.csv"
+REPORT="${CONTROL_DIR}/${STATE}/enrichment_report.csv"
+
+if [ -f "${REAL_SCORES}" ]; then
+    python -m egfr_pipeline.decoy_enrichment analyse \
+        --real_scores "${REAL_SCORES}" \
+        --control_dir "${CONTROL_DIR}/${STATE}" \
+        --output "${REPORT}" \
+        --state "${STATE}" \
+        --seed "0"
+else
+    echo "WARNING: Real scores not found at ${REAL_SCORES} — skipping analysis"
+fi
+
+echo "============================================================"
+echo "Decoy Enrichment finished: $(date)"
+echo "============================================================"

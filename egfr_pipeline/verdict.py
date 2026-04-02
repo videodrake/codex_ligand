@@ -30,7 +30,7 @@ import math
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
@@ -87,6 +87,10 @@ VERDICT_FIELDS = [
     "ppi_reproducibility_pts",
     "cross_receptor_pts",
     "cross_receptor_support_pts",
+    "exp_sensitivity_pts",
+    "exp_enrichment_pts",
+    "exp_specificity_pts",
+    "exp_score",
     "score_denominator",
     "ppi_data_available",
     "best_affinity",
@@ -186,7 +190,17 @@ DEFAULT_THRESHOLDS = {
     "cross_support_good": 0.50,
     "cross_support_great": 0.75,
 
-    # --- Evidence level thresholds (always out of 100) ---
+    # --- Axis 4: Experimental correlation (when data available) ---
+    # Max 15 pts (only when experimental binding/non-binding residues provided)
+    # Adaptive: denominator increases by 15 only when data exists.
+    "exp_sensitivity_great": 0.50,   # ≥50% known binders captured
+    "exp_sensitivity_good": 0.20,    # ≥20% known binders captured
+    "exp_enrichment_great": 3.0,     # ≥3x enrichment over random
+    "exp_enrichment_good": 1.5,      # ≥1.5x enrichment
+    "exp_specificity_good": 0.80,    # ≥80% non-binders avoided
+    "exp_max": 15.0,                 # max points for experimental axis
+
+    # --- Evidence level thresholds (always out of 100, normalized) ---
     # NOT a validity judgment — an evidence strength classification.
     # Researcher must still inspect STRONG pockets visually.
     "valid_min": 55,             # STRONG evidence
@@ -295,6 +309,7 @@ def load_all_evidence(vina_dir: Path, ppi_dir: Path) -> dict:
         "ppi_summary": load_csv(ppi_dir / "ppi_pyrosetta_summary.csv"),
         "afm_residues": load_csv(ppi_dir / "ppi_afm_residues.csv"),
         "afm_summary": load_csv(ppi_dir / "ppi_afm_summary.csv"),
+        "lightdock_residues": load_csv(ppi_dir / "lightdock_convergence.csv"),
     }
 
 
@@ -569,6 +584,76 @@ def _build_ppi_residue_index(
         if existing is None or _ppi_row_priority(row) > _ppi_row_priority(existing):
             index[rid][res_id] = row
     return dict(index)
+
+
+# ---------------------------------------------------------------------------
+# LightDock cross-validation integration
+# ---------------------------------------------------------------------------
+
+def _build_lightdock_index(
+    lightdock_rows: List[dict],
+) -> Dict[str, Dict[str, float]]:
+    """Build {receptor_id: {residue_id: frequency}} from LightDock convergence CSV.
+
+    Expected columns: receptor_id, residue_id, residue_num, method_agreement,
+    lightdock_frequency, pyrosetta_frequency.
+
+    Falls back to lightdock_interface_support_table.csv format if needed.
+    """
+    index: Dict[str, Dict[str, float]] = defaultdict(dict)
+    for row in lightdock_rows:
+        rid = row.get("receptor_id", "")
+        res_id = row.get("residue_id", "")
+        if not rid or not res_id:
+            continue
+        # Try convergence CSV format first, then support table format
+        freq = safe_float(
+            row.get("lightdock_frequency") or row.get("frequency"),
+            0.0,
+        )
+        if freq > 0:
+            norm_id = normalize_residue_id(res_id)
+            index[rid][norm_id] = max(index[rid].get(norm_id, 0.0), freq)
+    return dict(index)
+
+
+def compute_lightdock_pocket_overlap(
+    pocket: dict,
+    lightdock_residues: Dict[str, float],
+) -> Dict[str, Any]:
+    """Compute overlap between a Vina pocket and LightDock interface residues.
+
+    Returns dict with:
+      - n_shared: number of pocket residues also in LightDock interface
+      - lightdock_mean_freq: mean LightDock frequency of shared residues
+      - lightdock_coverage: fraction of pocket residues in LightDock
+    """
+    pocket_resnums = _pocket_resnums(pocket)
+    if not pocket_resnums or not lightdock_residues:
+        return {"n_shared": 0, "lightdock_mean_freq": 0.0, "lightdock_coverage": 0.0}
+
+    # LightDock residues are keyed by normalised ID (e.g. "ALA699")
+    # Pocket resnums are integers. Match by residue number.
+    ld_resnums: Dict[int, float] = {}
+    for res_id, freq in lightdock_residues.items():
+        rn = extract_resnum(res_id)
+        if rn is not None:
+            ld_resnums[rn] = max(ld_resnums.get(rn, 0.0), freq)
+
+    shared = pocket_resnums & set(ld_resnums.keys())
+    n_shared = len(shared)
+
+    if n_shared == 0:
+        return {"n_shared": 0, "lightdock_mean_freq": 0.0, "lightdock_coverage": 0.0}
+
+    mean_freq = sum(ld_resnums[r] for r in shared) / n_shared
+    coverage = n_shared / len(pocket_resnums)
+
+    return {
+        "n_shared": n_shared,
+        "lightdock_mean_freq": round(mean_freq, 4),
+        "lightdock_coverage": round(coverage, 4),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1118,17 +1203,19 @@ def score_pocket(
     thresholds: dict,
     has_ppi_data: bool,
     exp_correlation: Optional[dict] = None,
+    lightdock_overlap: Optional[dict] = None,
 ) -> Tuple[float, str, List[str], float, float, float, dict]:
     """Score a single pocket with adaptive weighting.
 
-    Scoring adapts to available evidence:
-      With PPI data:    Vina(50) + PPI_proximity(20) + Cross_receptor(30) = 100
-      Without PPI data: Vina(60) + Cross_receptor(40) = 100
-
-    This ensures pockets are never penalized for missing PPI data.
+    Scoring adapts to available evidence (always normalized to 100):
+      With PPI + EXP: Vina(43) + PPI(17) + Cross(26) + Exp(14) = 100
+      With PPI only:  Vina(50) + PPI(20) + Cross(30) = 100
+      With EXP only:  Vina(52) + Cross(35) + Exp(13) = 100
+      No PPI, no EXP: Vina(60) + Cross(40) = 100
 
     exp_correlation: optional dict from compute_experimental_correlation().
-      Does NOT change the 100-point total — adds informational reason tags only.
+      When experimental binding/non-binding residues are configured, this axis
+      contributes up to 15 raw points (normalized with other axes to 100 total).
 
     Returns:
       (total, verdict, reasons, vina_score, ppi_score, cross_score, raw_components)
@@ -1321,7 +1408,24 @@ def score_pocket(
         if ppi_best_delta_e < 0:
             reasons.append(f"ppi_dE={ppi_best_delta_e:.1f}")
 
-        ppi_score = min(spatial_pts + overlap_pts + reproducibility_pts, ppi_max)
+        # LightDock cross-validation bonus (independent method agreement)
+        # Awards up to 3 bonus points when LightDock independently identifies
+        # the same interface residues as PyRosetta PPI docking.
+        lightdock_bonus = 0.0
+        if lightdock_overlap and lightdock_overlap.get("n_shared", 0) > 0:
+            ld_n = lightdock_overlap["n_shared"]
+            ld_freq = lightdock_overlap.get("lightdock_mean_freq", 0.0)
+            ld_cov = lightdock_overlap.get("lightdock_coverage", 0.0)
+            if ld_cov >= 0.3 and ld_freq >= 0.3:
+                lightdock_bonus = 3.0
+                reason_tags.append("lightdock_validated")
+            elif ld_n >= 2:
+                lightdock_bonus = 1.5
+                reason_tags.append("lightdock_partial")
+            if lightdock_bonus > 0:
+                reasons.append(f"lightdock={ld_n}res(freq={ld_freq:.2f})")
+
+        ppi_score = min(spatial_pts + overlap_pts + reproducibility_pts + lightdock_bonus, ppi_max)
     elif not has_ppi_data:
         reasons.append("no_ppi_data")
         reason_tags.append("no_ppi_data")
@@ -1364,12 +1468,51 @@ def score_pocket(
 
     cross_score = min(cross_coverage_pts + cross_support_pts, cross_max)
 
-    # ---- Experimental priors (informational only, no score impact) ----
+    # ---- Axis 4: Experimental Correlation ----
+    # When experimental binding/non-binding residue data is configured,
+    # this axis scores how well the pocket matches known experimental evidence.
+    # Adaptive: adds exp_max (15) to the denominator only when data exists.
+    has_exp_data = bool(exp_correlation)
+    exp_max = T.get("exp_max", 15.0) if has_exp_data else 0.0
+    exp_raw = 0.0
+    exp_sensitivity_pts = 0.0
+    exp_enrichment_pts = 0.0
+    exp_specificity_pts = 0.0
+
     if exp_correlation:
         sens = exp_correlation.get("exp_sensitivity", 0)
         n_hits = exp_correlation.get("exp_hit_count", 0)
         n_fp = exp_correlation.get("exp_false_pos", 0)
         enrichment = exp_correlation.get("exp_enrichment", 0)
+        specificity = exp_correlation.get("exp_specificity", 1.0)
+
+        # Sensitivity: how many known binders does this pocket capture?
+        if sens >= T.get("exp_sensitivity_great", 0.50):
+            exp_sensitivity_pts = 6.0
+            reason_tags.append("exp_sensitivity_great")
+        elif sens >= T.get("exp_sensitivity_good", 0.20):
+            exp_sensitivity_pts = 3.0
+            reason_tags.append("exp_sensitivity_good")
+
+        # Enrichment: is this pocket enriched for known binders?
+        if enrichment >= T.get("exp_enrichment_great", 3.0):
+            exp_enrichment_pts = 5.0
+            reason_tags.append("exp_enriched")
+        elif enrichment >= T.get("exp_enrichment_good", 1.5):
+            exp_enrichment_pts = 2.5
+
+        # Specificity: does this pocket avoid known non-binders?
+        if specificity >= T.get("exp_specificity_good", 0.80):
+            exp_specificity_pts = 4.0
+        elif specificity >= 0.60:
+            exp_specificity_pts = 2.0
+        elif n_fp > 0 and sens == 0:
+            # Pocket contacts non-binders but no binders → penalty tag
+            reason_tags.append("exp_contradicts")
+
+        exp_raw = exp_sensitivity_pts + exp_enrichment_pts + exp_specificity_pts
+
+        # Reason strings (always informational)
         if n_hits > 0:
             reasons.append(f"exp_hit={n_hits}res(sens={sens:.0%})")
             reason_tags.append("experimental_hit")
@@ -1378,8 +1521,20 @@ def score_pocket(
         if n_fp > 0:
             reasons.append(f"exp_fp={n_fp}res")
 
-    # ---- Total (always out of 100) ----
-    total = vina_score + ppi_score + cross_score
+    # ---- Normalize all axes to 100 total (adaptive denominator) ----
+    raw_denominator = vina_max + ppi_max + cross_max + exp_max
+    scale = 100.0 / raw_denominator if raw_denominator > 0 else 1.0
+    vina_score_norm = vina_score * scale
+    ppi_score_norm = ppi_score * scale
+    cross_score_norm = cross_score * scale
+    exp_score = min(exp_raw, exp_max) * scale
+
+    total = vina_score_norm + ppi_score_norm + cross_score_norm + exp_score
+
+    # Overwrite axis scores with normalized values for output consistency
+    vina_score = round(vina_score_norm, 2)
+    ppi_score = round(ppi_score_norm, 2)
+    cross_score = round(cross_score_norm, 2)
 
     if total >= T["valid_min"]:
         verdict = "STRONG"
@@ -1399,11 +1554,14 @@ def score_pocket(
         evidence_profile.append("cross_state")
     if support_frac >= T["cross_support_good"]:
         evidence_profile.append("recurrent")
+    if has_exp_data and exp_raw > 0:
+        evidence_profile.append("exp_supported")
     evidence_profile = sorted(set(evidence_profile))
     decision_trace = (
         "VINA[aff={aff:.1f},conv={conv:.1f},stab={stab:.1f},div={div:.1f}] "
         "PPI[spatial={spatial:.1f},overlap={overlap:.1f},repro={repro:.1f}] "
-        "CROSS[count={count},support={support:.1f}]"
+        "CROSS[count={count},support={support:.1f}] "
+        "EXP[sens={esens:.1f},enrich={eenrich:.1f},spec={espec:.1f}]"
     ).format(
         aff=affinity_pts,
         conv=convergence_pts,
@@ -1414,10 +1572,13 @@ def score_pocket(
         repro=reproducibility_pts,
         count=cross_coverage_pts,
         support=cross_support_pts,
+        esens=exp_sensitivity_pts,
+        eenrich=exp_enrichment_pts,
+        espec=exp_specificity_pts,
     )
 
     # Raw component breakdown (pre-normalization points)
-    score_denominator = vina_max + ppi_max + cross_max
+    score_denominator = raw_denominator
     raw_components = {
         "vina_affinity_pts": affinity_pts,
         "vina_convergence_pts": convergence_pts,
@@ -1431,6 +1592,10 @@ def score_pocket(
         "ppi_reproducibility_pts": reproducibility_pts,
         "cross_receptor_pts": cross_coverage_pts + cross_support_pts,
         "cross_receptor_support_pts": cross_support_pts,
+        "exp_sensitivity_pts": exp_sensitivity_pts,
+        "exp_enrichment_pts": exp_enrichment_pts,
+        "exp_specificity_pts": exp_specificity_pts,
+        "exp_score": round(exp_score, 2),
         "score_denominator": score_denominator,
         "dominant_ligand_fraction": dominant_ligand_fraction,
         "ligand_pose_entropy": ligand_pose_entropy,
@@ -1496,6 +1661,15 @@ def generate_verdict(
         if len(offset_warnings) > 5:
             print(f"  ... and {len(offset_warnings) - 5} more")
         print("  Run PPI Postprocess (option 8) to fix before verdict.\n")
+
+    # LightDock cross-validation data (optional, graceful when absent)
+    lightdock_residues = evidence.get("lightdock_residues", [])
+    lightdock_index = _build_lightdock_index(lightdock_residues)
+    if lightdock_index:
+        n_ld_receptors = len(lightdock_index)
+        n_ld_residues = sum(len(v) for v in lightdock_index.values())
+        print(f"[verdict] LightDock validation data: {n_ld_residues} residues "
+              f"from {n_ld_receptors} receptor(s)")
 
     # Merge multi-partner PPI residues
     ppi_residues_merged = _merge_multi_partner_residues(ppi_residues)
@@ -1621,10 +1795,17 @@ def generate_verdict(
         # Per-pocket PPI availability check
         pocket_has_ppi = rid in ppi_receptor_ids
 
+        # LightDock overlap for this pocket (if data available)
+        ld_overlap = None
+        ld_residues_for_rid = lightdock_index.get(rid)
+        if ld_residues_for_rid:
+            ld_overlap = compute_lightdock_pocket_overlap(pocket, ld_residues_for_rid)
+
         exp_corr = exp_correlations.get(key)
         total, verdict, reasons, v_score, p_score, c_score, raw_comp = score_pocket(
             pocket, ppi_agr, cross_matches, cross_support.get(key), thresholds, pocket_has_ppi,
             exp_correlation=exp_corr,
+            lightdock_overlap=ld_overlap,
         )
 
         spatial_dist = ""
@@ -1655,6 +1836,10 @@ def generate_verdict(
             "ppi_reproducibility_pts": raw_comp["ppi_reproducibility_pts"],
             "cross_receptor_pts": raw_comp["cross_receptor_pts"],
             "cross_receptor_support_pts": raw_comp["cross_receptor_support_pts"],
+            "exp_sensitivity_pts": raw_comp["exp_sensitivity_pts"],
+            "exp_enrichment_pts": raw_comp["exp_enrichment_pts"],
+            "exp_specificity_pts": raw_comp["exp_specificity_pts"],
+            "exp_score": raw_comp["exp_score"],
             "score_denominator": raw_comp["score_denominator"],
             "ppi_data_available": "yes" if pocket_has_ppi else "no",
             "best_affinity": pocket.get("best_affinity", ""),
