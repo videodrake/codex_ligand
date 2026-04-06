@@ -2,8 +2,8 @@
 
 ## 현재 작업 상태
 - 워크플로우: 양쪽 (하네스는 A/B 공통 인프라)
-- 현재 작업: 하네스 엔지니어링 구축 Phase 2 스킬 구축 완료
-- 다음 작업: Phase 3 에이전트/훅 구축 또는 PR 생성
+- 현재 작업: 하네스 엔지니어링 구축 Phase 3 에이전트/훅 완료
+- 다음 작업: PR 생성 또는 추가 정비
 
 ## 작업 로그
 - [2026-04-06] Phase 0-1: 레거시 파일 삭제 완료 — 삭제 3개, 미존재 12개
@@ -14,6 +14,8 @@
 - [2026-04-06] Phase 1-2: CONTEXT.md 재작성 완료
 - [2026-04-06] Phase 2-1: 스킬 생성 — phase-dependencies, bug-history (2/7)
 - [2026-04-06] Phase 2-2: 스킬 생성 — ppi-analysis, vina-docking, hpc-operations, scoring-system, testing (7/7 완료)
+- [2026-04-06] Phase 3-1: 에이전트 3개 생성 — pipeline-dev, reviewer, science-qa (권한 경계 원칙 포함)
+- [2026-04-06] Phase 3-2: 훅 2개 생성 — pre-commit.sh, csv-schema-guard.py
 
 ## 최근 결정 사항
 - [2026-04-06] 하네스 엔지니어링 적용 시작. 설계서: harness_engineering_design.md
