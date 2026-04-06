@@ -37,10 +37,10 @@ EXCLUDED_RESIDUES_A = "709-720,724-731,736-739,747,783-785,799-805,871-873,917-9
 # αC helix(741-756), αE helix(847-859), activation loop(831-852)
 KNOWN_BINDING_REGION_A = "741-756,831-859"
 
-# Multi-seed strategy: 5 seeds × 20K each = 100K total per state
-# This provides better sampling diversity than a single 100K run
+# Multi-seed strategy: 10 seeds × 20K each = 200K total per state
+# This provides better sampling diversity than a single 200K run
 PRODUCTION_MODELS_PER_SEED = 20000
-PRODUCTION_N_SEEDS = 5
+PRODUCTION_N_SEEDS = 10
 TEST_MODELS = 1000
 PHASE1_RUNTIME_INPUT_DIR = paths.wa_phase2_runtime_inputs({"output_root": "output"}).as_posix()
 

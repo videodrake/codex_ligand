@@ -64,9 +64,9 @@ from egfr_pipeline.runtime import (
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = REPO_ROOT / "config" / "example-project.yaml"
 
-# PPI 설정 — Phase 1 monomer-based (3 states × 5 seeds)
+# PPI 설정 — Phase 1 monomer-based (3 states × 10 seeds)
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
-PRODUCTION_N_SEEDS = 5  # generate_configs.py와 동일
+PRODUCTION_N_SEEDS = 10  # generate_configs.py와 동일
 
 
 def _build_ppi_targets() -> List[dict]:
