@@ -243,7 +243,7 @@ description: PPI/PyRosetta 관련 작업 시 로딩. 트리거 — PPI, PyRosett
 ## LightDock 검증
 - PyRosetta와 독립적인 교차 검증 수단
 - LightDock 결과가 PyRosetta와 일치하면 신뢰도 상승
-- 단, LightDock 자체의 한계 있음 (docs/methodology_limitations.md 참조)
+- 단, LightDock 자체의 한계 있음 (PIPELINE_ARCHITECTURE_REPORT.md TG 1.4 참조)
 
 ## 위험한 코드 변경
 - DockingSlideIntoContact 누락 → 모든 dG가 0.0 (V1.0 역사적 버그)
@@ -335,7 +335,7 @@ description: Verdict/스코어링 관련 작업 시 로딩. 트리거 — Verdic
 ## Workflow B: 4축 체계 (phase4/)
 - A1: PPI interface 관계 (orthosteric/rim/allosteric/irrelevant)
 - A2: Druggability
-- A3: Perturbation relevance (docs/phase4_A3_axis_specification.md 참조)
+- A3: Perturbation relevance (PIPELINE_ARCHITECTURE_REPORT.md Phase 4 섹션 참조)
 - A4: State robustness
 - A1+A3 합산 가중치 60% → affinity만 좋고 MYO1D 무관한 포켓은 상위 불가
 
