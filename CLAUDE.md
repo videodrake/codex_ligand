@@ -15,6 +15,7 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
    - `egfr_pipeline/phase2/` → Workflow B Phase 2
    - `egfr_pipeline/phase3/` → Workflow B Phase 3
    - `egfr_pipeline/phase4/` → Workflow B Phase 4
+   - `egfr_pipeline/pyrosetta_docking/` → Workflow A Phase 2 + Workflow B Phase 1 (PPI 도킹 엔진, 양쪽에서 공유)
    - `verdict.py`, `report.py`, `validate.py` → Workflow A Phase 5~7
 5. **CSV 스키마 보존**: 기존 CSV 출력의 컬럼명/타입을 변경할 때는 하위 Phase의 ingestion 코드와 validate.py를 함께 수정한다.
 6. **paths.py 보호**: `egfr_pipeline/paths.py`를 수정하면 전체 Phase의 경로 해석이 바뀐다. 수정 후 반드시 모든 Phase의 smoke test를 실행한다.

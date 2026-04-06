@@ -7,6 +7,9 @@ description: PyRosetta/Vina 코드 수정 전 반드시 확인. 트리거 — Py
 - 증상: 모든 dG 값이 0.0
 - 원인: DockMCMProtocol 호출 전 DockingSlideIntoContact 누락
 - 교훈: PyRosetta 도킹 프로토콜 수정 시 반드시 dG 값이 비-제로인지 확인
+- 확장: SlideIntoContact와 DockMCMProtocol의 순서 변경, 제거, 조건부 스킵은
+  모두 BUG-001과 동일한 실패(dG=0.0)를 유발할 수 있다.
+  이 두 함수의 호출 순서를 변경하는 요청은 반드시 BUG-001을 인용하며 경고한다.
 
 ### BUG-002: FoldTree 미재설정 (심각도: High)
 - 증상: 역직렬화된 pose에서 도킹 결과가 비정상
