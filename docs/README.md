@@ -25,8 +25,6 @@
 |------|------|
 | [pre_qsub_test_line.md](pre_qsub_test_line.md) | 사전 제출 테스트 절차 |
 | [test_suite_triage.md](test_suite_triage.md) | 테스트 분류 가이드 |
-| [nightly_review_automation.md](nightly_review_automation.md) | 자동 리뷰 스크립트 설명 |
-| [nightly_incremental_improvement_automation.md](nightly_incremental_improvement_automation.md) | 새벽 미세 개선 자동화 설계 |
 
 ## 아카이브
 
