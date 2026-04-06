@@ -45,7 +45,9 @@ PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
 
 # Druggability confidence thresholds (based on fpocket druggability score)
 # These are calibrated for fpocket's 0–1 druggability_score range.
-# When P2Rank or other tools are available, raw scores are preserved and
+# P2Rank's probability field is also 0–1 and mapped to druggability_score
+# in pocket_proposal.py, so these thresholds apply to both tools.
+# When additional tools are integrated, raw scores are preserved and
 # the normalized_druggability_score provides cross-tool comparability.
 HIGH_DRUGGABILITY_THRESHOLD = 0.50     # ≥ 0.50 → high
 MEDIUM_DRUGGABILITY_THRESHOLD = 0.25   # ≥ 0.25 → medium, else low

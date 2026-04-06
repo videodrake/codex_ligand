@@ -28,7 +28,7 @@ def _make_config() -> configparser.ConfigParser:
 
 def test_infer_ids_from_input_name() -> None:
     config = _make_config()
-    input_pdb = "input/PPI/prepared/3GT8_raw_beta_meander_model.pdb"
+    input_pdb = "input/PPI/phase1/3GT8_raw_beta_meander_model.pdb"
     assert infer_receptor_id(config, input_pdb) == "3GT8_raw"
     assert infer_partner_id(config, input_pdb) == "MYO1D_beta_meander"
 
@@ -37,7 +37,7 @@ def test_construct_type_respects_explicit_metadata() -> None:
     config = _make_config()
     config.read_dict({"Metadata": {"construct_type": "full_kinase_domain"}})
     assert (
-        infer_construct_type(config, "input/PPI/prepared/EGFR_dimer_beta_meander_wt.pdb")
+        infer_construct_type(config, "input/PPI/phase1/EGFR_dimer_beta_meander_wt.pdb")
         == "full_kinase_domain"
     )
 
@@ -59,7 +59,7 @@ def test_build_run_metadata_contains_traceability_fields() -> None:
     metadata = build_run_metadata(
         config=config,
         config_file="config/ppi_test_beta_meander.ini",
-        input_pdb="input/PPI/prepared/EGFR_dimer_beta_meander_wt.pdb",
+        input_pdb="input/PPI/phase1/EGFR_dimer_beta_meander_wt.pdb",
         root_dir="EGFR_dimer_beta_meander_wt",
         filename="EGFR_dimer_beta_meander_wt.pdb",
         requested_cpus=16,
@@ -98,7 +98,7 @@ def test_build_output_root_name_metadata_tagged() -> None:
     )
     root_name = build_output_root_name(
         config,
-        "input/PPI/prepared/EGFR_dimer_beta_meander.pdb",
+        "input/PPI/phase1/EGFR_dimer_beta_meander.pdb",
         "EGFR_dimer_beta_meander",
     )
     assert (

@@ -83,21 +83,7 @@ What these files mean:
 
 ### 2.2 Legacy prepared dimer assets
 
-These files are prepared PPI assets that still matter for reference and historical traceability.
-
-| Path | Meaning | Current status |
-|------|------|------|
-| `input/PPI/prepared/EGFR_dimer_beta_meander.pdb` | prepared EGFR dimer plus beta-meander assembly | legacy prepared asset |
-| `input/PPI/prepared/EGFR_dimer_beta_meander_info.json` | metadata for the legacy dimer-plus-beta-meander assembly | legacy prepared asset |
-| `input/PPI/prepared/EGFR_dimer_beta_meander_mapping.csv` | chain/residue remapping for that legacy prepared assembly | legacy prepared asset |
-| `input/PPI/prepared/EGFR_dimer_TH1.pdb` | prepared EGFR dimer plus TH1 assembly | legacy prepared asset |
-| `input/PPI/prepared/EGFR_dimer_TH1_info.json` | metadata for the legacy dimer-plus-TH1 assembly | legacy prepared asset |
-| `input/PPI/prepared/EGFR_dimer_TH1_mapping.csv` | chain/residue remapping for that legacy prepared assembly | legacy prepared asset |
-
-Important interpretation:
-
-- The `prepared/` directory documents older dimer-centered preparation paths and is still useful for provenance.
-- These assets should not outrank the current `input/PPI/phase1/` preparation layer when describing the active baseline.
+The `input/PPI/prepared/` directory has been removed. The legacy pilot data provenance is recorded in the static file `input/PPI/phase1/pilot_data_reference.csv`. The current active preparation layer is `input/PPI/phase1/`.
 
 ### 2.3 Config-declared prepared inputs not present in the current workspace snapshot
 
@@ -321,7 +307,7 @@ Use this shortcut when onboarding.
 |------|------|
 | Which receptor and ligand inputs are active | `config/example-project.yaml` plus this document |
 | What the current prepared Phase 1 input set is | `input/PPI/phase1/` |
-| What older PPI prepared assets still exist | `input/PPI/prepared/` |
+| What older PPI prepared assets were | `input/PPI/phase1/pilot_data_reference.csv` |
 | Where the main Vina outputs live | `output/workflow_a/phase4_vina_postprocess/` |
 | Where the verdict outputs live | `output/workflow_a/phase5_verdict/` |
 | Where the report outputs live | `output/workflow_a/phase6_report/` |
@@ -331,6 +317,6 @@ Use this shortcut when onboarding.
 ## 6. Current Cautions
 
 - Outputs are now organized under `output/workflow_a/` and `output/workflow_b/` by phase. Do not reference the legacy `output/egfr_myo1d_vina/` layout.
-- Do not treat `input/PPI/prepared/` as the current primary Phase 1 preparation layer when `input/PPI/phase1/` already provides the newer full-kinase-domain baseline metadata.
+- The `input/PPI/prepared/` directory no longer exists. Legacy provenance is in `input/PPI/phase1/pilot_data_reference.csv`.
 - Do not assume AFM inputs exist just because AFM parser code exists.
 - Do not assume `.pdbqt` inputs are checked into this workspace just because the active YAML expects them at runtime.

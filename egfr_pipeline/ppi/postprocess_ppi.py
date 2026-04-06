@@ -9,7 +9,7 @@ Usage:
   python -m egfr_pipeline.ppi.postprocess_ppi \\
       --config config/example-project.yaml \\
       --docking-dir EGFR_dimer_beta_meander/ \\
-      --mapping input/PPI/prepared/EGFR_dimer_beta_meander_mapping.csv \\
+      --mapping input/PPI/phase1/EGFR_dimer_beta_meander_mapping.csv \\
       --partner-name beta_meander \\
       --receptor-id 3GT8_raw
 """

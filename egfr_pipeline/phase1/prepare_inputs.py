@@ -983,49 +983,9 @@ def write_docking_pair_metadata(pair_metas: List[dict], output_dir: Path) -> Pat
 # ---------------------------------------------------------------------------
 # Task 1.0.6: Pilot data registration
 # ---------------------------------------------------------------------------
-
-def register_pilot_data(output_dir: Path) -> Path:
-    """Register existing pilot data as historical reference."""
-    output_path = output_dir / "pilot_data_reference.csv"
-
-    pilot_entries = [
-        {
-            "label": "EGFR_dimer_beta_meander",
-            "construct_type": "legacy_clobe_fragment",
-            "receptor_pdb": "input/PPI/prepared/EGFR_dimer_beta_meander.pdb",
-            "receptor_info": "input/PPI/prepared/EGFR_dimer_beta_meander_info.json",
-            "receptor_description": "EGFR dimer (A+B merged) × C-lobe fragment (45 res)",
-            "partner_pdb": "input/PPI/beta_meander.pdb",
-            "partner_range": "960-1006",
-            "known_artifacts": "N-lobe absence; VAL962 N-terminal artifact; no orientation filter",
-            "status": "historical_reference_only",
-            "results_dir": "output/egfr_myo1d_vina/ppi/beta_meander",
-        },
-        {
-            "label": "EGFR_dimer_TH1",
-            "construct_type": "legacy_clobe_fragment",
-            "receptor_pdb": "input/PPI/prepared/EGFR_dimer_TH1.pdb",
-            "receptor_info": "input/PPI/prepared/EGFR_dimer_TH1_info.json",
-            "receptor_description": "EGFR dimer (A+B merged) × TH1 domain (206 res)",
-            "partner_pdb": "input/PPI/TH1 domain.pdb",
-            "partner_range": "801-1006",
-            "known_artifacts": "N-lobe absence; TH1 noise (not primary search input)",
-            "status": "historical_reference_only",
-            "results_dir": "output/egfr_myo1d_vina/ppi/TH1",
-        },
-    ]
-
-    if not pilot_entries:
-        print("  WARNING: No pilot entries to register")
-        return output_path
-    fieldnames = list(pilot_entries[0].keys())
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(pilot_entries)
-
-    print(f"\nPilot data registered: {output_path}")
-    print(f"  {len(pilot_entries)} entries (historical reference only, not modified)")
+# NOTE: register_pilot_data() removed — pilot_data_reference.csv is now a
+# static file committed at input/PPI/phase1/pilot_data_reference.csv.
+# The legacy paths (input/PPI/prepared/) it referenced no longer exist.
 
     return output_path
 
@@ -1224,11 +1184,6 @@ def prepare_phase1_inputs(output_dir: Optional[Path] = None) -> dict:
     print(f"  docking_pair_metadata.csv: {d_csv}")
 
     # -----------------------------------------------------------------------
-    # Step 6: Register pilot data
-    # -----------------------------------------------------------------------
-    pilot_csv = register_pilot_data(output_dir)
-
-    # -----------------------------------------------------------------------
     # Step 7: Write validation report
     # -----------------------------------------------------------------------
     report_path = write_validation_report(
@@ -1250,7 +1205,6 @@ def prepare_phase1_inputs(output_dir: Optional[Path] = None) -> dict:
     print(f"  receptor_metadata.csv")
     print(f"  partner_metadata.csv")
     print(f"  docking_pair_metadata.csv")
-    print(f"  pilot_data_reference.csv")
     print(f"  phase1_input_validation_report.md")
 
     # Count pass/fail
@@ -1265,7 +1219,6 @@ def prepare_phase1_inputs(output_dir: Optional[Path] = None) -> dict:
         "receptor_metadata_csv": r_csv,
         "partner_metadata_csv": p_csv,
         "docking_pair_metadata_csv": d_csv,
-        "pilot_data_reference_csv": pilot_csv,
         "validation_report_path": report_path,
         "docking_pairs": {
             meta["state_name"]: output_dir / f"docking_{meta['state_name']}_ext_beta_meander.pdb"
