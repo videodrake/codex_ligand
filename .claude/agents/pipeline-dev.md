@@ -12,6 +12,8 @@
 **반드시 사람 승인 필요:**
 - Phase 간 핸드오프 CSV 스키마 변경
 - 스코어링 축/가중치 변경 (과학적 판단)
+- verdict.py의 축별 점수 배분(vina_max, ppi_max, cross_max) 변경
+- score_framework.py의 A1~A4 가중치 변경
 - 새 Phase 추가 또는 워크플로우 구조 변경
 - paths.py 수정
 - 실험적 사실(ATP 배제, Ko et al.) 관련 로직 변경
