@@ -507,10 +507,13 @@ def parse_p2rank_output(
 
             pocket_id = f"{state}_p2rank_P{rank:02d}"
 
-            # Estimate box size from SAS points count (heuristic)
+            # Estimate box size and volume from SAS points count (heuristic)
             sas_points = safe_int(row.get("sas_points", "")) or 0
             # Rough estimate: box_dim ≈ 2 * (sas_points)^(1/3) + padding
             estimated_dim = 2.0 * (sas_points ** (1.0/3.0)) + 2 * DEFAULT_BOX_PADDING if sas_points > 0 else 0.0
+            # Volume estimate: each SAS point ≈ 12 Å³ (empirical from
+            # fpocket alpha-sphere density in kinase surface pockets)
+            estimated_volume = sas_points * 12.0 if sas_points > 0 else 0.0
 
             results.append({
                 "receptor_id": state,
@@ -522,7 +525,7 @@ def parse_p2rank_output(
                 "centroid_x": f"{cx:.3f}",
                 "centroid_y": f"{cy:.3f}",
                 "centroid_z": f"{cz:.3f}",
-                "volume_A3": "",  # P2Rank doesn't report volume directly
+                "volume_A3": f"{estimated_volume:.1f}" if estimated_volume else "",
                 "n_alpha_spheres": sas_points,
                 "residue_ids": ";".join(res_ids),
                 "residue_nums": ";".join(res_nums),
