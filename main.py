@@ -330,7 +330,7 @@ def _ppi_prepare():
         partner_path = ask_input("Partner PDB 경로")
 
     partner_name = Path(partner_path).stem.replace(" ", "_")
-    output_path = f"input/PPI/prepared/EGFR_dimer_{partner_name}.pdb"
+    output_path = f"input/PPI/phase1/EGFR_dimer_{partner_name}.pdb"
 
     from egfr_pipeline.ppi.prepare_dimer_pdb import prepare_dimer_partner
     prepare_dimer_partner(
