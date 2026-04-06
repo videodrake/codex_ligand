@@ -138,7 +138,7 @@ CONSENSUS_FIELDS = [
 
 DEFAULT_THRESHOLDS = {
     # --- Axis 1: Vina quality ---
-    # With PPI data: max 50 pts; Without PPI: max 60 pts (adaptive)
+    # With PPI data: max 30 pts; Without PPI: max 60 pts (adaptive)
     #
     # EGFR C-lobe context:
     #   ATP binding site (active site): -9 ~ -12 kcal/mol (not our target)
@@ -1208,8 +1208,8 @@ def score_pocket(
     """Score a single pocket with adaptive weighting.
 
     Scoring adapts to available evidence (always normalized to 100):
-      With PPI + EXP: Vina(43) + PPI(17) + Cross(26) + Exp(14) = 100
-      With PPI only:  Vina(50) + PPI(20) + Cross(30) = 100
+      With PPI + EXP: Vina(26) + PPI(35) + Cross(26) + Exp(13) = 100
+      With PPI only:  Vina(30) + PPI(40) + Cross(30) = 100
       With EXP only:  Vina(52) + Cross(35) + Exp(13) = 100
       No PPI, no EXP: Vina(60) + Cross(40) = 100
 
@@ -1331,7 +1331,7 @@ def score_pocket(
     _STABILITY_MAX = T["vina_stability_max"]
     _DIVERSITY_MAX = T["vina_diversity_max"]
     VINA_RAW_MAX = _AFFINITY_MAX + _CONVERGENCE_MAX + _STABILITY_MAX + _DIVERSITY_MAX
-    vina_max = 50.0 if has_ppi_data else 60.0
+    vina_max = 30.0 if has_ppi_data else 60.0
     vina_score = min(vina_raw, VINA_RAW_MAX) / VINA_RAW_MAX * vina_max
 
     # ---- Axis 2: PPI Spatial Proximity ----
@@ -1340,7 +1340,7 @@ def score_pocket(
     # PPI-surface distance is shorter. Thresholds are set conservatively to
     # account for this systematic overestimate.
     ppi_score = 0.0
-    ppi_max = 20.0 if has_ppi_data else 0.0
+    ppi_max = 40.0 if has_ppi_data else 0.0
     spatial_pts = 0.0
     overlap_pts = 0.0
     reproducibility_pts = 0.0
