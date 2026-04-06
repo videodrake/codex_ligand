@@ -22,7 +22,7 @@
 - [2026-04-06] 하네스 엔지니어링 적용 시작. 설계서: harness_engineering_design.md
 
 ## 발견된 이슈 (미해결)
-- 참조 문서 4개 미생성: methodology_limitations.md, workflow_comparison_guide.md, phase4_A3_axis_specification.md, 투두리스트.md
+- 참조 문서 3개 미생성: workflow_comparison_guide.md, phase4_A3_axis_specification.md, 투두리스트.md
 
 ## 해결된 이슈
 - [2026-04-06] input/PPI/prepared/ 활성 참조 4개소 정리 완료 — register_pilot_data() 제거(dead code), main.py/postprocess_ppi.py/test 경로 업데이트, data_inventory.md 반영
