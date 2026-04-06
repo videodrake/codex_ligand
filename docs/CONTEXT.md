@@ -26,4 +26,4 @@
 - 참조 문서 4개 미생성: methodology_limitations.md, workflow_comparison_guide.md, phase4_A3_axis_specification.md, 투두리스트.md
 
 ## 실패 패턴 (반복 방지)
-(아직 없음)
+- [2026-04-06] CSV 컬럼 추가 시 하위 전파 판단 누락 + DoD 미확인 커밋

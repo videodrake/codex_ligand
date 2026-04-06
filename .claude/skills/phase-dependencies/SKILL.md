@@ -29,6 +29,11 @@ Phase 1 → Phase 2 → Phase 3 → Phase 4
 
 → 이 안전장치들을 건드리지 않는다. 추가 검증이 필요하면 기존 패턴을 따른다.
 
+## CSV 컬럼 추가 시 전파 판단 규칙
+CSV 컬럼을 추가할 때는 '하위 코드가 깨지는가'뿐 아니라
+'새 컬럼이 핸드오프 CSV까지 전파되어야 하는가'도 확인한다.
+특히 SUMMARY_COLUMNS → EXPORT_COLUMNS 전파 여부를 매번 판단한다.
+
 ## 상세 참조
 - PIPELINE_ARCHITECTURE_REPORT.md — 전체 아키텍처, 데이터 흐름
 - docs/data_inventory.md — 입출력 인벤토리

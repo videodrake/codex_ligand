@@ -37,6 +37,7 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
 - 변경된 Phase의 `validate.py` 검증 통과
 - CSV 스키마 변경 시 하위 ingestion 코드 동시 수정 확인
 - `paths.py` 변경 시 전체 smoke test 통과
+- 이 체크리스트를 확인하기 전에 커밋하지 않는다.
 
 ## 스킬 (.claude/skills/)
 
