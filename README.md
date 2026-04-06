@@ -21,22 +21,36 @@ qsub config/run_advanced_pipeline.pbs
 
 ## 문서 안내
 
-| 문서 | 내용 | 대상 |
-|------|------|------|
-| [docs/PROJECT_USAGE_OVERVIEW.md](docs/PROJECT_USAGE_OVERVIEW.md) | 프로젝트 사용 개요 — 각 도구가 뭘 하는지, 어떤 정보를 얻는지 | 처음 읽는 사람 |
-| [PIPELINE_ARCHITECTURE_REPORT.md](PIPELINE_ARCHITECTURE_REPORT.md) | 전체 아키텍처 상세 보고서 — 모든 모듈, 알고리즘, 입출력 | 구조 파악 |
-| [docs/runbook.md](docs/runbook.md) | 실행 가이드 — qsub 명령, 순서, 결과 확인 | 실행할 때 |
-| [docs/environment_setup.md](docs/environment_setup.md) | 환경 설정 — conda, PyRosetta, 서버 설정 | 최초 설정 |
-| [config/README.md](config/README.md) | Config 파일 의미 — YAML, INI, PBS 설명 | 설정 변경 |
-| [docs/manual_vina.md](docs/manual_vina.md) | AutoDock Vina 상세 매뉴얼 | Vina 참고 |
-| [docs/manual_pyrosetta.md](docs/manual_pyrosetta.md) | PyRosetta PPI 도킹 상세 매뉴얼 | PPI 참고 |
-| [docs/phase1_notes.md](docs/phase1_notes.md) | Phase 1 참고 노트 — 실행, 샘플링, 필터, LightDock | Phase 1 상세 |
-| [docs/data_inventory.md](docs/data_inventory.md) | 입출력 데이터 인벤토리 | 데이터 추적 |
-| [docs/pre_qsub_test_line.md](docs/pre_qsub_test_line.md) | 사전 제출 테스트 절차 | 테스트 |
-| [docs/test_suite_triage.md](docs/test_suite_triage.md) | 테스트 분류 가이드 | 테스트 |
-| [docs/nightly_review_automation.md](docs/nightly_review_automation.md) | 자동 리뷰 스크립트 | 자동화 |
-| [docs/nightly_incremental_improvement_automation.md](docs/nightly_incremental_improvement_automation.md) | 새벽 미세 개선 자동화 설계 | 자동화 |
-| [CLAUDE.md](CLAUDE.md) | Claude Code AI 컨텍스트 | AI 세션 |
+### 구조 이해
+| 문서 | 내용 |
+|------|------|
+| [PIPELINE_ARCHITECTURE_REPORT.md](PIPELINE_ARCHITECTURE_REPORT.md) | 전체 아키텍처 |
+| [docs/PROJECT_USAGE_OVERVIEW.md](docs/PROJECT_USAGE_OVERVIEW.md) | 프로젝트 개요 |
+| [docs/data_inventory.md](docs/data_inventory.md) | 입출력 인벤토리 |
+
+### 실행
+| 문서 | 내용 |
+|------|------|
+| [docs/runbook.md](docs/runbook.md) | 실행 가이드 |
+| [docs/environment_setup.md](docs/environment_setup.md) | 환경 설정 |
+| [docs/manual_vina.md](docs/manual_vina.md) | Vina 매뉴얼 |
+| [docs/manual_pyrosetta.md](docs/manual_pyrosetta.md) | PyRosetta 매뉴얼 |
+
+### 테스트/검증
+| 문서 | 내용 |
+|------|------|
+| [docs/test_suite_triage.md](docs/test_suite_triage.md) | 테스트 분류 |
+| [docs/pre_qsub_test_line.md](docs/pre_qsub_test_line.md) | 사전 제출 테스트 |
+
+### 설정
+| 문서 | 내용 |
+|------|------|
+| [config/README.md](config/README.md) | Config 파일 의미 |
+
+### AI 에이전트
+| 문서 | 내용 |
+|------|------|
+| [CLAUDE.md](CLAUDE.md) | Claude Code 컨텍스트 |
 
 ## 두 가지 워크플로우
 
