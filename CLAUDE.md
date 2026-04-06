@@ -35,7 +35,7 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
 ## Definition of Done
 
 코드 변경을 완료로 간주하려면:
-- `pytest -m smoke` 전체 통과
+- `pytest -m smoke` 실행 — '영향 없을 것 같다'는 판단으로 생략하지 않는다. 반드시 실행하고 결과를 확인한 뒤 커밋한다.
 - 변경된 Phase의 `validate.py` 검증 통과
 - CSV 스키마 변경 시 하위 ingestion 코드 동시 수정 확인
 - `paths.py` 변경 시 전체 smoke test 통과

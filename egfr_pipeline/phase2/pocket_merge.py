@@ -45,7 +45,7 @@ PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
 # Merge thresholds
-CENTROID_MERGE_DISTANCE_A = 8.0   # Å — pockets with centroids closer merge
+CENTROID_MERGE_DISTANCE_A = 6.0   # Å — pockets with centroids closer merge
 RESIDUE_JACCARD_MERGE = 0.30      # Jaccard overlap ≥ 0.30 also triggers merge
 
 # Merged pocket schema
