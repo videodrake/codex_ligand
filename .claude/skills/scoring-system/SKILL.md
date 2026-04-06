@@ -19,6 +19,10 @@ description: Verdict/스코어링 관련 작업 시 로딩. 트리거 — Verdic
 "증거 분류이지 타당성 판정이 아니다."
 STRONG도 PyMOL 시각 검증 필수. WEAK도 cryptic pocket 가능성 있음.
 
+## 권한 경계
+가중치/점수 배분 변경은 과학적 판단이므로 반드시 사람 승인 후 진행한다.
+승인 없이 코드를 수정하지 않는다.
+
 ## 상세 참조
 - PIPELINE_ARCHITECTURE_REPORT.md — Phase 4 Scoring + Verdict 섹션
 - 설계의도.md — 3축/4축 설계 의도

@@ -15,10 +15,12 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
    - `egfr_pipeline/phase2/` → Workflow B Phase 2
    - `egfr_pipeline/phase3/` → Workflow B Phase 3
    - `egfr_pipeline/phase4/` → Workflow B Phase 4
+   - `egfr_pipeline/pyrosetta_docking/` → Workflow A Phase 2 + Workflow B Phase 1 (PPI 도킹 엔진, 양쪽에서 공유)
    - `verdict.py`, `report.py`, `validate.py` → Workflow A Phase 5~7
 5. **CSV 스키마 보존**: 기존 CSV 출력의 컬럼명/타입을 변경할 때는 하위 Phase의 ingestion 코드와 validate.py를 함께 수정한다.
 6. **paths.py 보호**: `egfr_pipeline/paths.py`를 수정하면 전체 Phase의 경로 해석이 바뀐다. 수정 후 반드시 모든 Phase의 smoke test를 실행한다.
 7. **잔기 번호 체계**: PDB 잔기 번호(author numbering)를 사용한다. 내부 인덱스(0-based)와 혼동하면 전체 분석이 틀어진다.
+8. **스코어링 가중치 변경 승인**: verdict.py의 축별 점수 배분(vina_max, ppi_max, cross_max) 및 score_framework.py의 A1~A4 가중치 변경은 과학적 판단이므로 반드시 사람 승인 후 진행한다. 승인 없이 코드를 수정하지 않는다.
 
 ## 워크플로우 구분
 
@@ -33,10 +35,11 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
 ## Definition of Done
 
 코드 변경을 완료로 간주하려면:
-- `pytest -m smoke` 전체 통과
+- `pytest -m smoke` 실행 — '영향 없을 것 같다'는 판단으로 생략하지 않는다. 반드시 실행하고 결과를 확인한 뒤 커밋한다.
 - 변경된 Phase의 `validate.py` 검증 통과
 - CSV 스키마 변경 시 하위 ingestion 코드 동시 수정 확인
 - `paths.py` 변경 시 전체 smoke test 통과
+- 이 체크리스트를 확인하기 전에 커밋하지 않는다.
 
 ## 스킬 (.claude/skills/)
 
