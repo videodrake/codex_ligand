@@ -82,6 +82,8 @@ SUMMARY_COLUMNS = [
     "ftmap_hotspot_count",
     "ftmap_overlap_residues",
     "hotspot_support_available",
+    # Binding site classification
+    "binding_site_type",
     # Composite tier
     "overall_druggability_tier",      # tier_1 / tier_2 / tier_3
 ]
@@ -405,6 +407,7 @@ def run_druggability_confidence(
             "ftmap_hotspot_count": ftmap_info.get("hotspot_count", ""),
             "ftmap_overlap_residues": ftmap_info.get("overlap_residues", ""),
             "hotspot_support_available": "true" if ftmap_info else "false",
+            "binding_site_type": p.get("binding_site_type", ""),
             "overall_druggability_tier": tier,
         })
 
