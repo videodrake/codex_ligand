@@ -56,6 +56,7 @@
 - [2026-04-06] Phase 3-1: 에이전트 3개 생성 — pipeline-dev, reviewer, science-qa (권한 경계 원칙 포함)
 - [2026-04-06] Phase 3-2: 훅 2개 생성 — pre-commit.sh, csv-schema-guard.py
 - [2026-04-06] Phase 4: 하네스 구축 완료 — README.md 역할별 재구성, 참조 무결성 검증 통과, 스킬 7 + 에이전트 3 + 훅 2 확인
+- [2026-04-07] CLAUDE.md에 "⚠️ 이 환경과 HPC는 완전히 분리되어 있다" 섹션 추가 — 절대 규칙 바로 위, output/ 접근 시도 원천 차단 목적
 
 ## 최근 결정 사항
 - [2026-04-06] 하네스 엔지니어링 적용 시작. 설계서: harness_engineering_design.md
