@@ -16,7 +16,7 @@ def test_score_pocket_dampens_convergence_when_stability_is_low():
         "ligand_pose_entropy": "0.20",
     }
 
-    total, verdict, reasons, vina_score, _ppi, cross, raw = score_pocket(
+    total, verdict, reasons, vina_score, _ppi, cross, raw, _atp, _excl = score_pocket(
         pocket,
         ppi_agreement=None,
         cross_receptor_matches=[],
@@ -55,7 +55,7 @@ def test_score_pocket_adds_ppi_reproducibility_and_cross_support():
         "ppi_best_interface_delta_e": "-3.5",
     }
 
-    total, verdict, reasons, vina_score, ppi_score, cross_score, raw = score_pocket(
+    total, verdict, reasons, vina_score, ppi_score, cross_score, raw, _atp, _excl = score_pocket(
         pocket,
         ppi_agreement=ppi_agreement,
         cross_receptor_matches=["EGFR_160-185", "EGFR_170-200"],
