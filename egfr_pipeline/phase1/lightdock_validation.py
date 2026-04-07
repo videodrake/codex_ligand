@@ -77,7 +77,7 @@ except ImportError:
     BACK_FACE_RESIDUES = [977, 978, 979, 980, 985, 986, 987, 988, 993, 994, 995, 996, 997]
     PROBE_RESIDUES = [962, 964, 971]
     PROBE_RESIDUE_FALLBACK = 962
-    AMBIGUOUS_BAND = 0.15
+    AMBIGUOUS_BAND = 0.10
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 

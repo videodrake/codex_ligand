@@ -2,8 +2,8 @@
 
 ## 현재 작업 상태
 - 워크플로우: Workflow A 완료 (Phase 1~7 전체 실행됨, 30 seeds PPI + Vina)
-- 현재 작업: PPI 결합 부위 분석 단계
-- 다음 작업: **교차 상태 결합 부위 심층 분석 → Workflow B 진행 여부 판단**
+- 현재 작업: Workflow A 미완료 투두 해결 완료, Workflow B 준비 단계
+- 다음 작업: **Workflow B Phase 1 실행 (PPI 패치 기반 포켓 탐색)**
 
 ## 다음 세션에서 해야 할 일 (에이전트 필독)
 
@@ -22,22 +22,38 @@
 
 **PPI 결과 — MYO1D 측 (chain B)**: Sheet 8/9 active face 잔기가 최상위 접촉 — VAL962(avg 0.210), VAL964(0.165), CYS970(0.103), SER971(0.093). Ko et al. 실험 결과와 일치. Sheet 12 잔기는 낮은 occupancy → 구조적 지지 판정 재확인.
 
-### 다음 세션에서 진행할 분석
+### 해결된 미완료 투두 [2026-04-07]
 
-1. **교차 상태 결합 부위 심층 분석**:
-   - EGFR 측 3/3 상태 공통 잔기를 3D 구조에서 시각화 (PyMOL)
-   - 공간적으로 연속된 패치(patch)인지, 분산된 잔기인지 확인
-   - occupancy + deltaE 결합 에너지를 함께 분석
+1. **AMBIGUOUS_BAND 검증 — 완료, 0.15→0.10 축소**:
+   - WF-A PPI 600개 모델에 retroactive dot product 분석 실시
+   - 결과: pass 65.2%, fail 17.5%, ambiguous 17.3% (0.15 기준)
+   - 17.3% ambiguous는 과도 → 0.10으로 축소 (ambiguous 10.2%)
+   - orientation_filter.py + lightdock_validation.py 양쪽 수정
 
-2. **Workflow B 진행 여부 판단**:
-   - PPI 패치 기반 포켓 탐색 (Workflow B Phase 1~4)
-   - Ko et al. sheet 8/9 잔기 3개 이상 확인됨 → Workflow B 진행 가능
+2. **pending_* 리간드 재점수 — Workflow A N/A**:
+   - Workflow A에서 Vina 실행 완료 상태, 모든 사이트에 실제 affinity 값 존재
+   - pending_* 개념은 Workflow B Phase 3-4 전용
 
-3. **투두리스트 미완료 항목** (결과 기반 분석):
-   - Orientation filter AMBIGUOUS_BAND 검증 (dot product 분포)
-   - pending_* 리간드 지지 수준 재점수
-   - Centroid 거리 편향 임계값 리뷰
-   - Phase 4 축 가중치 조정 (사람 승인 필수)
+3. **Centroid 거리 임계값 — 현재 유지**:
+   - Cross-receptor 2쌍: P010↔P004(4.52Å), P023↔P045(5.11Å)
+   - 6Å/8Å/15Å 임계값 체계 적정, Bootstrap CI 상한이 8Å 근처이나 변경 불필요
+
+4. **Phase 4 축 가중치 — 현재 유지, WF-B 후 재검토 (승인 완료)**:
+   - 유일한 STRONG P045가 PPI 0점 (62.67Å 원거리) — 가중치 변경으로 해결 불가
+   - PPI 근접 non-ATP 포켓이 없는 구조적 한계
+   - Workflow B (PPI-First)로 진행하여 PPI 패치 기반 포켓 탐색이 더 생산적
+
+### 다음 세션에서 진행할 작업
+
+1. **Workflow B 진행** (Ko et al. sheet 8/9 잔기 ≥3개 확인 → 진행 조건 충족):
+   - Phase 1: PPI 패치 기반 분석 (TG 1.0~1.6)
+   - Phase 2: Pocket Analysis (TG 2.0~2.7)
+   - Phase 3: Focused Vina (TG 3.0~3.6)
+   - Phase 4: Perturbation Scoring (TG 4.0~4.6)
+
+2. **교차 상태 결합 부위 심층 분석** (병행 가능):
+   - EGFR 측 3/3 상태 공통 잔기 3D 시각화 (PyMOL)
+   - 공간적 패치 연속성 확인, occupancy + deltaE 결합 분석
 
 ### HPC 환경 정보
 - 최신 코드: `/work4/hwang/onepack/my_second_project/codex_ligand2`
@@ -57,8 +73,11 @@
 - [2026-04-06] Phase 3-2: 훅 2개 생성 — pre-commit.sh, csv-schema-guard.py
 - [2026-04-06] Phase 4: 하네스 구축 완료 — README.md 역할별 재구성, 참조 무결성 검증 통과, 스킬 7 + 에이전트 3 + 훅 2 확인
 - [2026-04-07] CLAUDE.md에 "⚠️ 이 환경과 HPC는 완전히 분리되어 있다" 섹션 추가 — 절대 규칙 바로 위, output/ 접근 시도 원천 차단 목적
+- [2026-04-07] Workflow A 미완료 투두 4건 해결: AMBIGUOUS_BAND 축소(0.15→0.10), pending_* N/A, centroid 임계값 유지, 축 가중치 유지
 
 ## 최근 결정 사항
+- [2026-04-07] AMBIGUOUS_BAND 0.15→0.10 축소 (사용자 승인). 근거: WF-A 600모델 retroactive 분석에서 17.3%→10.2% ambiguous 감소
+- [2026-04-07] Phase 4 축 가중치 현재 유지, Workflow B 완료 후 재검토 (사용자 승인)
 - [2026-04-06] 하네스 엔지니어링 적용 시작. 설계서: harness_engineering_design.md
 - [2026-04-06] PRODUCTION_N_SEEDS 5→10 확장. generate_configs.py와 run_production.py 양쪽 동기화 필수
 - [2026-04-06] HPC 환경을 codex_ligand2로 이전. output/workflow_a와 input/은 codex_ligand(원본)에서 심볼릭 링크로 연결
