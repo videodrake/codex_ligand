@@ -63,7 +63,9 @@ PROBE_RESIDUES = [962, 964, 971]  # VAL962, VAL964 (sheet 8), SER971 (sheet 9)
 PROBE_RESIDUE_FALLBACK = 962      # Single-probe fallback
 
 # Orientation thresholds
-AMBIGUOUS_BAND = 0.15  # |dot product| < this → ambiguous (edge-on)
+AMBIGUOUS_BAND = 0.10  # |dot product| < this → ambiguous (edge-on)
+# Narrowed from 0.15 → 0.10 based on WF-A retroactive validation (600 models):
+# 0.15 classified 17.3% as ambiguous (too conservative); 0.10 → 10.2%.
 
 # Phase 1 output structure
 DEFAULT_PATH_CONFIG = {"output_root": str(PROJECT_ROOT / "output")}
