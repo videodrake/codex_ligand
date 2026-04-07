@@ -1,5 +1,15 @@
 # EGFR-MYO1D Docking Pipeline
 
+## 프로젝트 핵심 목표
+
+**MYO1D가 EGFR의 어디에 붙는가** — EGFR 상의 실제 MYO1D 결합 부위를 규명한다.
+이를 위해 PyRosetta PPI 글로벌 도킹(600K 모델, 3 상태 × 10 seeds)으로 결합 인터페이스 잔기를 식별하고, 3개 수용체 상태에서 일관된 결합 부위를 교차 검증한다.
+Vina 소분자 도킹은 2차 목표(결합 부위 근처의 약물 교란 포켓 탐색)에 사용한다.
+
+핵심 결과 파일:
+- **PPI 인터페이스**: `output/workflow_a/phase3_ppi_postprocess/ppi_pyrosetta_residues.csv` (결합 부위)
+- **Vina 포켓**: `output/workflow_a/phase5_verdict/valid_sites.csv` (약물 포켓, 2차 목표)
+
 EGFR-MYO1D PPI 교란 약물 포켓 탐색 파이프라인.
 Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 교차 비교.
 
