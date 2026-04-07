@@ -447,7 +447,10 @@ def process_state_orientation(
             result["model_id"] = model_id
             result["receptor_id"] = receptor_id
             result["seed_index"] = seed_index
-            result["source_pdb"] = str(pdb_path.relative_to(PROJECT_ROOT))
+            try:
+                result["source_pdb"] = str(pdb_path.resolve().relative_to(PROJECT_ROOT.resolve()))
+            except ValueError:
+                result["source_pdb"] = str(pdb_path)
 
             # Format array fields as strings
             for key in ("sheet_centroid", "normal_vector", "receptor_direction"):
