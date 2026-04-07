@@ -55,13 +55,26 @@ def main():
 
     for state in STATES:
         for seed in range(N_SEEDS):
-            # Prefer restored PDBs (chain IDs preserved)
+            # Actual layout: {root}/{state}/prod_seed{n}/docking_{state}_ext_beta_meander/final_result/
             seed_dir = os.path.join(PPI_DOCKING_ROOT, state, f"prod_seed{seed}")
-            restored_dir = os.path.join(seed_dir, "restored", "final_result")
-            raw_dir = os.path.join(seed_dir, "final_result")
+            docking_subdir = f"docking_{state}_ext_beta_meander"
+            restored_dir = os.path.join(seed_dir, docking_subdir, "restored", "final_result")
+            raw_dir = os.path.join(seed_dir, docking_subdir, "final_result")
 
-            pdb_dir = restored_dir if os.path.isdir(restored_dir) else raw_dir
-            if not os.path.isdir(pdb_dir):
+            # Fallback: glob for any docking_* subdirectory
+            pdb_dir = None
+            if os.path.isdir(restored_dir):
+                pdb_dir = restored_dir
+            elif os.path.isdir(raw_dir):
+                pdb_dir = raw_dir
+            else:
+                # Try to discover docking subdirectory dynamically
+                pattern = os.path.join(seed_dir, "docking_*", "final_result")
+                candidates = sorted(glob.glob(pattern))
+                if candidates:
+                    pdb_dir = candidates[0]
+
+            if pdb_dir is None or not os.path.isdir(pdb_dir):
                 print(f"  SKIP {state}/seed{seed}: directory not found")
                 continue
 
