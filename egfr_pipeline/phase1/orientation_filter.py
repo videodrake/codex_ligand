@@ -396,9 +396,18 @@ def process_state_orientation(
     for run_dir in sorted(source_state_dir.iterdir()):
         if not run_dir.is_dir():
             continue
+        # Metadata may be in run_dir directly or inside a docking_* subdirectory
         meta_path = run_dir / "pyrosetta_run_metadata.json"
         if not meta_path.exists():
-            continue
+            # Search inside docking_* subdirectories (e.g., docking_{state}_ext_beta_meander/)
+            for sub in sorted(run_dir.iterdir()):
+                if sub.is_dir() and sub.name.startswith("docking_"):
+                    candidate = sub / "pyrosetta_run_metadata.json"
+                    if candidate.exists():
+                        meta_path = candidate
+                        break
+            if not meta_path.exists():
+                continue
 
         with open(meta_path, encoding="utf-8") as f:
             metadata = json.load(f)
@@ -438,7 +447,10 @@ def process_state_orientation(
             result["model_id"] = model_id
             result["receptor_id"] = receptor_id
             result["seed_index"] = seed_index
-            result["source_pdb"] = str(pdb_path.relative_to(PROJECT_ROOT))
+            try:
+                result["source_pdb"] = str(pdb_path.resolve().relative_to(PROJECT_ROOT.resolve()))
+            except ValueError:
+                result["source_pdb"] = str(pdb_path)
 
             # Format array fields as strings
             for key in ("sheet_centroid", "normal_vector", "receptor_direction"):

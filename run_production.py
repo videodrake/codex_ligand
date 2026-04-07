@@ -1206,19 +1206,73 @@ def _validate_adv_handoff(lane: str) -> None:
 
 
 def _adv_phase1():
-    """Run Phase 1 analysis: TG 1.1.5 (standardize) + TG 1.2 (extract interface)
-    + PPI evidence extraction. Assumes PPI docking (Workflow A Phase 2) is complete."""
+    """Run Phase 1 analysis (TG 1.1.5 ~ 1.7).
+
+    Assumes PPI docking (Workflow A Phase 2) is complete.
+    Produces phase1_downstream_patch_reference.csv for Phase 2 handoff.
+    """
     _validate_adv_handoff("adv-phase1")
+    from egfr_pipeline.paths import wa_phase2_ppi_docking, wb_phase1_ppi_analysis
     from egfr_pipeline.phase1.extract_interface import run_extract_interface
     from egfr_pipeline.phase1.standardize_scores import run_standardize_scores
+    from egfr_pipeline.phase1.orientation_filter import (
+        process_state_orientation, merge_orientation_into_models,
+    )
+    from egfr_pipeline.phase1.cluster_consensus import process_state
+    from egfr_pipeline.phase1.compare_states import (
+        compare_across_states, generate_comparison_report,
+        _write_csv, CROSS_STATE_COLUMNS, ROBUSTNESS_COLUMNS,
+    )
+    from egfr_pipeline.phase1.review_report import generate_review_report
+    from egfr_pipeline.phase1.pilot_comparison import generate_pilot_comparison
+
+    config = _load_config()
+    output_base = wb_phase1_ppi_analysis(config)
+    runs_base = wa_phase2_ppi_docking(config)
+    states = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
     print("  --- TG 1.1.5: Standardize Scores ---")
     run_standardize_scores()
+
     print("  --- TG 1.2: Extract Interface ---")
     run_extract_interface()
+
     # PPI evidence extraction (reuse Workflow A Phase 3 logic)
     print("  --- PPI Evidence Extraction ---")
     phase3_ppi_postprocess()
+
+    print("  --- TG 1.2A: Orientation Filter ---")
+    for state in states:
+        print(f"    {state} ...", end="", flush=True)
+        process_state_orientation(state, output_base, runs_base=runs_base)
+        merge_orientation_into_models(state, output_base)
+        print(" done")
+
+    print("  --- TG 1.3: Cluster Consensus ---")
+    for state in states:
+        print(f"    {state} ...", end="", flush=True)
+        process_state(state, output_base)
+        print(" done")
+
+    print("  --- TG 1.5: Cross-State Comparison ---")
+    cross_rows, robust_rows = compare_across_states(output_base, states)
+    _write_csv(output_base / "ppi_patch_cross_state_comparison.csv",
+               cross_rows, CROSS_STATE_COLUMNS)
+    _write_csv(output_base / "ppi_patch_state_robustness.csv",
+               robust_rows, ROBUSTNESS_COLUMNS)
+    generate_comparison_report(output_base, cross_rows, robust_rows, states)
+    print(f"    {len(cross_rows)} residues compared, {len(robust_rows)} robustness entries")
+
+    print("  --- TG 1.6: Review Report & Phase 2 Handoff ---")
+    report_path, handoff_path = generate_review_report(output_base)
+    print(f"    Report: {report_path}")
+    print(f"    Handoff: {handoff_path}")
+
+    print("  --- TG 1.7: Pilot Comparison ---")
+    try:
+        generate_pilot_comparison(output_base, states)
+    except Exception as e:
+        print(f"    Pilot comparison skipped (non-critical): {e}")
 
 
 def _adv_phase2():
