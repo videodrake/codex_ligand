@@ -97,6 +97,7 @@
 - [2026-04-07] CLAUDE.md에 "⚠️ 이 환경과 HPC는 완전히 분리되어 있다" 섹션 추가 — 절대 규칙 바로 위, output/ 접근 시도 원천 차단 목적
 - [2026-04-07] Workflow A 미완료 투두 4건 해결: AMBIGUOUS_BAND 축소(0.15→0.10), pending_* N/A, centroid 임계값 유지, 축 가중치 유지
 - [2026-04-07] Workflow B Phase 1 완료 — _adv_phase1() 구현 + 경로 버그 4건 수정 + HPC 실행 성공
+- [2026-04-07] CONTEXT.md 아카이브 규칙 추가 — 작업 로그 50줄 초과 시 docs/archive/로 이동
 
 ## 최근 결정 사항
 - [2026-04-07] AMBIGUOUS_BAND 0.15→0.10 축소 (사용자 승인). 근거: WF-A 600모델 retroactive 분석에서 17.3%→10.2% ambiguous 감소
@@ -134,3 +135,10 @@
 - [2026-04-06] PRODUCTION_N_SEEDS=5 상태에서 seed 5~9 실행 시도 → config INI 부재로 "completed without valid outputs" RuntimeError. 원인: generate_configs.py와 run_production.py의 N_SEEDS 불일치. 해결: 양쪽 10으로 통일 + seed 5~9 INI 생성
 - [2026-04-06] codex_ligand2 클론 후 input/ 미링크 상태에서 PBS 제출 → FileNotFoundError (TH1 domain.pdb). 원인: git repo에 대용량 PDB 미포함. 해결: 원본 repo에서 심볼릭 링크
 - [2026-04-06] 3GT8_raw seed5에 _capped PDB(5653 atoms) 사용 → 일반 PDB(5362 atoms)와 비일관. 원인: 이전 코드에서 다른 입력 PDB 이름 사용. 해결: seed5 결과 폐기 후 일반 PDB로 재실행
+
+## 아카이브 규칙
+- 작업 로그가 50줄을 넘으면, 가장 오래된 항목부터 `docs/archive/context_YYYY_MM.md`로 이동
+- CONTEXT.md에는 최근 2주치 로그만 유지
+- 아카이브 시 "최근 결정 사항"과 "실패 패턴"은 이동하지 않는다 (항상 현행 유지)
+- "발견된 이슈"는 해결된 것만 아카이브, 미해결은 유지
+- 사용자가 "로그 정리해줘"라고 요청할 때 이 규칙대로 실행
