@@ -260,7 +260,33 @@ elif score > 0:         -> pass (active face toward receptor)
 else:                   -> fail (active face away from receptor)
 ```
 
-### 4.3 Sheet Residue 정의
+### 4.3a Ambiguous Band 임계값 검증 계획 (미완료)
+
+현재 `AMBIGUOUS_BAND = 0.15`는 경험적 검증 없이 설정되었다 (`orientation_filter.py:66`).
+
+**검증 방법** (seed 5~9 완료 후 실행):
+1. 전체 PPI 결과에서 orientation_class 분포 집계:
+   - `pass`, `fail`, `ambiguous` 비율 (상태별, seed별)
+   - `ambiguous` 비율이 5% 미만이면 band가 너무 좁음 (잠재적 misclassification)
+   - `ambiguous` 비율이 30% 초과면 band가 너무 넓음 (판별력 부족)
+2. `ambiguous` 판정된 포즈의 실제 인터페이스 잔기를 확인:
+   - sheets 8/9 잔기가 상위 접촉에 포함되면 → 실제로는 pass여야 함 (band 축소 필요)
+   - sheets 10/11/12만 접촉이면 → 실제로 edge-on (현재 값 적절)
+3. dot product 히스토그램을 그려 bimodal 분포의 valley 위치 확인:
+   - valley가 0.15 근처면 현재 값 적절
+   - valley가 다른 위치면 그에 맞게 조정
+
+**예상 검증 코드**:
+```python
+# seed 완료 후 실행
+from egfr_pipeline.phase1.orientation_filter import process_state_orientation
+# 각 state/seed의 orientation_class 분포 집계
+# dot product 값 히스토그램 생성
+```
+
+**잔존 위험**: single-probe fallback(VAL962 단독) 시 noise 취약. 이 경우 ambiguous band를 더 넓게(0.20~0.25) 잡아야 할 수 있음.
+
+### 4.3b Sheet Residue 정의
 
 Ko et al. 실험 데이터 기반:
 
