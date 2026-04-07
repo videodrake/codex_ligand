@@ -60,7 +60,7 @@ def test_extract_pyrosetta_interface_residues_preserves_restored_receptor_chain(
         )
 
         rows = data["residue_rows"]
-        assert len(rows) == 2
+        assert len(rows) == 4
         residue_map = {row["residue_id"]: row for row in rows}
 
         assert "LEU819" in residue_map
@@ -76,8 +76,9 @@ def test_extract_pyrosetta_interface_residues_preserves_restored_receptor_chain(
         assert residue_map["ASP855"]["mean_interface_delta_e"] == -3.4
         assert residue_map["ASP855"]["best_interface_delta_e"] == -3.4
 
-        # Partner-side residues from Binding_Residues_B must not be mixed in.
-        assert "VAL962" not in residue_map
+        # Partner-side residues (chain B) are now included for binding site analysis
+        assert "VAL962" in residue_map
+        assert residue_map["VAL962"]["lobe_label"] == "partner"
         assert data["summary"]["n_nlobe_interface_residues"] == 1
         assert data["summary"]["n_clobe_interface_residues"] == 1
         assert data["summary"]["orientation_validation_status"] == "not_available"
