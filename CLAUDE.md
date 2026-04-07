@@ -1,5 +1,25 @@
 # EGFR-MYO1D Docking Pipeline
 
+## 프로젝트 핵심 목표
+
+**MYO1D가 EGFR의 어디에 붙는가** — EGFR 상의 실제 MYO1D 결합 부위를 규명한다.
+
+### 사용자에게 중요한 것 (우선순위 순)
+
+1. **결합 부위 규명 (1차 목표)**: EGFR 측에서 MYO1D가 접촉하는 잔기와, MYO1D 측에서 EGFR과 접촉하는 잔기를 **양쪽 모두** 식별한다. 3개 수용체 상태에서 일관되게 나타나는 잔기가 신뢰도 높은 결합 부위이다.
+2. **교차 상태 검증**: 단일 구조가 아닌 3개 EGFR 상태(3GT8_raw, EGFR_160-185, EGFR_170-200)에서 반복 출현하는 인터페이스 잔기를 찾는다. 상태 간 일관성이 결과의 신뢰도를 결정한다.
+3. **약물 교란 포켓 탐색 (2차 목표)**: 결합 부위 근처에서 소분자로 PPI를 교란할 수 있는 druggable pocket을 찾는다. ATP 포켓은 실험적으로 배제한다.
+
+### 분석 관점
+
+결과를 볼 때 항상 **EGFR 측 잔기**와 **MYO1D 측 잔기**를 나눠서 본다:
+- **EGFR 측 (chain A)**: MYO1D가 EGFR의 어디에 붙는가 → C-lobe 표면의 특정 영역
+- **MYO1D 측 (chain B)**: MYO1D의 어느 부분이 EGFR과 접촉하는가 → beta-meander의 sheets 8/9 (active face) 위주
+
+핵심 결과 파일:
+- **PPI 인터페이스**: `output/workflow_a/phase3_ppi_postprocess/ppi_pyrosetta_residues.csv` (결합 부위)
+- **Vina 포켓**: `output/workflow_a/phase5_verdict/valid_sites.csv` (약물 포켓, 2차 목표)
+
 EGFR-MYO1D PPI 교란 약물 포켓 탐색 파이프라인.
 Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 교차 비교.
 

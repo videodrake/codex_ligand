@@ -429,8 +429,6 @@ def _aggregate_run_payloads(run_payloads: List[dict]) -> Tuple[List[dict], List[
                 state["dsasa_values"].append(dsasa)
 
         for row in payload["residue_rows"]:
-            if row.get("lobe_label") == "partner":
-                continue
             res_key = (
                 row.get("chain", ""),
                 row.get("residue_id", ""),
