@@ -1219,7 +1219,10 @@ def _adv_phase1():
         process_state_orientation, merge_orientation_into_models,
     )
     from egfr_pipeline.phase1.cluster_consensus import process_state
-    from egfr_pipeline.phase1.compare_states import compare_across_states
+    from egfr_pipeline.phase1.compare_states import (
+        compare_across_states, generate_comparison_report,
+        _write_csv, CROSS_STATE_COLUMNS, ROBUSTNESS_COLUMNS,
+    )
     from egfr_pipeline.phase1.review_report import generate_review_report
     from egfr_pipeline.phase1.pilot_comparison import generate_pilot_comparison
 
@@ -1252,7 +1255,13 @@ def _adv_phase1():
         print(" done")
 
     print("  --- TG 1.5: Cross-State Comparison ---")
-    compare_across_states(output_base, states)
+    cross_rows, robust_rows = compare_across_states(output_base, states)
+    _write_csv(output_base / "ppi_patch_cross_state_comparison.csv",
+               cross_rows, CROSS_STATE_COLUMNS)
+    _write_csv(output_base / "ppi_patch_state_robustness.csv",
+               robust_rows, ROBUSTNESS_COLUMNS)
+    generate_comparison_report(output_base, cross_rows, robust_rows, states)
+    print(f"    {len(cross_rows)} residues compared, {len(robust_rows)} robustness entries")
 
     print("  --- TG 1.6: Review Report & Phase 2 Handoff ---")
     report_path, handoff_path = generate_review_report(output_base)
