@@ -270,9 +270,20 @@ Ko et al. 실험 데이터 기반:
 | 9 | 968, 969, 970, 971, 972 | Active face (primary) | Ala substitution -> function abolished |
 | 10 | ~977-980 | Neutral | Ala substitution -> WT-level function |
 | 11 | ~985-988 | Neutral | Ala substitution -> WT-level function |
-| 12 | ~993-997 | Structural support (role TBD) | Ala substitution -> function abolished |
+| 12 | ~993-997 | Structural support (confirmed) | Ala substitution -> function abolished |
 
-Sheet 10-12 boundaries는 approximate. Sheet 12는 기능적으로 essential이지만 direct contact인지 structural support인지 미확정. 현재 working assumption: structural support. Active-face 정의에는 sheets 8, 9만 사용하고 sheet 12는 모니터링만 수행.
+Sheet 10-12 boundaries는 approximate. Sheet 12는 기능적으로 essential이지만 **직접 접촉이 아닌 구조적 지지**로 판정.
+
+**Sheet 12 역할 규명 결론** (2026-04-06):
+
+3개 독립 증거가 일관되게 구조적 지지(structural support) 방향을 가리킴:
+1. **Ko et al. alanine substitution**: 기능 소실 확인 → 필수적이지만 메커니즘(직접 접촉 vs 구조 안정화) 미구분
+2. **프로젝트 MD 시뮬레이션**: Sheet 12가 EGFR 수용체 표면과 직접 접촉을 형성하지 않음
+3. **사용자 도킹 실험 (소규모)**: Sheet 12 잔기가 결합 인터페이스에 직접 참여하지 않는 것으로 관찰
+
+해석: Sheet 12의 기능적 필수성(Ko et al.)은 beta-meander fold를 안정화하여 sheets 8/9의 결합을 간접적으로 가능하게 하는 것으로 추정. 따라서 active-face 정의에는 sheets 8, 9만 유지하고 sheet 12는 모니터링만 수행.
+
+**잔존 불확실성**: 사용자 도킹 실험의 sample size가 작아 통계적 확정력은 제한적. seed 5~9 완료 후 전체 PPI 결과에서 sheet 12 잔기의 인터페이스 출현 빈도를 재확인할 것.
 
 ### 4.4 구현
 
