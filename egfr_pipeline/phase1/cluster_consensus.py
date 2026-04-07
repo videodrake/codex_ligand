@@ -516,6 +516,9 @@ def load_receptor_ca_coords(
         return {}
 
     ca_coords: Dict[int, Tuple[float, float, float]] = {}
+    # Detect the first chain in the PDB (3GT8_raw uses chain A,
+    # MD clusters EGFR_160-185/170-200 use chain X)
+    first_chain = None
     try:
         with open(pdb_path, encoding="utf-8") as f:
             for line in f:
@@ -525,7 +528,9 @@ def load_receptor_ca_coords(
                 if atom_name != "CA":
                     continue
                 chain = line[21].strip()
-                if chain != "A":
+                if first_chain is None:
+                    first_chain = chain
+                if chain != first_chain:
                     continue
                 try:
                     resnum = int(line[22:26].strip())
