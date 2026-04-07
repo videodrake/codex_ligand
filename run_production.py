@@ -1215,7 +1215,9 @@ def _adv_phase1():
     from egfr_pipeline.paths import wa_phase2_ppi_docking, wb_phase1_ppi_analysis
     from egfr_pipeline.phase1.extract_interface import run_extract_interface
     from egfr_pipeline.phase1.standardize_scores import run_standardize_scores
-    from egfr_pipeline.phase1.orientation_filter import process_state_orientation
+    from egfr_pipeline.phase1.orientation_filter import (
+        process_state_orientation, merge_orientation_into_models,
+    )
     from egfr_pipeline.phase1.cluster_consensus import process_state
     from egfr_pipeline.phase1.compare_states import compare_across_states
     from egfr_pipeline.phase1.review_report import generate_review_report
@@ -1240,6 +1242,7 @@ def _adv_phase1():
     for state in states:
         print(f"    {state} ...", end="", flush=True)
         process_state_orientation(state, output_base, runs_base=runs_base)
+        merge_orientation_into_models(state, output_base)
         print(" done")
 
     print("  --- TG 1.3: Cluster Consensus ---")
