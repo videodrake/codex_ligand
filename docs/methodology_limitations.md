@@ -40,7 +40,7 @@ EGFR-MYO1D PPI 교란 약물 포켓 탐색 파이프라인의 방법론적 한�
 ## 3. 실험 근거 제약
 
 ### 3.1 Ko et al. alanine substitution
-- **Sheet 8/9만 실험 검증됨**: Sheet 10-12의 기여는 추론이다.
+- **Sheet 8/9만 실험 검증됨**: Sheet 10-11은 중립(WT 수준), Sheet 12는 기능적 필수이나 구조적 지지 역할로 판정 (MD + 도킹 관찰에서 직접 접촉 없음).
 - **PPI hotspot 임계값**: Ko et al. sheet 8/9 잔기 3개 미만이면 Workflow B 중단 — 이진 판정이며 그래디언트가 없다.
 
 ### 3.2 리간드 다양성

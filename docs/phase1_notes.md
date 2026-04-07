@@ -260,7 +260,33 @@ elif score > 0:         -> pass (active face toward receptor)
 else:                   -> fail (active face away from receptor)
 ```
 
-### 4.3 Sheet Residue 정의
+### 4.3a Ambiguous Band 임계값 검증 계획 (미완료)
+
+현재 `AMBIGUOUS_BAND = 0.15`는 경험적 검증 없이 설정되었다 (`orientation_filter.py:66`).
+
+**검증 방법** (seed 5~9 완료 후 실행):
+1. 전체 PPI 결과에서 orientation_class 분포 집계:
+   - `pass`, `fail`, `ambiguous` 비율 (상태별, seed별)
+   - `ambiguous` 비율이 5% 미만이면 band가 너무 좁음 (잠재적 misclassification)
+   - `ambiguous` 비율이 30% 초과면 band가 너무 넓음 (판별력 부족)
+2. `ambiguous` 판정된 포즈의 실제 인터페이스 잔기를 확인:
+   - sheets 8/9 잔기가 상위 접촉에 포함되면 → 실제로는 pass여야 함 (band 축소 필요)
+   - sheets 10/11/12만 접촉이면 → 실제로 edge-on (현재 값 적절)
+3. dot product 히스토그램을 그려 bimodal 분포의 valley 위치 확인:
+   - valley가 0.15 근처면 현재 값 적절
+   - valley가 다른 위치면 그에 맞게 조정
+
+**예상 검증 코드**:
+```python
+# seed 완료 후 실행
+from egfr_pipeline.phase1.orientation_filter import process_state_orientation
+# 각 state/seed의 orientation_class 분포 집계
+# dot product 값 히스토그램 생성
+```
+
+**잔존 위험**: single-probe fallback(VAL962 단독) 시 noise 취약. 이 경우 ambiguous band를 더 넓게(0.20~0.25) 잡아야 할 수 있음.
+
+### 4.3b Sheet Residue 정의
 
 Ko et al. 실험 데이터 기반:
 
@@ -270,9 +296,20 @@ Ko et al. 실험 데이터 기반:
 | 9 | 968, 969, 970, 971, 972 | Active face (primary) | Ala substitution -> function abolished |
 | 10 | ~977-980 | Neutral | Ala substitution -> WT-level function |
 | 11 | ~985-988 | Neutral | Ala substitution -> WT-level function |
-| 12 | ~993-997 | Structural support (role TBD) | Ala substitution -> function abolished |
+| 12 | ~993-997 | Structural support (confirmed) | Ala substitution -> function abolished |
 
-Sheet 10-12 boundaries는 approximate. Sheet 12는 기능적으로 essential이지만 direct contact인지 structural support인지 미확정. 현재 working assumption: structural support. Active-face 정의에는 sheets 8, 9만 사용하고 sheet 12는 모니터링만 수행.
+Sheet 10-12 boundaries는 approximate. Sheet 12는 기능적으로 essential이지만 **직접 접촉이 아닌 구조적 지지**로 판정.
+
+**Sheet 12 역할 규명 결론** (2026-04-06):
+
+3개 독립 증거가 일관되게 구조적 지지(structural support) 방향을 가리킴:
+1. **Ko et al. alanine substitution**: 기능 소실 확인 → 필수적이지만 메커니즘(직접 접촉 vs 구조 안정화) 미구분
+2. **프로젝트 MD 시뮬레이션**: Sheet 12가 EGFR 수용체 표면과 직접 접촉을 형성하지 않음
+3. **사용자 도킹 실험 (소규모)**: Sheet 12 잔기가 결합 인터페이스에 직접 참여하지 않는 것으로 관찰
+
+해석: Sheet 12의 기능적 필수성(Ko et al.)은 beta-meander fold를 안정화하여 sheets 8/9의 결합을 간접적으로 가능하게 하는 것으로 추정. 따라서 active-face 정의에는 sheets 8, 9만 유지하고 sheet 12는 모니터링만 수행.
+
+**잔존 불확실성**: 사용자 도킹 실험의 sample size가 작아 통계적 확정력은 제한적. seed 5~9 완료 후 전체 PPI 결과에서 sheet 12 잔기의 인터페이스 출현 빈도를 재확인할 것.
 
 ### 4.4 구현
 
