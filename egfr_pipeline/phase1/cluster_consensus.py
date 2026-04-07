@@ -484,13 +484,13 @@ def compute_cluster_consensus(
 # ---------------------------------------------------------------------------
 
 # Default receptor PDB directory
-_INPUT_PDB_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
+_INPUT_PDB_DIR = PROJECT_ROOT / "input" / "receptors"
 
 # Mapping from receptor_id (state name) to PDB filename
 _STATE_TO_PDB = {
-    "3GT8_raw": "receptor_3GT8_raw.pdb",
-    "EGFR_160-185": "receptor_EGFR_160-185.pdb",
-    "EGFR_170-200": "receptor_EGFR_170-200.pdb",
+    "3GT8_raw": "3GT8_raw.pdb",
+    "EGFR_160-185": "EGFR_160-185.pdb",
+    "EGFR_170-200": "EGFR_170-200.pdb",
 }
 
 
