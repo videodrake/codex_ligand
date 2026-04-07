@@ -1,63 +1,48 @@
 # 프로젝트 컨텍스트
 
 ## 현재 작업 상태
-- 워크플로우: Workflow A (Phase 2 PPI seed 5~9 HPC 실행 중)
-- 현재 작업: HPC 도킹 결과 대기 중
-- 다음 작업: **HPC 결과 수집 → Phase 3 postprocess → Phase 4 vina postprocess → Phase 5 verdict**
+- 워크플로우: Workflow A 완료 (Phase 1~7 전체 실행됨, 30 seeds PPI + Vina)
+- 현재 작업: PPI 결합 부위 분석 단계
+- 다음 작업: **교차 상태 결합 부위 심층 분석 → Workflow B 진행 여부 판단**
 
 ## 다음 세션에서 해야 할 일 (에이전트 필독)
 
-### 1단계: HPC 결과 확인 — 사용자에게 물어볼 것
+### 현재 완료된 것
+- Workflow A Phase 1~7 전체 실행 완료 (HPC codex_ligand2)
+- PPI 30 seeds (3 상태 × 10 seeds = 600K 모델) 완료
+- Vina blind docking (3 수용체 × 3 리간드) 완료
+- partner(MYO1D, chain B) 인터페이스 잔기 추출 버그 수정 → Phase 3~7 재실행 완료
+- ATP site STRONG 차단 구현 (절대 규칙 #2)
 
-사용자에게 아래 명령어 결과를 요청한다:
+### 핵심 발견 사항
 
-```bash
-# HPC에서 실행 (codex_ligand2 디렉토리)
-# PPI seed 완료 상태 확인
-find output/workflow_a/phase2_ppi_docking -name "seed_complete.json" | sort
+**Vina 결과**: STRONG 포켓 상위 3개(P003, P010, P004)가 모두 ATP 포켓 (overlap 16~18/20). 배제 후 유일한 STRONG = EGFR_170-200 P045 (allosteric 후보, PPI에서 62.7Å 원거리).
 
-# Vina 결과 유무 확인
-ls output/workflow_a/phase1_vina_docking/3GT8_raw/
-```
+**PPI 결과 — EGFR 측 (chain A)**: 3/3 상태에서 반복 출현하는 잔기 22개 확인. 고 occupancy 순: ILE941(avg 0.205), VAL980(0.148), THR940(0.118), PRO992(0.118), PRO937(0.090), GLN982(0.102). C-lobe 표면에 집중.
 
-**완료 기대치:**
-- PPI: 3 상태 × 10 seeds = 30개 seed_complete.json (기존 seed 0~4 = 16개 완료, seed 5~9 = 15개 실행 중. 3GT8_raw seed5는 _capped 폐기 후 재실행)
-- Vina: Phase 1 결과 유무 확인 필요 (아직 미확인)
+**PPI 결과 — MYO1D 측 (chain B)**: Sheet 8/9 active face 잔기가 최상위 접촉 — VAL962(avg 0.210), VAL964(0.165), CYS970(0.103), SER971(0.093). Ko et al. 실험 결과와 일치. Sheet 12 잔기는 낮은 occupancy → 구조적 지지 판정 재확인.
 
-### 2단계: 결과 가져오기
+### 다음 세션에서 진행할 분석
 
-PPI 결과가 완료되면, 이 환경으로 CSV만 가져온다:
+1. **교차 상태 결합 부위 심층 분석**:
+   - EGFR 측 3/3 상태 공통 잔기를 3D 구조에서 시각화 (PyMOL)
+   - 공간적으로 연속된 패치(patch)인지, 분산된 잔기인지 확인
+   - occupancy + deltaE 결합 에너지를 함께 분석
 
-```bash
-# HPC에서 실행
-cd /work4/hwang/onepack/my_second_project/codex_ligand2
-tar czf /tmp/ppi_results.tar.gz \
-  $(find output/workflow_a/phase2_ppi_docking -name "*.csv" -o -name "*.json")
-```
+2. **Workflow B 진행 여부 판단**:
+   - PPI 패치 기반 포켓 탐색 (Workflow B Phase 1~4)
+   - Ko et al. sheet 8/9 잔기 3개 이상 확인됨 → Workflow B 진행 가능
 
-파일 크기 수 MB 이내. PDB 파일(수 GB)은 불필요.
+3. **투두리스트 미완료 항목** (결과 기반 분석):
+   - Orientation filter AMBIGUOUS_BAND 검증 (dot product 분포)
+   - pending_* 리간드 지지 수준 재점수
+   - Centroid 거리 편향 임계값 리뷰
+   - Phase 4 축 가중치 조정 (사람 승인 필수)
 
-### 3단계: 결과 수집 후 진행할 파이프라인
-
-| 순서 | Phase | 명령어 | 선행 조건 |
-|------|-------|--------|----------|
-| 1 | Phase 3: PPI Postprocess | `python run_production.py --only 3` | PPI seed 전부 완료 |
-| 2 | Phase 4: Vina Postprocess | `python run_production.py --only 4` | Phase 1 Vina 완료 |
-| 3 | Phase 5: Verdict | `python run_production.py --only 5` | Phase 3 + 4 완료 |
-| 4 | Phase 6: Report | `python run_production.py --only 6` | Phase 5 완료 |
-| 5 | Phase 7: Validate | `python run_production.py --only 7` | Phase 6 완료 |
-
-**Vina가 아직 안 돌았다면**: PBS 스크립트 생성 필요 (`config/run_vina_cpu.pbs`)
-
-### 4단계: 결과 분석 후 처리할 투두 항목
-
-결과가 나온 후 진행 가능한 항목 (투두리스트.md 참조):
-- Orientation filter AMBIGUOUS_BAND 검증 (dot product 분포 분석)
-- Sheet 12 인터페이스 출현 빈도 재확인
-- `pending_*` 리간드 지지 수준 재점수 (Vina 결과 필요)
-- Ko et al. sheet 8/9 잔기 3개 이상 검증
-- Cross-method Jaccard 리뷰
-- Centroid 거리 편향 임계값 리뷰
+### HPC 환경 정보
+- 최신 코드: `/work4/hwang/onepack/my_second_project/codex_ligand2`
+- 심볼릭 링크: `output/workflow_a` → codex_ligand(원본), `input` → codex_ligand(원본)
+- 링크가 끊어질 수 있음 (git pull 시). 확인: `ls output/workflow_a/ input/PPI/`
 
 ## 작업 로그
 - [2026-04-06] Phase 0-1: 레거시 파일 삭제 완료 — 삭제 3개, 미존재 12개
