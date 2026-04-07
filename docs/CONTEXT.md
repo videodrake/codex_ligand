@@ -1,9 +1,63 @@
 # 프로젝트 컨텍스트
 
 ## 현재 작업 상태
-- 워크플로우: 양쪽 (하네스는 A/B 공통 인프라)
-- 현재 작업: 하네스 구축 완료, 일상 유지보수 모드 전환
-- 다음 작업: 일상 파이프라인 개발/유지보수
+- 워크플로우: Workflow A (Phase 2 PPI seed 5~9 HPC 실행 중)
+- 현재 작업: HPC 도킹 결과 대기 중
+- 다음 작업: **HPC 결과 수집 → Phase 3 postprocess → Phase 4 vina postprocess → Phase 5 verdict**
+
+## 다음 세션에서 해야 할 일 (에이전트 필독)
+
+### 1단계: HPC 결과 확인 — 사용자에게 물어볼 것
+
+사용자에게 아래 명령어 결과를 요청한다:
+
+```bash
+# HPC에서 실행 (codex_ligand2 디렉토리)
+# PPI seed 완료 상태 확인
+find output/workflow_a/phase2_ppi_docking -name "seed_complete.json" | sort
+
+# Vina 결과 유무 확인
+ls output/workflow_a/phase1_vina_docking/3GT8_raw/
+```
+
+**완료 기대치:**
+- PPI: 3 상태 × 10 seeds = 30개 seed_complete.json (기존 seed 0~4 = 16개 완료, seed 5~9 = 15개 실행 중. 3GT8_raw seed5는 _capped 폐기 후 재실행)
+- Vina: Phase 1 결과 유무 확인 필요 (아직 미확인)
+
+### 2단계: 결과 가져오기
+
+PPI 결과가 완료되면, 이 환경으로 CSV만 가져온다:
+
+```bash
+# HPC에서 실행
+cd /work4/hwang/onepack/my_second_project/codex_ligand2
+tar czf /tmp/ppi_results.tar.gz \
+  $(find output/workflow_a/phase2_ppi_docking -name "*.csv" -o -name "*.json")
+```
+
+파일 크기 수 MB 이내. PDB 파일(수 GB)은 불필요.
+
+### 3단계: 결과 수집 후 진행할 파이프라인
+
+| 순서 | Phase | 명령어 | 선행 조건 |
+|------|-------|--------|----------|
+| 1 | Phase 3: PPI Postprocess | `python run_production.py --only 3` | PPI seed 전부 완료 |
+| 2 | Phase 4: Vina Postprocess | `python run_production.py --only 4` | Phase 1 Vina 완료 |
+| 3 | Phase 5: Verdict | `python run_production.py --only 5` | Phase 3 + 4 완료 |
+| 4 | Phase 6: Report | `python run_production.py --only 6` | Phase 5 완료 |
+| 5 | Phase 7: Validate | `python run_production.py --only 7` | Phase 6 완료 |
+
+**Vina가 아직 안 돌았다면**: PBS 스크립트 생성 필요 (`config/run_vina_cpu.pbs`)
+
+### 4단계: 결과 분석 후 처리할 투두 항목
+
+결과가 나온 후 진행 가능한 항목 (투두리스트.md 참조):
+- Orientation filter AMBIGUOUS_BAND 검증 (dot product 분포 분석)
+- Sheet 12 인터페이스 출현 빈도 재확인
+- `pending_*` 리간드 지지 수준 재점수 (Vina 결과 필요)
+- Ko et al. sheet 8/9 잔기 3개 이상 검증
+- Cross-method Jaccard 리뷰
+- Centroid 거리 편향 임계값 리뷰
 
 ## 작업 로그
 - [2026-04-06] Phase 0-1: 레거시 파일 삭제 완료 — 삭제 3개, 미존재 12개
