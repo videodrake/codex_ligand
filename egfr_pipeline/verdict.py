@@ -116,6 +116,8 @@ VERDICT_FIELDS = [
     "reason_tags",
     "decision_trace",
     "reasons",
+    "is_atp_site",
+    "exclusion_reason",
 ]
 
 CONSENSUS_FIELDS = [
@@ -131,6 +133,30 @@ CONSENSUS_FIELDS = [
     "total_n_pose",
     "consensus_residues",
 ]
+
+# ---------------------------------------------------------------------------
+# ATP binding site detection (absolute rule #2: never STRONG)
+# ---------------------------------------------------------------------------
+# EGFR kinase ATP pocket core residues (PDB author numbering).
+# A pocket overlapping >=3 of these is classified as ATP site.
+ATP_POCKET_RESIDUES = {
+    718, 719, 720, 726, 743, 745, 751, 790, 791, 793,
+    794, 795, 796, 797, 835, 838, 841, 844, 854, 855,
+}
+ATP_OVERLAP_THRESHOLD = 3
+
+
+def _is_atp_site(pocket: dict) -> bool:
+    """Check if a pocket overlaps the ATP binding site."""
+    residues = parse_residue_set(pocket.get("union_contact_residues", ""))
+    pocket_resnums = set()
+    for r in residues:
+        rn = extract_resnum(r)
+        if rn is not None:
+            pocket_resnums.add(rn)
+    overlap = pocket_resnums & ATP_POCKET_RESIDUES
+    return len(overlap) >= ATP_OVERLAP_THRESHOLD
+
 
 # ---------------------------------------------------------------------------
 # Default scoring thresholds (overridable via config.yaml verdict section)
@@ -1543,6 +1569,13 @@ def score_pocket(
     else:
         verdict = "WEAK"
 
+    # Absolute rule #2: ATP site cannot be STRONG
+    atp_flag = _is_atp_site(pocket)
+    atp_exclusion = ""
+    if atp_flag and verdict == "STRONG":
+        verdict = "MODERATE"
+        atp_exclusion = "ATP_site_experimental"
+
     evidence_profile: List[str] = ["exploratory"]
     if pocket_stability >= T["stability_good"]:
         evidence_profile.append("stable")
@@ -1613,7 +1646,7 @@ def score_pocket(
         "decision_trace": decision_trace,
     }
 
-    return total, verdict, reasons, vina_score, ppi_score, cross_score, raw_components
+    return total, verdict, reasons, vina_score, ppi_score, cross_score, raw_components, atp_flag, atp_exclusion
 
 
 # ---------------------------------------------------------------------------
@@ -1802,7 +1835,7 @@ def generate_verdict(
             ld_overlap = compute_lightdock_pocket_overlap(pocket, ld_residues_for_rid)
 
         exp_corr = exp_correlations.get(key)
-        total, verdict, reasons, v_score, p_score, c_score, raw_comp = score_pocket(
+        total, verdict, reasons, v_score, p_score, c_score, raw_comp, atp_flag, atp_exclusion = score_pocket(
             pocket, ppi_agr, cross_matches, cross_support.get(key), thresholds, pocket_has_ppi,
             exp_correlation=exp_corr,
             lightdock_overlap=ld_overlap,
@@ -1870,6 +1903,8 @@ def generate_verdict(
             "reason_tags": raw_comp["reason_tags"],
             "decision_trace": raw_comp["decision_trace"],
             "reasons": "; ".join(reasons),
+            "is_atp_site": atp_flag,
+            "exclusion_reason": atp_exclusion,
         })
 
     # Sort: VALID first, then by score descending

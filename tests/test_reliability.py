@@ -46,7 +46,7 @@ class TestExperimentalAxis:
         T = dict(DEFAULT_THRESHOLDS)
 
         # Without experimental data
-        total_no_exp, _, _, _, _, _, raw_no_exp = score_pocket(
+        total_no_exp, _, _, _, _, _, raw_no_exp, _, _ = score_pocket(
             pocket, None, [], None, T, False, exp_correlation=None,
         )
 
@@ -58,7 +58,7 @@ class TestExperimentalAxis:
             "exp_hit_count": 3,
             "exp_false_pos": 0,
         }
-        total_exp, _, _, _, _, _, raw_exp = score_pocket(
+        total_exp, _, _, _, _, _, raw_exp, _, _ = score_pocket(
             pocket, None, [], None, T, False, exp_correlation=exp_corr,
         )
 
@@ -80,7 +80,7 @@ class TestExperimentalAxis:
         }
         T = dict(DEFAULT_THRESHOLDS)
 
-        total, _, _, vina, ppi, cross, raw = score_pocket(
+        total, _, _, vina, ppi, cross, raw, _, _ = score_pocket(
             pocket, None, [], None, T, False, exp_correlation=None,
         )
 
@@ -103,7 +103,7 @@ class TestExperimentalAxis:
             "exp_hit_count": 1,
             "exp_false_pos": 1,
         }
-        _, _, _, _, _, _, raw = score_pocket(
+        _, _, _, _, _, _, raw, _, _ = score_pocket(
             pocket, None, [], None, T, False, exp_correlation=exp_corr,
         )
         # Without PPI: vina(60) + cross(40) + exp(15) = 115
@@ -124,7 +124,7 @@ class TestExperimentalAxis:
             "exp_hit_count": 0,
             "exp_false_pos": 3,
         }
-        _, _, _, _, _, _, raw = score_pocket(
+        _, _, _, _, _, _, raw, _, _ = score_pocket(
             pocket, None, [], None, T, False, exp_correlation=exp_corr,
         )
         assert "exp_contradicts" in raw["reason_tags"]
@@ -327,14 +327,14 @@ class TestLightDockIntegration:
         T = dict(DEFAULT_THRESHOLDS)
 
         # Without LightDock
-        _, _, _, _, ppi_no_ld, _, raw_no_ld = score_pocket(
+        _, _, _, _, ppi_no_ld, _, raw_no_ld, _, _ = score_pocket(
             pocket, ppi_agreement, [], None, T, True,
             lightdock_overlap=None,
         )
 
         # With LightDock validation
         ld_overlap = {"n_shared": 4, "lightdock_mean_freq": 0.60, "lightdock_coverage": 0.50}
-        _, _, reasons, _, ppi_ld, _, raw_ld = score_pocket(
+        _, _, reasons, _, ppi_ld, _, raw_ld, _, _ = score_pocket(
             pocket, ppi_agreement, [], None, T, True,
             lightdock_overlap=ld_overlap,
         )
