@@ -146,6 +146,17 @@
 - **EGFR 측**: ILE941 중심의 C-lobe 표면 패치 (3/3 상태 공통, occupancy 1.0)
 - **MYO1D 측**: Sheet 8/9 active face (VAL962, VAL964) — Ko et al. 실험 일치
 - Orientation filter 적용 후에도 동일 결과 → 노이즈 모델 제거로 신호 강화
+- **PyRosetta + LightDock 교차 검증**: ILE941, ARG977 등 핵심 hotspot이 두 독립적 도킹 방법에서 모두 확인 (method_agreement: both)
+
+**LightDock 교차 검증 결과**:
+
+| State | Convergent | PyRosetta-only | LightDock-only | Jaccard |
+|-------|-----------|----------------|----------------|---------|
+| 3GT8_raw | 53 | 16 | 116 | 0.286 |
+| EGFR_160-185 | 56 | 25 | 104 | 0.303 |
+| EGFR_170-200 | 19 | 72 | 56 | 0.129 |
+
+C-lobe overlap (0.21–0.38)이 N-lobe (0.00–0.23)보다 높음 → C-lobe 결합 부위가 방법론적으로 독립 확인됨.
 
 ### 6.2 PPI 교란 druggable pocket 발견
 
@@ -168,7 +179,7 @@ WF-A에서 최고 점수(74.0)를 받은 P010/P004/P003는 모두 ATP 포켓. �
 ## 7. 제한사항
 
 1. **P2Rank 미사용**: HPC Java 8 vs P2Rank Java 11+ 요구. fpocket 단독 결과.
-2. **LightDock 미실행**: Workflow B Phase 1에서 LightDock 교차 검증 미수행. PyRosetta 단독 PPI 증거.
+2. **LightDock clustering 실패**: lgd_cluster_bsas 에러로 클러스터 기반 분석 불가. rank_by_scoring 기반 추출로 대체 — 교차 검증은 성공적으로 수행됨.
 3. **MD 시뮬레이션 미통합**: GROMACS MD 분석 모듈 존재하나 이번 파이프라인에 미통합.
 4. **실험 데이터 미검증**: 최종 후보 포켓의 실험적 검증 (mutagenesis, SPR 등) 필요.
 
