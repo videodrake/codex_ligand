@@ -774,25 +774,54 @@ def _parse_lightdock_ranking(
 
     Returns [(pdb_path, score, swarm_id), ...] sorted by score (descending),
     limited to top max_poses entries.
+
+    Supports two formats:
+      - Simple: "swarm_42/lightdock_3.pdb  31.620"
+      - LightDock 0.9.x: "Swarm Glowworm Coordinates ... PDB Clashes Scoring"
     """
     results = []
     with open(rank_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith("#") or line.startswith("PDB"):
+            if not line or line.startswith("#"):
                 continue
             parts = line.split()
             if len(parts) < 2:
                 continue
-            pdb_path = parts[0]
-            try:
-                score = float(parts[1])
-            except ValueError:
-                continue
 
-            # Extract swarm ID from path (e.g., "swarm_42/lightdock_3.pdb")
-            swarm_match = re.search(r"swarm_(\d+)", pdb_path)
-            swarm_id = int(swarm_match.group(1)) if swarm_match else 0
+            # Find PDB filename and score in the line
+            pdb_name = None
+            score = None
+            swarm_id = 0
+
+            # Strategy: find the part ending in .pdb, score is last column
+            for p in parts:
+                if p.endswith(".pdb"):
+                    pdb_name = p
+                    break
+
+            if pdb_name is not None:
+                # LightDock 0.9.x format: score is last column
+                try:
+                    score = float(parts[-1])
+                except ValueError:
+                    continue
+                # Swarm ID is first column (integer)
+                try:
+                    swarm_id = int(parts[0])
+                    # Build full relative path: swarm_{id}/pdb_name
+                    pdb_path = f"swarm_{swarm_id}/{pdb_name}"
+                except ValueError:
+                    pdb_path = pdb_name
+            else:
+                # Simple format: "path score"
+                pdb_path = parts[0]
+                try:
+                    score = float(parts[-1])
+                except ValueError:
+                    continue
+                swarm_match = re.search(r"swarm_(\d+)", pdb_path)
+                swarm_id = int(swarm_match.group(1)) if swarm_match else 0
 
             results.append((pdb_path, score, swarm_id))
 
