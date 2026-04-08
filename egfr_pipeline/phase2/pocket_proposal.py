@@ -54,11 +54,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # Constants
 # ---------------------------------------------------------------------------
 
-PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
+PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "receptors"
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
 
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
-RECEPTOR_PDB_PATTERN = "receptor_{state}.pdb"
+RECEPTOR_PDB_PATTERN = "{state}.pdb"
 
 # Supported pocket proposal tools
 SUPPORTED_TOOLS = ["fpocket", "p2rank"]

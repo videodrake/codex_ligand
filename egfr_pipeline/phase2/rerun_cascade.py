@@ -23,7 +23,7 @@ from egfr_pipeline import paths
 from egfr_pipeline.cascade_runner import run_cascade
 
 _CFG = {"output_root": str(paths.REPO_ROOT / "output")}
-PHASE1_INPUT_DIR = paths.REPO_ROOT / "input" / "PPI" / "phase1"
+PHASE1_INPUT_DIR = paths.REPO_ROOT / "input" / "receptors"
 
 
 def run_phase2_cascade(
