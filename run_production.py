@@ -1279,7 +1279,7 @@ def _adv_phase2():
     """Run Phase 2 cascade (TG 2.0-2.7). Requires Phase 1 analysis complete."""
     _validate_adv_handoff("adv-phase2")
     from egfr_pipeline.phase2.rerun_cascade import run_phase2_cascade
-    run_phase2_cascade(parse_only=True)
+    run_phase2_cascade(parse_only=False)
 
 
 def _adv_phase3_setup(allocated_cpus: Optional[int] = None):
