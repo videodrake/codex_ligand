@@ -41,7 +41,7 @@ LIGAND_INPUT_DIR = PROJECT_ROOT / "input" / "ligands"
 RECEPTOR_INPUT_DIR = PROJECT_ROOT / "input" / "receptors"
 
 # Supported ligand input formats (SDF preferred, PDBQT if pre-converted)
-LIGAND_EXTENSIONS = (".sdf", ".pdbqt", ".mol2")
+LIGAND_EXTENSIONS = (".pdbqt", ".sdf", ".mol2")  # Prefer PDBQT (Vina-ready)
 
 # Output schemas
 JOB_TABLE_COLUMNS = [
@@ -126,15 +126,17 @@ def discover_ligands(ligand_dir: Path) -> List[Dict[str, str]]:
 
 
 def resolve_receptor_path(receptor_id: str, receptor_dir: Path) -> str:
-    """Find the receptor PDB file for a given receptor_id."""
-    pdb_path = receptor_dir / f"{receptor_id}.pdb"
-    if pdb_path.exists():
-        return str(pdb_path)
-    # Fallback: check for PDBQT
+    """Find the receptor file for a given receptor_id. Prefer PDBQT for Vina."""
+    # Prefer PDBQT (Vina-ready)
     pdbqt_path = receptor_dir / f"{receptor_id}_receptor.pdbqt"
     if pdbqt_path.exists():
         return str(pdbqt_path)
-    return str(pdb_path)  # Return expected path even if not found
+    pdbqt_plain = receptor_dir / f"{receptor_id}.pdbqt"
+    if pdbqt_plain.exists():
+        return str(pdbqt_plain)
+    # Fallback: PDB (will need conversion)
+    pdb_path = receptor_dir / f"{receptor_id}.pdb"
+    return str(pdb_path)
 
 
 def build_job_id(receptor_id: str, pocket_id: str, ligand_id: str,

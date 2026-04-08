@@ -57,9 +57,10 @@ def run_phase3_cascade(
         Scheduler-allocated CPUs for worker cap.
     """
     output_dir = paths.wb_phase3_focused_docking(_CFG)
+    phase2_dir = paths.wb_phase2_pocket_analysis(_CFG)
 
     # Handoff file validation
-    handoff = paths.wb_phase2_pocket_analysis(_CFG) / "phase3_candidate_pocket_reference.csv"
+    handoff = phase2_dir / "phase3_candidate_pocket_reference.csv"
     if not handoff.exists():
         raise FileNotFoundError(
             f"Phase 2 handoff file not found: {handoff}\n"
@@ -68,7 +69,7 @@ def run_phase3_cascade(
         )
 
     setup_steps = [
-        ("3.0", "Pocket Reference Ingestion", lambda: _run_tg30(output_dir)),
+        ("3.0", "Pocket Reference Ingestion", lambda: _run_tg30(output_dir, phase2_dir)),
         ("3.1", "Job Construction", lambda: _run_tg31(output_dir)),
         ("3.2", "Budget Policy", lambda: _run_tg32(output_dir)),
     ]
@@ -139,9 +140,9 @@ def run_phase3_cascade(
 # Per-TG wrappers
 # ---------------------------------------------------------------------------
 
-def _run_tg30(output_dir: Path) -> None:
+def _run_tg30(output_dir: Path, phase2_dir: Path) -> None:
     from egfr_pipeline.phase3.pocket_reference_ingestion import run_pocket_reference_ingestion
-    run_pocket_reference_ingestion(output_dir=output_dir)
+    run_pocket_reference_ingestion(phase2_dir=phase2_dir, output_dir=output_dir)
 
 
 def _run_tg31(output_dir: Path) -> None:

@@ -51,7 +51,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 # Constants
 # ---------------------------------------------------------------------------
 
-PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "PPI" / "phase1"
+PHASE1_INPUT_DIR = PROJECT_ROOT / "input" / "receptors"
 PHASE2_OUTPUT_DIR = PROJECT_ROOT / "output" / "phase2_pockets"
 RECEPTOR_STATES = ["3GT8_raw", "EGFR_160-185", "EGFR_170-200"]
 
@@ -114,6 +114,7 @@ def compute_patch_centroid(
     if not receptor_pdb.exists():
         return None
 
+    first_chain = None
     with open(receptor_pdb, encoding="utf-8") as f:
         for line in f:
             if not line.startswith("ATOM"):
@@ -122,7 +123,9 @@ def compute_patch_centroid(
             if atom_name != "CA":
                 continue
             chain = line[21].strip()
-            if chain and chain != "A":
+            if first_chain is None:
+                first_chain = chain
+            if chain != first_chain:
                 continue
             resnum_str = line[22:26].strip()
             resnum = safe_int(resnum_str)
@@ -428,7 +431,7 @@ def run_patch_relationship(
     # Compute patch centroids per state from receptor PDBs
     patch_centroids: Dict[str, Optional[Tuple[float, float, float]]] = {}
     for state in RECEPTOR_STATES:
-        pdb_path = receptor_dir / f"receptor_{state}.pdb"
+        pdb_path = receptor_dir / f"{state}.pdb"
         centroid = compute_patch_centroid(pdb_path, patch_residue_nums_by_state[state])
         patch_centroids[state] = centroid
         if centroid:
