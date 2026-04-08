@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N phase3_vina
+#PBS -l nodes=node05:ppn=4
+#PBS -l walltime=08:00:00
+#PBS -V
+#PBS -o ${PBS_O_WORKDIR}/phase3_vina.o
+#PBS -e ${PBS_O_WORKDIR}/phase3_vina.e
+
+# ============================================================
+# Run Phase 3 focused Vina docking (generated script)
+#
+# Usage:
+#   qsub config/run_phase3_docking_direct.pbs
+# ============================================================
+
+set -eo pipefail
+
+cd "$PBS_O_WORKDIR"
+source ~/.bashrc
+conda activate pyrosetta
+
+bash output/workflow_b/phase3_focused_docking/run_phase3_docking.sh
