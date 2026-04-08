@@ -705,6 +705,42 @@ def main():
         skip = sum(1 for r in results if r.get("status") == "skip_no_vina")
         print(f"  Round {args.round}: {ok} ok, {err} error, {skip} skip")
 
+        # Write results to round log CSV (append mode)
+        from datetime import datetime
+        round_log_path = args.output_dir / "phase3_round_log.csv"
+        write_header = not round_log_path.exists() or round_log_path.stat().st_size == 0
+        # Also write header if file only has header line
+        if round_log_path.exists():
+            with open(round_log_path, encoding="utf-8") as f:
+                lines_count = sum(1 for _ in f)
+            if lines_count <= 1:
+                write_header = True
+        with open(round_log_path, "a" if not write_header else "w",
+                  newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=ROUND_LOG_COLUMNS, extrasaction="ignore")
+            if write_header:
+                w.writeheader()
+            now = datetime.utcnow().isoformat()
+            for r in results:
+                # Enrich with job metadata
+                job_match = next((j for j in jobs if j["job_id"] == r.get("job_id")), {})
+                row = {
+                    "round_id": args.round,
+                    "pocket_id": job_match.get("pocket_id", ""),
+                    "receptor_id": job_match.get("receptor_id", ""),
+                    "ligand_id": job_match.get("ligand_id", ""),
+                    "seed_index": job_match.get("seed_index", ""),
+                    "job_id": r.get("job_id", ""),
+                    "status": r.get("status", ""),
+                    "n_poses": r.get("n_poses", 0),
+                    "best_affinity_kcal": r.get("best_affinity_kcal", ""),
+                    "output_file": r.get("output_file", ""),
+                    "error_message": r.get("error_message", ""),
+                    "timestamp": now,
+                }
+                w.writerow(row)
+        print(f"  Round log: {round_log_path} ({len(results)} entries written)")
+
     elif args.evaluate_round is not None:
         from egfr_pipeline.phase3.budget_policy import (
             DEFAULT_BUDGET_POLICY,
