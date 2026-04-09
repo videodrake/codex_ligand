@@ -6,3 +6,4 @@ worker_debug.log
 *.pdb
 *.pdbqt
 output/
+results_export/
