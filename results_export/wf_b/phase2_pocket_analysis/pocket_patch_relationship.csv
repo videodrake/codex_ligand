@@ -1,0 +1,104 @@
+receptor_id,pocket_id,relationship_class,hotspot_overlap_count,hotspot_overlap_fraction,centroid_distance_A,overlapping_residues,n_pocket_residues,n_patch_hotspots,classification_basis
+3GT8_raw,3GT8_raw_PKT01,rim_candidate,1,0.067,18.32,ALA1000,20,15,partial_hotspot_overlap=1 (frac=0.07)
+3GT8_raw,3GT8_raw_PKT02,rim_candidate,1,0.067,22.30,SER957,15,15,partial_hotspot_overlap=1 (frac=0.07)
+3GT8_raw,3GT8_raw_PKT03,allosteric_candidate,0,0.000,6.67,,13,15,"centroid_nearby=6.7A <= 20.0A, no_hotspot_overlap"
+3GT8_raw,3GT8_raw_PKT04,low_relevance_candidate,0,0.000,45.81,,7,15,"centroid_distant=45.8A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT05,rim_candidate,2,0.133,18.51,PRO934;PRO937,14,15,partial_hotspot_overlap=2 (frac=0.13)
+3GT8_raw,3GT8_raw_PKT06,low_relevance_candidate,0,0.000,58.64,,6,15,"centroid_distant=58.6A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT07,rim_candidate,1,0.067,18.73,LEU1001,42,15,partial_hotspot_overlap=1 (frac=0.07)
+3GT8_raw,3GT8_raw_PKT08,rim_candidate,2,0.133,18.74,VAL980;GLN982,8,15,partial_hotspot_overlap=2 (frac=0.13)
+3GT8_raw,3GT8_raw_PKT09,low_relevance_candidate,0,0.000,29.96,,8,15,"centroid_distant=30.0A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT10,allosteric_candidate,0,0.000,16.80,,12,15,"centroid_nearby=16.8A <= 20.0A, no_hotspot_overlap"
+3GT8_raw,3GT8_raw_PKT11,rim_candidate,2,0.133,18.38,ARG986;HIS988,21,15,partial_hotspot_overlap=2 (frac=0.13)
+3GT8_raw,3GT8_raw_PKT12,low_relevance_candidate,0,0.000,24.67,,5,15,"centroid_distant=24.7A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT13,low_relevance_candidate,0,0.000,33.00,,6,15,"centroid_distant=33.0A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT14,rim_candidate,1,0.067,13.73,HIS988,10,15,partial_hotspot_overlap=1 (frac=0.07)
+3GT8_raw,3GT8_raw_PKT15,low_relevance_candidate,0,0.000,42.61,,5,15,"centroid_distant=42.6A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT16,allosteric_candidate,0,0.000,11.91,,7,15,"centroid_nearby=11.9A <= 20.0A, no_hotspot_overlap"
+3GT8_raw,3GT8_raw_PKT17,low_relevance_candidate,0,0.000,49.36,,6,15,"centroid_distant=49.4A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT18,low_relevance_candidate,0,0.000,47.27,,4,15,"centroid_distant=47.3A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT19,low_relevance_candidate,0,0.000,41.92,,8,15,"centroid_distant=41.9A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT20,rim_candidate,2,0.133,50.98,VAL980;GLN982,7,15,partial_hotspot_overlap=2 (frac=0.13)
+3GT8_raw,3GT8_raw_PKT21,low_relevance_candidate,0,0.000,57.93,,6,15,"centroid_distant=57.9A > 20.0A, no_overlap"
+3GT8_raw,3GT8_raw_PKT22,allosteric_candidate,0,0.000,18.12,,11,15,"centroid_nearby=18.1A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT01,allosteric_candidate,0,0.000,5.67,,20,14,"centroid_nearby=5.7A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT02,rim_candidate,2,0.143,12.96,ARG986;THR993,40,14,partial_hotspot_overlap=2 (frac=0.14)
+EGFR_160-185,EGFR_160-185_PKT03,allosteric_candidate,0,0.000,13.20,,22,14,"centroid_nearby=13.2A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT04,allosteric_candidate,0,0.000,12.09,,25,14,"centroid_nearby=12.1A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT05,allosteric_candidate,0,0.000,15.90,,19,14,"centroid_nearby=15.9A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT06,low_relevance_candidate,0,0.000,40.55,,8,14,"centroid_distant=40.5A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT07,rim_candidate,1,0.071,27.50,ARG986,8,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_160-185,EGFR_160-185_PKT08,low_relevance_candidate,0,0.000,27.13,,7,14,"centroid_distant=27.1A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT09,rim_candidate,1,0.071,23.92,THR993,10,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_160-185,EGFR_160-185_PKT10,low_relevance_candidate,0,0.000,32.01,,6,14,"centroid_distant=32.0A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT11,allosteric_candidate,0,0.000,14.76,,9,14,"centroid_nearby=14.8A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT12,rim_candidate,1,0.071,6.34,MET945,7,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_160-185,EGFR_160-185_PKT13,allosteric_candidate,0,0.000,1.78,,37,14,"centroid_nearby=1.8A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT14,allosteric_candidate,0,0.000,13.87,,8,14,"centroid_nearby=13.9A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT15,rim_candidate,1,0.071,8.11,PRO934,11,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_160-185,EGFR_160-185_PKT16,rim_candidate,2,0.143,10.30,ASP956;SER957,9,14,partial_hotspot_overlap=2 (frac=0.14)
+EGFR_160-185,EGFR_160-185_PKT17,low_relevance_candidate,0,0.000,29.86,,10,14,"centroid_distant=29.9A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT18,low_relevance_candidate,0,0.000,64.60,,6,14,"centroid_distant=64.6A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT19,allosteric_candidate,0,0.000,4.09,,26,14,"centroid_nearby=4.1A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT20,low_relevance_candidate,0,0.000,29.26,,8,14,"centroid_distant=29.3A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT21,low_relevance_candidate,0,0.000,21.60,,8,14,"centroid_distant=21.6A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT22,low_relevance_candidate,0,0.000,37.29,,10,14,"centroid_distant=37.3A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT23,rim_candidate,1,0.071,21.74,ASP956,17,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_160-185,EGFR_160-185_PKT24,low_relevance_candidate,0,0.000,33.36,,9,14,"centroid_distant=33.4A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT25,low_relevance_candidate,0,0.000,26.00,,11,14,"centroid_distant=26.0A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT26,low_relevance_candidate,0,0.000,65.88,,8,14,"centroid_distant=65.9A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT27,allosteric_candidate,0,0.000,11.07,,29,14,"centroid_nearby=11.1A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT28,low_relevance_candidate,0,0.000,32.48,,10,14,"centroid_distant=32.5A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT29,allosteric_candidate,0,0.000,18.47,,8,14,"centroid_nearby=18.5A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT30,allosteric_candidate,0,0.000,1.76,,17,14,"centroid_nearby=1.8A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT31,low_relevance_candidate,0,0.000,39.21,,9,14,"centroid_distant=39.2A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT32,low_relevance_candidate,0,0.000,35.79,,5,14,"centroid_distant=35.8A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT33,low_relevance_candidate,0,0.000,54.28,,7,14,"centroid_distant=54.3A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT34,rim_candidate,1,0.071,22.53,THR993,8,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_160-185,EGFR_160-185_PKT35,low_relevance_candidate,0,0.000,36.29,,9,14,"centroid_distant=36.3A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT36,low_relevance_candidate,0,0.000,40.64,,5,14,"centroid_distant=40.6A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT37,allosteric_candidate,0,0.000,1.71,,18,14,"centroid_nearby=1.7A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT38,allosteric_candidate,0,0.000,4.72,,6,14,"centroid_nearby=4.7A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT39,allosteric_candidate,0,0.000,14.01,,10,14,"centroid_nearby=14.0A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT40,allosteric_candidate,0,0.000,19.30,,11,14,"centroid_nearby=19.3A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT41,low_relevance_candidate,0,0.000,20.55,,7,14,"centroid_distant=20.5A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT42,low_relevance_candidate,0,0.000,76.85,,7,14,"centroid_distant=76.8A > 20.0A, no_overlap"
+EGFR_160-185,EGFR_160-185_PKT43,allosteric_candidate,0,0.000,17.17,,9,14,"centroid_nearby=17.2A <= 20.0A, no_hotspot_overlap"
+EGFR_160-185,EGFR_160-185_PKT44,low_relevance_candidate,0,0.000,26.29,,28,14,"centroid_distant=26.3A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT01,allosteric_candidate,0,0.000,10.32,,24,14,"centroid_nearby=10.3A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT02,low_relevance_candidate,0,0.000,35.83,,9,14,"centroid_distant=35.8A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT03,low_relevance_candidate,0,0.000,22.14,,15,14,"centroid_distant=22.1A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT04,allosteric_candidate,0,0.000,18.44,,10,14,"centroid_nearby=18.4A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT05,allosteric_candidate,0,0.000,2.39,,15,14,"centroid_nearby=2.4A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT06,rim_candidate,2,0.143,16.80,GLN982;ARG986,26,14,partial_hotspot_overlap=2 (frac=0.14)
+EGFR_170-200,EGFR_170-200_PKT07,low_relevance_candidate,0,0.000,34.53,,13,14,"centroid_distant=34.5A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT08,low_relevance_candidate,0,0.000,35.78,,10,14,"centroid_distant=35.8A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT09,low_relevance_candidate,0,0.000,24.04,,35,14,"centroid_distant=24.0A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT10,rim_candidate,1,0.071,8.18,MET945,12,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_170-200,EGFR_170-200_PKT11,low_relevance_candidate,0,0.000,32.45,,8,14,"centroid_distant=32.5A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT12,rim_candidate,1,0.071,14.35,THR993,27,14,partial_hotspot_overlap=1 (frac=0.07)
+EGFR_170-200,EGFR_170-200_PKT13,allosteric_candidate,0,0.000,7.34,,11,14,"centroid_nearby=7.3A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT14,low_relevance_candidate,0,0.000,34.07,,9,14,"centroid_distant=34.1A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT15,allosteric_candidate,0,0.000,11.35,,22,14,"centroid_nearby=11.3A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT16,low_relevance_candidate,0,0.000,36.64,,10,14,"centroid_distant=36.6A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT17,rim_candidate,3,0.214,16.75,PRO934;GLN935;PRO937,15,14,partial_hotspot_overlap=3 (frac=0.21)
+EGFR_170-200,EGFR_170-200_PKT18,low_relevance_candidate,0,0.000,24.26,,9,14,"centroid_distant=24.3A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT19,low_relevance_candidate,0,0.000,40.90,,7,14,"centroid_distant=40.9A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT20,low_relevance_candidate,0,0.000,29.48,,6,14,"centroid_distant=29.5A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT21,low_relevance_candidate,0,0.000,28.02,,8,14,"centroid_distant=28.0A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT22,low_relevance_candidate,0,0.000,25.37,,5,14,"centroid_distant=25.4A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT23,low_relevance_candidate,0,0.000,54.14,,7,14,"centroid_distant=54.1A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT24,low_relevance_candidate,0,0.000,26.65,,3,14,"centroid_distant=26.7A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT25,allosteric_candidate,0,0.000,2.43,,11,14,"centroid_nearby=2.4A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT26,allosteric_candidate,0,0.000,12.56,,6,14,"centroid_nearby=12.6A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT27,low_relevance_candidate,0,0.000,30.54,,9,14,"centroid_distant=30.5A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT28,rim_candidate,2,0.143,34.31,ASP956;SER957,7,14,partial_hotspot_overlap=2 (frac=0.14)
+EGFR_170-200,EGFR_170-200_PKT29,low_relevance_candidate,0,0.000,28.13,,11,14,"centroid_distant=28.1A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT30,low_relevance_candidate,0,0.000,34.16,,5,14,"centroid_distant=34.2A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT31,allosteric_candidate,0,0.000,0.90,,30,14,"centroid_nearby=0.9A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT32,low_relevance_candidate,0,0.000,67.66,,12,14,"centroid_distant=67.7A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT33,allosteric_candidate,0,0.000,8.86,,14,14,"centroid_nearby=8.9A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT34,allosteric_candidate,0,0.000,9.37,,62,14,"centroid_nearby=9.4A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT35,low_relevance_candidate,0,0.000,34.45,,7,14,"centroid_distant=34.4A > 20.0A, no_overlap"
+EGFR_170-200,EGFR_170-200_PKT36,allosteric_candidate,0,0.000,7.05,,14,14,"centroid_nearby=7.1A <= 20.0A, no_hotspot_overlap"
+EGFR_170-200,EGFR_170-200_PKT37,low_relevance_candidate,0,0.000,31.07,,8,14,"centroid_distant=31.1A > 20.0A, no_overlap"

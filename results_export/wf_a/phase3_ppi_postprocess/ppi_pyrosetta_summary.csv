@@ -1,0 +1,4 @@
+receptor_id,partner_id,source,construct_type,orientation_validation_status,n_runs_total,n_runs_completed,seed_indices,n_final_models,n_clusters,n_interface_residues,n_nlobe_interface_residues,n_clobe_interface_residues,top_residues,best_dg,mean_dg,best_dsasa
+3GT8_raw,ext_beta_meander,pyrosetta_ppi:ext_beta_meander,full_kinase_domain,not_available,10,10,0;1;2;3;4;5;6;7;8;9,200,0,129,28,51,THR993;PHE997;ALA1000;LEU1001;ASN996;VAL962;ARG986;PHE992;ASN1006;HIS973,-18.226,-11.894,1192.7
+EGFR_160-185,ext_beta_meander,pyrosetta_ppi:ext_beta_meander,full_kinase_domain,not_available,10,10,0;1;2;3;4;5;6;7;8;9,200,0,141,31,61,ILE941;VAL962;VAL980;VAL964;THR940;GLN989;LEU960;PRO990;ASN1006;SER955,-18.378,-13.022,1508.5
+EGFR_170-200,ext_beta_meander,pyrosetta_ppi:ext_beta_meander,full_kinase_domain,not_available,10,10,0;1;2;3;4;5;6;7;8;9,200,0,153,29,74,ILE941;ASN1006;HIS973;SER955;GLY930;PRO988;VAL980;GLN935;PRO990;GLN989,-18.0,-11.861,1426.3
