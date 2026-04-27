@@ -145,13 +145,13 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
 
 ## 참조 문서 (docs/ = source of truth)
 
-- PIPELINE_ARCHITECTURE_REPORT.md — 전체 아키텍처, 모듈별 입출력
+- architecture.md — 전체 아키텍처, 모듈별 입출력
 - docs/runbook.md — 실행 가이드
 - docs/methodology_limitations.md — 방법론 한계 5개 섹션
 - docs/workflow_comparison_guide.md — Workflow A↔B 불일치 해석
 - docs/phase4_A3_axis_specification.md — Phase 4 A3 축 계산 로직
 - docs/data_inventory.md — 입출력 데이터 인벤토리
-- 투두리스트.md — 미구현 항목 추적
+- archive/todo.md — 미구현 항목 추적
 ```
 
 ### 3.2 절대 규칙 (7개)
@@ -243,7 +243,7 @@ description: PPI/PyRosetta 관련 작업 시 로딩. 트리거 — PPI, PyRosett
 ## LightDock 검증
 - PyRosetta와 독립적인 교차 검증 수단
 - LightDock 결과가 PyRosetta와 일치하면 신뢰도 상승
-- 단, LightDock 자체의 한계 있음 (PIPELINE_ARCHITECTURE_REPORT.md TG 1.4 참조)
+- 단, LightDock 자체의 한계 있음 (architecture.md TG 1.4 참조)
 
 ## 위험한 코드 변경
 - DockingSlideIntoContact 누락 → 모든 dG가 0.0 (V1.0 역사적 버그)
@@ -335,7 +335,7 @@ description: Verdict/스코어링 관련 작업 시 로딩. 트리거 — Verdic
 ## Workflow B: 4축 체계 (phase4/)
 - A1: PPI interface 관계 (orthosteric/rim/allosteric/irrelevant)
 - A2: Druggability
-- A3: Perturbation relevance (PIPELINE_ARCHITECTURE_REPORT.md Phase 4 섹션 참조)
+- A3: Perturbation relevance (architecture.md Phase 4 섹션 참조)
 - A4: State robustness
 - A1+A3 합산 가중치 60% → affinity만 좋고 MYO1D 무관한 포켓은 상위 불가
 
@@ -639,7 +639,7 @@ if __name__ == "__main__":
 
 - 미사용 import / dead code 탐지
 - validate.py 실행 → 경고/실패 항목 보고
-- 투두리스트.md의 미구현 placeholder가 여전히 유효한지 확인
+- archive/todo.md의 미구현 placeholder가 여전히 유효한지 확인
 - docs/와 실제 코드의 불일치 탐지 (문서 drift)
 
 ### 8.3 docs/CONTEXT.md 구조

@@ -110,7 +110,7 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
 
 | 역할 | 문서 |
 |------|------|
-| 구조 | `PIPELINE_ARCHITECTURE_REPORT.md`, `docs/data_inventory.md` |
+| 구조 | `docs/architecture.md`, `docs/data_inventory.md` |
 | 실행 | `docs/runbook.md` |
 | 추적 | `docs/CONTEXT.md` |
 

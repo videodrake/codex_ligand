@@ -1,7 +1,7 @@
 # 하네스 구축 실행 가이드
 
 이 문서를 Claude Code에서 열고 단계별로 실행한다.
-함께 참조할 문서: `harness_engineering_design.md`
+함께 참조할 문서: `harness_design.md`
 
 ---
 
@@ -48,14 +48,14 @@ Phase 4: 문서 체계화 + 최종 점검
   CONTEXT.md, README.md
 
 루트 레벨:
-  CLAUDE.md, PIPELINE_ARCHITECTURE_REPORT.md, 설계의도.md
+  CLAUDE.md, architecture.md, archive/design_intent.md
 
 config/:
   README.md
 
 미존재 (archive에도 없음):
   methodology_limitations.md, workflow_comparison_guide.md,
-  phase4_A3_axis_specification.md, 투두리스트.md,
+  phase4_A3_axis_specification.md, archive/todo.md,
   output_path_guide.md, workflow_comparison_design.md,
   ac_coverage_checklist.md, module_separation_analysis.md,
   manual_execution.md
@@ -65,7 +65,7 @@ config/:
 
 ```
 하네스 스킬 구축을 시작한다.
-harness_engineering_design.md의 섹션 4를 기반으로 스킬 파일을 생성해줘.
+harness_design.md의 섹션 4를 기반으로 스킬 파일을 생성해줘.
 
 먼저 .claude/skills/ 디렉토리 구조를 만들고,
 가장 중요한 2개부터 시작:
@@ -73,13 +73,13 @@ harness_engineering_design.md의 섹션 4를 기반으로 스킬 파일을 생�
 1. .claude/skills/phase-dependencies/SKILL.md
    — 설계서 섹션 4.4 내용 기반
    — 끝에 "상세 참조" 섹션 추가:
-     - PIPELINE_ARCHITECTURE_REPORT.md (전체 아키텍처, 데이터 흐름)
+     - architecture.md (전체 아키텍처, 데이터 흐름)
      - docs/data_inventory.md (입출력 인벤토리)
 
 2. .claude/skills/bug-history/SKILL.md
    — 설계서 섹션 4.7 내용 기반
    — 끝에 "상세 참조" 섹션 추가:
-     - 설계의도.md (PyRosetta 절대 주의사항 + 설계 판단 근거)
+     - archive/design_intent.md (PyRosetta 절대 주의사항 + 설계 판단 근거)
 
 완료 후 docs/CONTEXT.md 작업 로그에 기록
 ```
@@ -88,19 +88,19 @@ harness_engineering_design.md의 섹션 4를 기반으로 스킬 파일을 생�
 
 ```
 나머지 5개 스킬을 생성해줘.
-harness_engineering_design.md 섹션 4의 각 스킬 내용을 기반으로.
+harness_design.md 섹션 4의 각 스킬 내용을 기반으로.
 "상세 참조"에는 실제 존재하는 문서만 넣는다.
 
 3. .claude/skills/ppi-analysis/SKILL.md (섹션 4.2)
    상세 참조:
    - docs/manual_pyrosetta.md
    - docs/phase1_notes.md
-   - PIPELINE_ARCHITECTURE_REPORT.md (Phase 1 PPI, LightDock 섹션)
+   - architecture.md (Phase 1 PPI, LightDock 섹션)
 
 4. .claude/skills/vina-docking/SKILL.md (섹션 4.1)
    상세 참조:
    - docs/manual_vina.md
-   - PIPELINE_ARCHITECTURE_REPORT.md (Vina 모듈 섹션)
+   - architecture.md (Vina 모듈 섹션)
 
 5. .claude/skills/hpc-operations/SKILL.md (섹션 4.3)
    상세 참조:
@@ -111,8 +111,8 @@ harness_engineering_design.md 섹션 4의 각 스킬 내용을 기반으로.
 
 6. .claude/skills/scoring-system/SKILL.md (섹션 4.5)
    상세 참조:
-   - PIPELINE_ARCHITECTURE_REPORT.md (Phase 4 Scoring + Verdict 섹션)
-   - 설계의도.md (3축/4축 설계 의도)
+   - architecture.md (Phase 4 Scoring + Verdict 섹션)
+   - archive/design_intent.md (3축/4축 설계 의도)
 
 7. .claude/skills/testing/SKILL.md (섹션 4.6)
    상세 참조:
@@ -130,7 +130,7 @@ harness_engineering_design.md 섹션 4의 각 스킬 내용을 기반으로.
 
 ```
 에이전트 정의와 훅을 생성해줘.
-harness_engineering_design.md 섹션 5, 7을 기반으로.
+harness_design.md 섹션 5, 7을 기반으로.
 
 에이전트:
 1. .claude/agents/pipeline-dev.md (섹션 5.1)
@@ -161,7 +161,7 @@ harness_engineering_design.md 섹션 5, 7을 기반으로.
    현재 존재하는 문서만 포함한다:
 
    구조 이해:
-   - PIPELINE_ARCHITECTURE_REPORT.md — 전체 아키텍처
+   - architecture.md — 전체 아키텍처
    - docs/PROJECT_USAGE_OVERVIEW.md — 프로젝트 개요
    - docs/data_inventory.md — 입출력 인벤토리
 

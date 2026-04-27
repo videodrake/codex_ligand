@@ -32,4 +32,4 @@ description: PPI/PyRosetta 관련 작업 시 로딩. 트리거 — PPI, PyRosett
 ## 상세 참조
 - docs/manual_pyrosetta.md — PyRosetta PPI 도킹 상세 매뉴얼
 - docs/phase1_notes.md — Phase 1 참고 노트 (실행, 샘플링, 필터, LightDock)
-- PIPELINE_ARCHITECTURE_REPORT.md — Phase 1 PPI, LightDock 섹션
+- docs/architecture.md — Phase 1 PPI, LightDock 섹션

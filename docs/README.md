@@ -5,9 +5,11 @@
 | 문서 | 설명 |
 |------|------|
 | [PROJECT_USAGE_OVERVIEW.md](PROJECT_USAGE_OVERVIEW.md) | 프로젝트 사용 개요 — 각 도구의 역할과 워크플로우 |
-| [../PIPELINE_ARCHITECTURE_REPORT.md](../PIPELINE_ARCHITECTURE_REPORT.md) | 전체 아키텍처 상세 보고서 — 모든 모듈/알고리즘/입출력 |
+| [architecture.md](architecture.md) | 전체 아키텍처 상세 보고서 — 모든 모듈/알고리즘/입출력 |
 | [runbook.md](runbook.md) | 실행 가이드 — qsub 명령, 실행 순서, 결과 확인 |
 | [environment_setup.md](environment_setup.md) | 환경 설정 — conda, PyRosetta, 서버 설정 |
+| [harness_design.md](harness_design.md) | Claude Code 하네스 엔지니어링 설계 |
+| [harness_execution.md](harness_execution.md) | 하네스 실행 가이드 |
 
 ## 참고 문서
 
@@ -29,7 +31,9 @@
 ## 아카이브
 
 `archive/` 디렉토리에는 다음이 포함됨:
-- 구 버전 문서 (architecture.md, data_flow_guide.md 등 → PIPELINE_ARCHITECTURE_REPORT.md로 대체)
+- 구 버전 문서 (구 architecture.md, data_flow_guide.md 등 → 새 architecture.md로 대체)
 - Phase PRD/Task 기획 문서 (prd_phase_*.md, tasks_phase_*.md)
 - 구 버전 Phase 1 노트 (phase1_*.md → phase1_notes.md로 병합)
 - 히스토리 문서 (GEMINI.md, handoff docs 등)
+- Manuscript 섹션별 초안 (manuscript_sections/section1~6.md, 병합본은 docs/manuscript_draft.md)
+- 구 설계의도/투두/매핑 문서 (design_intent.md, todo.md, document_mapping_plan.md)

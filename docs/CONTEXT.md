@@ -160,7 +160,7 @@
 - [2026-04-08] P2Rank 미사용 결정 — HPC Java 8, P2Rank 2.4.2는 Java 11+ 필요. fpocket 단독으로 충분한 결과 획득
 - [2026-04-07] AMBIGUOUS_BAND 0.15→0.10 축소 (사용자 승인). 근거: WF-A 600모델 retroactive 분석에서 17.3%→10.2% ambiguous 감소
 - [2026-04-07] Phase 4 축 가중치 현재 유지, Workflow B 완료 후 재검토 (사용자 승인)
-- [2026-04-06] 하네스 엔지니어링 적용 시작. 설계서: harness_engineering_design.md
+- [2026-04-06] 하네스 엔지니어링 적용 시작. 설계서: harness_design.md
 - [2026-04-06] PRODUCTION_N_SEEDS 5→10 확장. generate_configs.py와 run_production.py 양쪽 동기화 필수
 - [2026-04-06] HPC 환경을 codex_ligand2로 이전. output/workflow_a와 input/은 codex_ligand(원본)에서 심볼릭 링크로 연결
 

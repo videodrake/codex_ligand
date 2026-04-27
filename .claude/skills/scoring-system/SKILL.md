@@ -24,5 +24,5 @@ STRONG도 PyMOL 시각 검증 필수. WEAK도 cryptic pocket 가능성 있음.
 승인 없이 코드를 수정하지 않는다.
 
 ## 상세 참조
-- PIPELINE_ARCHITECTURE_REPORT.md — Phase 4 Scoring + Verdict 섹션
-- 설계의도.md — 3축/4축 설계 의도
+- docs/architecture.md — Phase 4 Scoring + Verdict 섹션
+- docs/archive/design_intent.md — 3축/4축 설계 의도
