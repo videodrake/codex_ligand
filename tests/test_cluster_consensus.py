@@ -1,10 +1,14 @@
 import math
 
+import pytest
+
 from egfr_pipeline.phase1.cluster_consensus import (
     compute_cluster_consensus,
     _compute_centroid,
     _compute_centroid_spread,
 )
+
+pytestmark = pytest.mark.smoke
 
 
 def test_cluster_consensus_uses_orientation_pass_models_and_propagates_metadata():

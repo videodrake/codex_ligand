@@ -26,4 +26,4 @@ Meeko → ADFR → MGLTools → OpenBabel (코드: vina_executor.py)
 
 ## 상세 참조
 - docs/manual_vina.md — AutoDock Vina 상세 매뉴얼
-- PIPELINE_ARCHITECTURE_REPORT.md — Vina 모듈 섹션
+- docs/architecture.md — Vina 모듈 섹션

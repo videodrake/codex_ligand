@@ -33,4 +33,4 @@ description: PyRosetta/Vina 코드 수정 전 반드시 확인. 트리거 — Py
 □ orientation_filter가 정상 동작하는가?
 
 ## 상세 참조
-- 설계의도.md — PyRosetta 절대 주의사항 + 설계 판단 근거
+- docs/archive/design_intent.md — PyRosetta 절대 주의사항 + 설계 판단 근거

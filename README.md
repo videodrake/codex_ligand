@@ -24,9 +24,11 @@ qsub config/run_advanced_pipeline.pbs
 ### 구조 이해
 | 문서 | 내용 |
 |------|------|
-| [PIPELINE_ARCHITECTURE_REPORT.md](PIPELINE_ARCHITECTURE_REPORT.md) | 전체 아키텍처 |
+| [docs/architecture.md](docs/architecture.md) | 전체 아키텍처 (모듈/알고리즘/입출력) |
 | [docs/PROJECT_USAGE_OVERVIEW.md](docs/PROJECT_USAGE_OVERVIEW.md) | 프로젝트 개요 |
 | [docs/data_inventory.md](docs/data_inventory.md) | 입출력 인벤토리 |
+| [docs/harness_design.md](docs/harness_design.md) | Claude Code 하네스 엔지니어링 설계 |
+| [docs/harness_execution.md](docs/harness_execution.md) | 하네스 실행 가이드 |
 
 ### 실행
 | 문서 | 내용 |

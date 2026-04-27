@@ -1,6 +1,8 @@
 import csv
 import json
 
+import pytest
+
 from egfr_pipeline.phase1.cluster_consensus import process_state
 from egfr_pipeline.phase1.compare_states import (
     CROSS_STATE_COLUMNS,
@@ -10,6 +12,8 @@ from egfr_pipeline.phase1.compare_states import (
 )
 from egfr_pipeline.phase1.lightdock_validation import compute_cross_method_convergence
 from egfr_pipeline.phase1 import review_report as review_report_module
+
+pytestmark = pytest.mark.smoke
 
 
 def _write_csv(path, rows, fieldnames=None):

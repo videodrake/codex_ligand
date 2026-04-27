@@ -1,6 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from scripts.precheck_guard import should_enforce_precheck, validate_precheck_status
+
+pytestmark = pytest.mark.smoke
 
 
 def test_should_enforce_precheck_for_normal_modes():

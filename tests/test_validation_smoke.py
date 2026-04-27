@@ -3,7 +3,11 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from egfr_pipeline.validate import run_validation
+
+pytestmark = pytest.mark.smoke
 
 
 POSE_HEADER = [

@@ -22,23 +22,11 @@ echo "[2/4] CLI smoke check"
 python -X utf8 "${ROOT_DIR}/main.py" --help > /dev/null
 python -X utf8 "${ROOT_DIR}/main.py" validate --help > /dev/null
 
-echo "[3/4] Pytest phase and smoke suite"
+echo "[3/4] Pytest smoke suite"
 python -m pytest \
-  -m "not reporting" \
-  "${ROOT_DIR}/tests/test_phase2.py" \
-  "${ROOT_DIR}/tests/test_phase3.py" \
-  "${ROOT_DIR}/tests/test_phase4.py" \
-  "${ROOT_DIR}/tests/test_cluster_consensus.py" \
-  "${ROOT_DIR}/tests/test_compare_states.py" \
-  "${ROOT_DIR}/tests/test_phase1_smoke.py" \
-  "${ROOT_DIR}/tests/test_precheck_guard.py" \
-  "${ROOT_DIR}/tests/test_review_report.py" \
-  "${ROOT_DIR}/tests/test_lightdock_validation.py" \
-  "${ROOT_DIR}/tests/test_pyrosetta_extract.py" \
-  "${ROOT_DIR}/tests/test_pyrosetta_metadata.py" \
-  "${ROOT_DIR}/tests/test_postprocess_ppi.py" \
-  "${ROOT_DIR}/tests/test_smoke_cli.py" \
-  "${ROOT_DIR}/tests/test_validation_smoke.py" \
+  -m "smoke and not reporting" \
+  --strict-markers \
+  "${ROOT_DIR}/tests" \
   -q
 
 echo "[4/4] Pre-qsub checks passed"

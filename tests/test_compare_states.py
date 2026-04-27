@@ -1,6 +1,10 @@
 import csv
 
+import pytest
+
 from egfr_pipeline.phase1.compare_states import compare_across_states, generate_comparison_report
+
+pytestmark = pytest.mark.smoke
 
 
 def _write_csv(path, rows):

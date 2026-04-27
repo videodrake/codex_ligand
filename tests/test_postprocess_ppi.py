@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from egfr_pipeline.config import load_config
 from egfr_pipeline.ppi.postprocess_ppi import _update_config_ppi_dir
+
+pytestmark = pytest.mark.smoke
 
 
 def test_update_config_ppi_dir_adds_construct_and_orientation_fields(tmp_path: Path) -> None:

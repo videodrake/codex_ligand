@@ -35,5 +35,5 @@ CSV 컬럼을 추가할 때는 '하위 코드가 깨지는가'뿐 아니라
 특히 SUMMARY_COLUMNS → EXPORT_COLUMNS 전파 여부를 매번 판단한다.
 
 ## 상세 참조
-- PIPELINE_ARCHITECTURE_REPORT.md — 전체 아키텍처, 데이터 흐름
+- docs/architecture.md — 전체 아키텍처, 데이터 흐름
 - docs/data_inventory.md — 입출력 인벤토리

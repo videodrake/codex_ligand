@@ -6,10 +6,14 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from egfr_pipeline.ppi.pyrosetta_extract import (
     extract_pyrosetta_batch,
     extract_pyrosetta_interface_residues,
 )
+
+pytestmark = pytest.mark.smoke
 
 
 def _write_csv(path: Path, header: list[str], rows: list[list[str]]) -> None:

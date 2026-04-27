@@ -2,6 +2,8 @@
 
 import configparser
 
+import pytest
+
 from egfr_pipeline.pyrosetta_docking.run_metadata import (
     build_input_validation_report,
     build_input_validation_markdown,
@@ -12,6 +14,8 @@ from egfr_pipeline.pyrosetta_docking.run_metadata import (
     infer_partner_id,
     infer_receptor_id,
 )
+
+pytestmark = pytest.mark.smoke
 
 
 def _make_config() -> configparser.ConfigParser:
