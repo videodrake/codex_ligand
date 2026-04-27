@@ -1,0 +1,131 @@
+residue_id,residue_num,residue_name,chain,lobe_label,evidence_source,construct_type,orientation_validation_status,robustness_class,n_states_present,states_present,global_max_occupancy,is_hotspot_any_state,pyrosetta_evidence,lightdock_evidence,method_agreement,confidence,notes
+ILE941,941,ILE,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,1.0,True,True,True,both,high,robust hotspot
+ARG977,977,ARG,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.75,True,True,True,both,high,robust hotspot
+THR993,993,THR,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.7143,True,True,True,both,high,robust hotspot
+ARG986,986,ARG,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.6,True,True,True,both,high,robust hotspot
+GLN982,982,GLN,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.6,True,True,True,both,high,robust hotspot
+VAL980,980,VAL,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.5714,True,True,True,both,high,robust hotspot
+GLN935,935,GLN,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.5,True,True,True,both,high,robust hotspot
+HIS988,988,HIS,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.5,True,True,True,both,high,robust hotspot
+PRO934,934,PRO,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.5,True,True,True,both,high,robust hotspot
+PRO937,937,PRO,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.5,True,True,True,both,high,robust hotspot
+SER957,957,SER,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.5,True,True,True,both,high,robust hotspot
+THR940,940,THR,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.5,True,True,True,both,high,robust hotspot
+GLU931,931,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.4444,False,True,True,both,high,
+PRO992,992,PRO,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.4286,False,True,True,both,high,
+SER991,991,SER,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.4286,False,True,True,both,high,
+ASP942,942,ASP,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.4,False,True,True,both,high,
+ASP974,974,ASP,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.4,False,True,True,both,high,
+GLU985,985,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.4,False,True,True,both,high,
+GLY983,983,GLY,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.4,False,True,True,both,high,
+ASN700,700,ASN,A,N-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.375,False,True,True,both,high,N-lobe (newly detectable in Phase 1)
+GLY930,930,GLY,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.375,False,True,True,both,high,
+ASP1006,1006,ASP,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.3333,False,True,True,both,high,
+ASP770,770,ASP,A,N-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.3333,False,True,True,both,high,N-lobe (newly detectable in Phase 1)
+ILE966,966,ILE,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.3333,False,True,True,both,high,
+LYS929,929,LYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.3333,False,True,True,both,high,
+LYS970,970,LYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.3333,False,True,True,both,high,
+ARG962,962,ARG,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.3,False,True,True,both,high,
+ALA702,702,ALA,A,N-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.2857,False,True,True,both,high,N-lobe (newly detectable in Phase 1)
+ARG973,973,ARG,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.2857,False,True,True,both,high,
+GLN976,976,GLN,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.2857,False,True,True,both,high,
+ILE890,890,ILE,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.2857,False,True,True,both,high,
+ARG932,932,ARG,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,high,
+LEU989,989,LEU,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,high,
+GLU963,963,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.2,False,True,True,both,high,
+ARG889,889,ARG,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.1667,False,True,True,both,high,
+HIS888,888,HIS,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.1667,False,True,True,both,high,
+SER752,752,SER,A,N-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.1667,False,True,True,both,high,N-lobe (newly detectable in Phase 1)
+MET945,945,MET,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.6667,True,True,True,both,medium,
+ASP956,956,ASP,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.5,True,True,True,both,medium,
+ASP807,807,ASP,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_160-185,0.4,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+ASN996,996,ASN,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.375,False,True,False,pyrosetta_only,medium,
+ILE965,965,ILE,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.3333,False,True,False,pyrosetta_only,medium,
+LYS949,949,LYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.3333,False,True,True,both,medium,
+VAL948,948,VAL,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.3333,False,True,True,both,medium,
+ASP954,954,ASP,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2857,False,True,True,both,medium,
+GLU928,928,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2857,False,True,True,both,medium,
+ILE953,953,ILE,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2857,False,True,True,both,medium,
+ALA755,755,ALA,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+ARG832,832,ARG,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+ASP830,830,ASP,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+LYS757,757,LYS,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+MET952,952,MET,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,medium,
+PRO699,699,PRO,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.25,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+TYR978,978,TYR,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_160-185,0.25,False,True,True,both,medium,
+ALA750,750,ALA,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+LEU887,887,LEU,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2,False,True,True,both,medium,
+VAL834,834,VAL,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+SER995,995,SER,A,C-lobe,primary,mixed_construct_type,orientation_validated,robust,3,3GT8_raw;EGFR_160-185;EGFR_170-200,0.1429,False,True,False,pyrosetta_only,medium,
+ARG999,999,ARG,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_170-200,0.1429,False,True,True,both,medium,
+GLN701,701,GLN,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_160-185,0.1429,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+ILE706,706,ILE,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_160-185,0.1429,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+ILE938,938,ILE,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_160-185,0.1429,False,True,True,both,medium,
+LEU703,703,LEU,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_170-200,0.1429,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+TYR827,827,TYR,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.1429,False,True,True,both,medium,N-lobe (newly detectable in Phase 1)
+SER912,912,SER,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,3GT8_raw;EGFR_170-200,0.125,False,True,True,both,medium,
+ALA1000,1000,ALA,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.75,True,True,True,both,low,
+PHE997,997,PHE,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.625,True,True,True,both,low,
+LEU1001,1001,LEU,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.5,True,True,True,both,low,
+ASP994,994,ASP,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.4286,False,True,False,pyrosetta_only,low,
+SER969,969,SER,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.3333,False,True,False,pyrosetta_only,low,
+PRO794,794,PRO,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.3333,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+GLU1004,1004,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.3,False,True,True,both,low,
+ASP984,984,ASP,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2857,False,True,False,pyrosetta_only,low,
+MET1002,1002,MET,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.2857,False,True,True,both,low,
+THR892,892,THR,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2857,False,True,False,lightdock_only,low,
+ASP761,761,ASP,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.25,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+LYS708,708,LYS,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.25,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+TYR764,764,TYR,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.25,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+SER768,768,SER,A,N-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.2,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+GLU749,749,GLU,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+GLU829,829,GLU,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+HIS870,870,HIS,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2,False,True,False,lightdock_only,low,
+HIS893,893,HIS,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2,False,True,False,pyrosetta_only,low,
+LEU883,883,LEU,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2,False,True,False,pyrosetta_only,low,
+LYS806,806,LYS,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.2,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+MET987,987,MET,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.2,False,True,True,both,low,
+PHE910,910,PHE,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.2,False,True,False,lightdock_only,low,
+TYR869,869,TYR,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2,False,True,False,lightdock_only,low,
+TYR891,891,TYR,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.2,False,True,False,lightdock_only,low,
+GLU868,868,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.1667,False,True,False,lightdock_only,low,
+MET1007,1007,MET,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.1667,False,True,False,lightdock_only,low,
+ARG831,831,ARG,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1667,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+ASN771,771,ASN,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1667,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+ASN808,808,ASN,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1667,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+GLU866,866,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.1667,False,True,False,pyrosetta_only,low,
+LYS860,860,LYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1667,False,True,False,lightdock_only,low,
+LYS867,867,LYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.1667,False,True,False,pyrosetta_only,low,
+SER925,925,SER,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.1667,False,True,False,lightdock_only,low,
+GLU884,884,GLU,A,C-lobe,primary,mixed_construct_type,orientation_validated,moderate,2,EGFR_160-185;EGFR_170-200,0.1429,False,True,False,pyrosetta_only,low,
+ALA955,955,ALA,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,lightdock_only,low,
+ALA972,972,ALA,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,pyrosetta_only,low,
+ASN826,826,ASN,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.1429,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+GLN791,791,GLN,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1429,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+GLN894,894,GLN,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,pyrosetta_only,low,
+GLY735,735,GLY,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.1429,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+LEU704,704,LEU,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+LEU760,760,LEU,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+LEU778,778,LEU,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1429,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+LYS875,875,LYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,lightdock_only,low,
+LYS960,960,LYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,lightdock_only,low,
+PRO772,772,PRO,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,lightdock_only,low,N-lobe (newly detectable in Phase 1)
+PRO975,975,PRO,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,True,both,low,
+VAL765,765,VAL,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.1429,False,True,False,pyrosetta_only,low,N-lobe (newly detectable in Phase 1)
+VAL876,876,VAL,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1429,False,True,False,lightdock_only,low,
+ASN756,756,ASN,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.125,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+GLN812,812,GLN,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.125,False,True,False,pyrosetta_only,low,N-lobe (newly detectable in Phase 1)
+GLU734,734,GLU,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.125,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+LEU862,862,LEU,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.125,False,True,False,lightdock_only,low,
+PRO741,741,PRO,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.125,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+PRO990,990,PRO,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_160-185,0.125,False,True,True,both,low,
+ILE981,981,ILE,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1111,False,True,True,both,low,
+LYS737,737,LYS,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1111,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+ARG776,776,ARG,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+CYS939,939,CYS,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1,False,True,False,pyrosetta_only,low,
+ILE740,740,ILE,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+LYS716,716,LYS,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+PRO733,733,PRO,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1,False,True,True,both,low,N-lobe (newly detectable in Phase 1)
+PRO936,936,PRO,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1,False,True,True,both,low,
+THR909,909,THR,A,C-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,EGFR_170-200,0.1,False,True,True,both,low,
+VAL738,738,VAL,A,N-lobe,primary,mixed_construct_type,orientation_validated,state_specific,1,3GT8_raw,0.1,False,True,True,both,low,N-lobe (newly detectable in Phase 1)

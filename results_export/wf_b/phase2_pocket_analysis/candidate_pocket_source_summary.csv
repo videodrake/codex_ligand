@@ -1,0 +1,7 @@
+receptor_id,proposal_source,n_pockets_found,best_score,best_druggability,mean_volume_A3,output_dir,status
+3GT8_raw,fpocket,28,0.0560,0.9600,451.3,/work4/hwang/onepack/my_second_project/codex_ligand2/output/workflow_b/phase2_pocket_analysis/3GT8_raw/receptor_3GT8_raw_out,found
+3GT8_raw,p2rank,0,,,,/work4/hwang/onepack/my_second_project/codex_ligand2/output/workflow_b/phase2_pocket_analysis/3GT8_raw/p2rank_output,not_found
+EGFR_160-185,fpocket,72,0.2150,0.1590,423.2,/work4/hwang/onepack/my_second_project/codex_ligand2/output/workflow_b/phase2_pocket_analysis/EGFR_160-185/receptor_EGFR_160-185_out,found
+EGFR_160-185,p2rank,0,,,,/work4/hwang/onepack/my_second_project/codex_ligand2/output/workflow_b/phase2_pocket_analysis/EGFR_160-185/p2rank_output,not_found
+EGFR_170-200,fpocket,65,0.2610,0.9360,429.9,/work4/hwang/onepack/my_second_project/codex_ligand2/output/workflow_b/phase2_pocket_analysis/EGFR_170-200/receptor_EGFR_170-200_out,found
+EGFR_170-200,p2rank,0,,,,/work4/hwang/onepack/my_second_project/codex_ligand2/output/workflow_b/phase2_pocket_analysis/EGFR_170-200/p2rank_output,not_found

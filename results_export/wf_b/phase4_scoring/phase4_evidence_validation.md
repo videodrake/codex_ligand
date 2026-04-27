@@ -1,0 +1,298 @@
+# Phase 4 Evidence Validation Report
+
+## 1. Overall Verdict
+
+**PASS** — 0 errors, 0 warnings, 7 checks passed
+
+## 2. Phase 1: PPI Patch Evidence
+
+- Hotspot residues: 17
+- Residues: ILE941;ARG977;THR993;ARG986;GLN982;VAL980;GLN935;HIS988;PRO934;PRO937;SER957;THR940;ALA1000;MET945;PHE997;ASP956;LEU1001
+- Mean confidence: 1.706
+- Robust hotspots (moderate+): 14
+- Both-method agreement: 0
+
+## 3. Phase 2: Pocket Properties
+
+- Total pockets: 103
+  - 3GT8_raw_PKT01: rim_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT02: rim_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT03: allosteric_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT04: low_relevance_candidate / tier_3 / uncertain_alignment
+  - 3GT8_raw_PKT05: rim_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT06: low_relevance_candidate / tier_3 / state_specific_pocket
+  - 3GT8_raw_PKT07: rim_candidate / tier_1 / state_robust_pocket
+  - 3GT8_raw_PKT08: rim_candidate / tier_3 / uncertain_alignment
+  - 3GT8_raw_PKT09: low_relevance_candidate / tier_3 / uncertain_alignment
+  - 3GT8_raw_PKT10: allosteric_candidate / tier_2 / state_robust_pocket
+  - 3GT8_raw_PKT11: rim_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT12: low_relevance_candidate / tier_3 / uncertain_alignment
+  - 3GT8_raw_PKT13: low_relevance_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT14: rim_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT15: low_relevance_candidate / tier_3 / state_specific_pocket
+  - 3GT8_raw_PKT16: allosteric_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT17: low_relevance_candidate / tier_3 / uncertain_alignment
+  - 3GT8_raw_PKT18: low_relevance_candidate / tier_3 / state_robust_pocket
+  - 3GT8_raw_PKT19: low_relevance_candidate / tier_3 / uncertain_alignment
+  - 3GT8_raw_PKT20: rim_candidate / tier_3 / state_specific_pocket
+  - 3GT8_raw_PKT21: low_relevance_candidate / tier_3 / uncertain_alignment
+  - 3GT8_raw_PKT22: allosteric_candidate / tier_3 / uncertain_alignment
+  - EGFR_160-185_PKT01: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT02: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT03: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT04: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT05: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT06: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT07: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT08: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT09: rim_candidate / tier_3 / uncertain_alignment
+  - EGFR_160-185_PKT10: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT11: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT12: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT13: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT14: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT15: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT16: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT17: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT18: low_relevance_candidate / tier_3 / uncertain_alignment
+  - EGFR_160-185_PKT19: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT20: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT21: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT22: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT23: rim_candidate / tier_3 / state_robust_pocket
+  - EGFR_160-185_PKT24: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT25: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT26: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT27: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT28: low_relevance_candidate / tier_3 / uncertain_alignment
+  - EGFR_160-185_PKT29: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT30: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT31: low_relevance_candidate / tier_3 / uncertain_alignment
+  - EGFR_160-185_PKT32: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT33: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT34: rim_candidate / tier_3 / uncertain_alignment
+  - EGFR_160-185_PKT35: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT36: low_relevance_candidate / tier_3 / uncertain_alignment
+  - EGFR_160-185_PKT37: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT38: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT39: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT40: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT41: low_relevance_candidate / tier_3 / state_specific_pocket
+  - EGFR_160-185_PKT42: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT43: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_160-185_PKT44: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT01: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT02: low_relevance_candidate / tier_3 / state_specific_pocket
+  - EGFR_170-200_PKT03: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT04: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT05: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT06: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT07: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT08: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT09: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT10: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT11: low_relevance_candidate / tier_3 / uncertain_alignment
+  - EGFR_170-200_PKT12: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT13: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT14: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT15: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT16: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT17: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT18: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT19: low_relevance_candidate / tier_3 / uncertain_alignment
+  - EGFR_170-200_PKT20: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT21: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT22: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT23: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT24: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT25: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT26: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT27: low_relevance_candidate / tier_3 / state_robust_pocket
+  - EGFR_170-200_PKT28: rim_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT29: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT30: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT31: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT32: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT33: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT34: allosteric_candidate / tier_1 / state_shifted_pocket
+  - EGFR_170-200_PKT35: low_relevance_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT36: allosteric_candidate / tier_3 / state_shifted_pocket
+  - EGFR_170-200_PKT37: low_relevance_candidate / tier_3 / uncertain_alignment
+
+## 4. Phase 3: Docking Evidence
+
+- Evidence rows: 156
+  - 3GT8_raw_PKT01: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT02: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT03: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT05: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT07: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT08: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT10: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT11: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT14: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT16: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT20: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - 3GT8_raw_PKT22: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT01: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT02: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT03: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT04: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT05: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT07: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT09: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT11: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT12: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT13: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT14: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT15: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT16: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT19: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT23: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT27: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT29: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT30: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT34: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT37: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT38: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT39: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT40: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_160-185_PKT43: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT01: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT04: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT05: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT06: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT10: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT12: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT13: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT15: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT17: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT25: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT26: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT28: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT31: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT33: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT34: 3 ligand(s) (173940, 97806, VAX-C12_0)
+  - EGFR_170-200_PKT36: 3 ligand(s) (173940, 97806, VAX-C12_0)
+
+## 5. Cross-Phase Consistency Checks
+
+- [OK] OK: Phase 1 loaded 130 residues (17 hotspots)
+- [OK] OK: Phase 2 loaded 103 pockets
+- [OK] OK: Phase 3 loaded 156 evidence rows
+- [OK] OK: Receptor IDs — Phase 2: ['3GT8_raw', 'EGFR_160-185', 'EGFR_170-200'], Phase 3: ['3GT8_raw', 'EGFR_160-185', 'EGFR_170-200']
+- [OK] OK: All 52 Phase 3 pockets found in Phase 2
+- [OK] OK: Relationship class alignment checked
+- [OK] OK: Phase 1 provides 17 hotspot residues for overlap verification
+
+## 6. Normalized Evidence Table
+
+- Total rows: 207
+- Columns: 28
+  - 3GT8_raw_PKT01: 3 row(s)
+  - 3GT8_raw_PKT02: 3 row(s)
+  - 3GT8_raw_PKT03: 3 row(s)
+  - 3GT8_raw_PKT04: 1 row(s)
+  - 3GT8_raw_PKT05: 3 row(s)
+  - 3GT8_raw_PKT06: 1 row(s)
+  - 3GT8_raw_PKT07: 3 row(s)
+  - 3GT8_raw_PKT08: 3 row(s)
+  - 3GT8_raw_PKT09: 1 row(s)
+  - 3GT8_raw_PKT10: 3 row(s)
+  - 3GT8_raw_PKT11: 3 row(s)
+  - 3GT8_raw_PKT12: 1 row(s)
+  - 3GT8_raw_PKT13: 1 row(s)
+  - 3GT8_raw_PKT14: 3 row(s)
+  - 3GT8_raw_PKT15: 1 row(s)
+  - 3GT8_raw_PKT16: 3 row(s)
+  - 3GT8_raw_PKT17: 1 row(s)
+  - 3GT8_raw_PKT18: 1 row(s)
+  - 3GT8_raw_PKT19: 1 row(s)
+  - 3GT8_raw_PKT20: 3 row(s)
+  - 3GT8_raw_PKT21: 1 row(s)
+  - 3GT8_raw_PKT22: 3 row(s)
+  - EGFR_160-185_PKT01: 3 row(s)
+  - EGFR_160-185_PKT02: 3 row(s)
+  - EGFR_160-185_PKT03: 3 row(s)
+  - EGFR_160-185_PKT04: 3 row(s)
+  - EGFR_160-185_PKT05: 3 row(s)
+  - EGFR_160-185_PKT06: 1 row(s)
+  - EGFR_160-185_PKT07: 3 row(s)
+  - EGFR_160-185_PKT08: 1 row(s)
+  - EGFR_160-185_PKT09: 3 row(s)
+  - EGFR_160-185_PKT10: 1 row(s)
+  - EGFR_160-185_PKT11: 3 row(s)
+  - EGFR_160-185_PKT12: 3 row(s)
+  - EGFR_160-185_PKT13: 3 row(s)
+  - EGFR_160-185_PKT14: 3 row(s)
+  - EGFR_160-185_PKT15: 3 row(s)
+  - EGFR_160-185_PKT16: 3 row(s)
+  - EGFR_160-185_PKT17: 1 row(s)
+  - EGFR_160-185_PKT18: 1 row(s)
+  - EGFR_160-185_PKT19: 3 row(s)
+  - EGFR_160-185_PKT20: 1 row(s)
+  - EGFR_160-185_PKT21: 1 row(s)
+  - EGFR_160-185_PKT22: 1 row(s)
+  - EGFR_160-185_PKT23: 3 row(s)
+  - EGFR_160-185_PKT24: 1 row(s)
+  - EGFR_160-185_PKT25: 1 row(s)
+  - EGFR_160-185_PKT26: 1 row(s)
+  - EGFR_160-185_PKT27: 3 row(s)
+  - EGFR_160-185_PKT28: 1 row(s)
+  - EGFR_160-185_PKT29: 3 row(s)
+  - EGFR_160-185_PKT30: 3 row(s)
+  - EGFR_160-185_PKT31: 1 row(s)
+  - EGFR_160-185_PKT32: 1 row(s)
+  - EGFR_160-185_PKT33: 1 row(s)
+  - EGFR_160-185_PKT34: 3 row(s)
+  - EGFR_160-185_PKT35: 1 row(s)
+  - EGFR_160-185_PKT36: 1 row(s)
+  - EGFR_160-185_PKT37: 3 row(s)
+  - EGFR_160-185_PKT38: 3 row(s)
+  - EGFR_160-185_PKT39: 3 row(s)
+  - EGFR_160-185_PKT40: 3 row(s)
+  - EGFR_160-185_PKT41: 1 row(s)
+  - EGFR_160-185_PKT42: 1 row(s)
+  - EGFR_160-185_PKT43: 3 row(s)
+  - EGFR_160-185_PKT44: 1 row(s)
+  - EGFR_170-200_PKT01: 3 row(s)
+  - EGFR_170-200_PKT02: 1 row(s)
+  - EGFR_170-200_PKT03: 1 row(s)
+  - EGFR_170-200_PKT04: 3 row(s)
+  - EGFR_170-200_PKT05: 3 row(s)
+  - EGFR_170-200_PKT06: 3 row(s)
+  - EGFR_170-200_PKT07: 1 row(s)
+  - EGFR_170-200_PKT08: 1 row(s)
+  - EGFR_170-200_PKT09: 1 row(s)
+  - EGFR_170-200_PKT10: 3 row(s)
+  - EGFR_170-200_PKT11: 1 row(s)
+  - EGFR_170-200_PKT12: 3 row(s)
+  - EGFR_170-200_PKT13: 3 row(s)
+  - EGFR_170-200_PKT14: 1 row(s)
+  - EGFR_170-200_PKT15: 3 row(s)
+  - EGFR_170-200_PKT16: 1 row(s)
+  - EGFR_170-200_PKT17: 3 row(s)
+  - EGFR_170-200_PKT18: 1 row(s)
+  - EGFR_170-200_PKT19: 1 row(s)
+  - EGFR_170-200_PKT20: 1 row(s)
+  - EGFR_170-200_PKT21: 1 row(s)
+  - EGFR_170-200_PKT22: 1 row(s)
+  - EGFR_170-200_PKT23: 1 row(s)
+  - EGFR_170-200_PKT24: 1 row(s)
+  - EGFR_170-200_PKT25: 3 row(s)
+  - EGFR_170-200_PKT26: 3 row(s)
+  - EGFR_170-200_PKT27: 1 row(s)
+  - EGFR_170-200_PKT28: 3 row(s)
+  - EGFR_170-200_PKT29: 1 row(s)
+  - EGFR_170-200_PKT30: 1 row(s)
+  - EGFR_170-200_PKT31: 3 row(s)
+  - EGFR_170-200_PKT32: 1 row(s)
+  - EGFR_170-200_PKT33: 3 row(s)
+  - EGFR_170-200_PKT34: 3 row(s)
+  - EGFR_170-200_PKT35: 1 row(s)
+  - EGFR_170-200_PKT36: 3 row(s)
+  - EGFR_170-200_PKT37: 1 row(s)
+
+---
+
+Generated by `egfr_pipeline.phase4.evidence_ingestion`
