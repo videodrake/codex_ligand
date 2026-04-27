@@ -17,6 +17,8 @@ from typing import Dict, List
 
 import pytest
 
+pytestmark = pytest.mark.smoke
+
 
 # ---------------------------------------------------------------------------
 # Helpers

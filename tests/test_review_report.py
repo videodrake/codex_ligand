@@ -1,4 +1,8 @@
+import pytest
+
 from egfr_pipeline.phase1.review_report import _build_patch_reference, _build_report
+
+pytestmark = pytest.mark.smoke
 
 
 def test_build_patch_reference_preserves_metadata_from_robustness_rows():

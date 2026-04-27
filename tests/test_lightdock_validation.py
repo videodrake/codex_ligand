@@ -2,10 +2,14 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from egfr_pipeline.phase1.lightdock_validation import (
     compute_cross_method_convergence,
     extract_lightdock_interfaces,
 )
+
+pytestmark = pytest.mark.smoke
 
 
 def _write_csv(path, rows):
