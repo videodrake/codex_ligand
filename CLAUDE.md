@@ -67,7 +67,7 @@ Vina(소분자) + PyRosetta(PPI) 이중 증거 통합, 3개 EGFR 구조 상태 �
    - `egfr_pipeline/phase4/` → Workflow B Phase 4
    - `egfr_pipeline/pyrosetta_docking/` → Workflow A Phase 2 + Workflow B Phase 1 (PPI 도킹 엔진, 양쪽에서 공유)
    - `verdict.py`, `report.py`, `validate.py` → Workflow A Phase 5~7
-5. **CSV 스키마 보존**: 기존 CSV 출력의 컬럼명/타입을 변경할 때는 하위 Phase의 ingestion 코드와 validate.py를 함께 수정한다.
+5. **CSV 스키마 단일 출처**: 모든 CSV 컬럼 정의는 `egfr_pipeline/schemas.py`에 있다. 컬럼 추가/제거/순서 변경은 schemas.py에서 한다 — producer(verdict, parse_poses, pyrosetta_extract 등)와 validate.py가 같은 상수를 import한다. 인라인 컬럼 리스트(`fieldnames=["..."]`)를 다시 도입하지 않는다.
 6. **paths.py 보호**: `egfr_pipeline/paths.py`를 수정하면 전체 Phase의 경로 해석이 바뀐다. 수정 후 반드시 모든 Phase의 smoke test를 실행한다.
 7. **잔기 번호 체계**: PDB 잔기 번호(author numbering)를 사용한다. 내부 인덱스(0-based)와 혼동하면 전체 분석이 틀어진다.
 8. **스코어링 가중치 변경 승인**: verdict.py의 축별 점수 배분(vina_max, ppi_max, cross_max) 및 score_framework.py의 A1~A4 가중치 변경은 과학적 판단이므로 반드시 사람 승인 후 진행한다. 승인 없이 코드를 수정하지 않는다.

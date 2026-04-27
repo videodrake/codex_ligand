@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
 from egfr_pipeline.residue_utils import normalize_residue_id, parse_residue_set
+from egfr_pipeline.schemas import VINA_POCKET_COMPARISON
 
 
 # ---------------------------------------------------------------------------
@@ -104,31 +105,7 @@ def build_pocket_ligands(
 # Core comparison
 # ---------------------------------------------------------------------------
 
-COMPARISON_FIELDS = [
-    "receptor_a",
-    "pocket_a",
-    "receptor_b",
-    "pocket_b",
-    "centroid_dist",
-    "residue_jaccard",
-    "residue_overlap_coeff",
-    "shared_residues",
-    "n_shared_residues",
-    "residues_only_a",
-    "residues_only_b",
-    "n_residues_a",
-    "n_residues_b",
-    "shared_ligands",
-    "n_shared_ligands",
-    "n_ligands_a",
-    "n_ligands_b",
-    "affinity_a",
-    "affinity_b",
-    "n_pose_a",
-    "n_pose_b",
-    "same_patch_candidate",
-    "centroid_dist_bootstrap_ci",
-]
+COMPARISON_FIELDS = VINA_POCKET_COMPARISON
 
 
 def compare_all_pockets(

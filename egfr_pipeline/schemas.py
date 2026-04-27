@@ -115,16 +115,18 @@ VALID_SITES: List[str] = [
     "vina_diversity_pts", "vina_consensus_pts",
     "ppi_spatial_pts", "ppi_overlap_pts", "ppi_reproducibility_pts",
     "cross_receptor_pts", "cross_receptor_support_pts",
+    "exp_sensitivity_pts", "exp_enrichment_pts", "exp_specificity_pts",
+    "exp_score",
     "score_denominator",
     "ppi_data_available", "best_affinity", "n_pose", "n_ligand",
     "dominant_ligand_fraction", "ligand_pose_entropy",
     "spatial_dist_to_ppi", "closest_ppi_partner", "n_ppi_partners_near",
     "n_shared_with_ppi", "ppi_frac_runs_supporting", "ppi_best_interface_delta_e",
-    "cross_receptor_support",
-    "cross_receptor_matches", "consensus_site_id",
+    "cross_receptor_matches", "cross_receptor_support", "consensus_site_id",
     "exp_sensitivity", "exp_specificity", "exp_enrichment", "exp_rank_impact",
     "pocket_stability", "evidence_profile", "reason_tags", "decision_trace",
     "reasons",
+    "is_atp_site", "exclusion_reason",
 ]
 
 VINA_CONSENSUS_SITES: List[str] = [

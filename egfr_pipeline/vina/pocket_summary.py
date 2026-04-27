@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.schemas import VINA_DRUG_POCKET_MAP, VINA_POCKET_TABLE
 
 
 def load_pose_table(path: Path) -> List[dict]:
@@ -177,40 +178,12 @@ def summarize_from_config(config_path: str, pose_table_path: Optional[str] = Non
     pocket_csv = write_csv(
         postprocess_root / "vina_pocket_table.csv",
         pocket_rows,
-        [
-            "receptor_id",
-            "pocket_id",
-            "centroid_x",
-            "centroid_y",
-            "centroid_z",
-            "n_pose",
-            "n_ligand",
-            "best_affinity",
-            "mean_affinity",
-            "union_contact_residues",
-            "top_residues",
-            "centroid_spread_A",
-            "affinity_std",
-            "affinity_iqr",
-            "dominant_ligand_fraction",
-            "ligand_pose_entropy",
-        ],
+        VINA_POCKET_TABLE,
     )
     drug_csv = write_csv(
         postprocess_root / "vina_drug_pocket_map.csv",
         drug_map_rows,
-        [
-            "receptor_id",
-            "ligand_id",
-            "dominant_pocket_id",
-            "dominant_pocket_pose_count",
-            "dominant_pocket_fraction",
-            "best_affinity",
-            "best_pose_rank",
-            "top_pose_residues",
-            "alternative_pockets",
-            "is_multimodal_binding",
-        ],
+        VINA_DRUG_POCKET_MAP,
     )
     occupancy_csv = write_csv(
         postprocess_root / "vina_pocket_residue_occupancy.csv",

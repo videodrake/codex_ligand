@@ -24,6 +24,12 @@ from egfr_pipeline.config import load_config
 from egfr_pipeline.parsing_utils import safe_float
 from egfr_pipeline.phase1.extract_interface import extract_run
 from egfr_pipeline.residue_utils import extract_resnum, normalize_residue_id
+from egfr_pipeline.schemas import (
+    PPI_PYROSETTA_MODEL_TABLE,
+    PPI_PYROSETTA_RESIDUE_LONG,
+    PPI_PYROSETTA_RESIDUES,
+    PPI_PYROSETTA_SUMMARY,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -52,99 +58,10 @@ def write_csv_rows(path: Path, rows: List[dict], fieldnames: List[str]) -> Path:
 # ---------------------------------------------------------------------------
 
 
-PPI_RESIDUE_FIELDS = [
-    "receptor_id",
-    "partner_id",
-    "source",
-    "chain",
-    "residue_id",
-    "residue_num",
-    "residue_name",
-    "lobe_label",
-    "construct_type",
-    "orientation_validation_status",
-    "n_runs_total",
-    "n_runs_supporting",
-    "frac_runs_supporting",
-    "supporting_seed_indices",
-    "frequency_final_ranking",
-    "frequency_cluster_summary",
-    "n_models_final_ranking",
-    "occupancy",
-    "mean_interface_delta_e",
-    "best_interface_delta_e",
-]
-
-PPI_SUMMARY_FIELDS = [
-    "receptor_id",
-    "partner_id",
-    "source",
-    "construct_type",
-    "orientation_validation_status",
-    "n_runs_total",
-    "n_runs_completed",
-    "seed_indices",
-    "n_final_models",
-    "n_clusters",
-    "n_interface_residues",
-    "n_nlobe_interface_residues",
-    "n_clobe_interface_residues",
-    "top_residues",
-    "best_dg",
-    "mean_dg",
-    "best_dsasa",
-]
-
-PPI_RESIDUE_LONG_FIELDS = [
-    "model_id",
-    "receptor_id",
-    "partner_id",
-    "source",
-    "construct_type",
-    "orientation_validation_status",
-    "seed_index",
-    "run_label",
-    "run_dir",
-    "rank",
-    "cluster_id",
-    "chain",
-    "residue_id",
-    "residue_num",
-    "residue_name",
-    "lobe_label",
-    "delta_e_total",
-    "delta_e_fa_atr",
-    "delta_e_fa_rep",
-    "delta_e_fa_sol",
-    "delta_e_fa_elec",
-    "source_file",
-]
-
-PPI_MODEL_FIELDS = [
-    "model_id",
-    "receptor_id",
-    "partner_id",
-    "source",
-    "construct_type",
-    "orientation_validation_status",
-    "seed_index",
-    "run_label",
-    "run_dir",
-    "rank",
-    "cluster_id",
-    "dG_separated",
-    "dSASA",
-    "sc_value",
-    "packstat",
-    "nres_int",
-    "n_receptor_interface_residues",
-    "n_partner_interface_residues",
-    "n_nlobe_interface_residues",
-    "n_clobe_interface_residues",
-    "receptor_interface_residues",
-    "partner_interface_residues",
-    "source_file",
-]
+PPI_RESIDUE_FIELDS = PPI_PYROSETTA_RESIDUES
+PPI_SUMMARY_FIELDS = PPI_PYROSETTA_SUMMARY
+PPI_RESIDUE_LONG_FIELDS = PPI_PYROSETTA_RESIDUE_LONG
+PPI_MODEL_FIELDS = PPI_PYROSETTA_MODEL_TABLE
 
 
 # ---------------------------------------------------------------------------

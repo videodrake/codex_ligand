@@ -6,48 +6,12 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
 from egfr_pipeline.parsing_utils import safe_int
+from egfr_pipeline.schemas import VINA_POSE_TABLE, VINA_POSTPROCESS_COVERAGE
 from egfr_pipeline.vina.vina_executor import derive_docking_seed
 
 
-POSE_TABLE_FIELDS = [
-    "receptor_id",
-    "ligand_id",
-    "pose_rank",
-    "affinity",
-    "rmsd_lb",
-    "rmsd_ub",
-    "centroid_x",
-    "centroid_y",
-    "centroid_z",
-    "raw_pose_file",
-    "docking_mode",
-    "exhaustiveness",
-    "requested_n_poses",
-    "energy_range",
-    "cpu_per_job",
-    "vina_seed",
-    "pose_source_status",
-    "pocket_id",
-    "contact_residues",
-    "n_contact_residues",
-    "contact_distances",
-]
-
-POSE_COVERAGE_FIELDS = [
-    "receptor_id",
-    "ligand_id",
-    "raw_pose_file",
-    "status",
-    "parsed_n_poses",
-    "requested_n_poses",
-    "coverage_fraction",
-    "docking_mode",
-    "exhaustiveness",
-    "energy_range",
-    "cpu_per_job",
-    "base_seed",
-    "vina_seed",
-]
+POSE_TABLE_FIELDS = VINA_POSE_TABLE
+POSE_COVERAGE_FIELDS = VINA_POSTPROCESS_COVERAGE
 
 
 def parse_pose_blocks(pdbqt_path: Path) -> List[dict]:

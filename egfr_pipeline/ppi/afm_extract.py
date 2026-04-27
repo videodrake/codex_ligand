@@ -14,19 +14,10 @@ from typing import Dict, List, Optional, Tuple
 from egfr_pipeline import paths
 from egfr_pipeline.residue_utils import normalize_residue_id, extract_resnum
 from egfr_pipeline.config import load_config
+from egfr_pipeline.schemas import PPI_AFM_RESIDUES
 
 
-# ---------------------------------------------------------------------------
-# Field definitions
-# ---------------------------------------------------------------------------
-
-AFM_RESIDUE_FIELDS = [
-    "receptor_id",
-    "source",
-    "residue_id",
-    "residue_num",
-    "min_ca_distance",
-]
+AFM_RESIDUE_FIELDS = PPI_AFM_RESIDUES
 
 
 # ---------------------------------------------------------------------------

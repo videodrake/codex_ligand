@@ -41,98 +41,15 @@ from egfr_pipeline.residue_utils import (
     extract_resnum,
     parse_residue_set,
 )
+from egfr_pipeline.schemas import (
+    CROSS_METHOD_AGREEMENT,
+    VALID_SITES,
+    VINA_CONSENSUS_SITES,
+)
 
-# ---------------------------------------------------------------------------
-# CSV field definitions
-# ---------------------------------------------------------------------------
-
-AGREEMENT_FIELDS = [
-    "receptor_id",
-    "pocket_id",
-    "n_vina_residues",
-    "n_ppi_residues",
-    "n_shared_residues",
-    "jaccard",
-    "overlap_coeff",
-    "shared_residue_list",
-    "ppi_mean_occupancy_of_shared",
-    "spatial_dist_A",
-    "spatial_proximity",
-    "closest_ppi_partner",
-    "n_ppi_partners_near",
-    "ppi_frac_runs_supporting",
-    "ppi_best_frac_runs_supporting",
-    "ppi_best_interface_delta_e",
-    "ppi_shared_partner_count",
-    "vina_best_affinity_kcal",
-    "ppi_best_dg_REU",
-    "agreement_level",
-]
-
-VERDICT_FIELDS = [
-    "receptor_id",
-    "pocket_id",
-    "verdict",
-    "confidence_score",
-    "vina_quality_score",
-    "ppi_proximity_score",
-    "cross_receptor_score",
-    "vina_affinity_pts",
-    "vina_convergence_pts",
-    "vina_stability_pts",
-    "vina_diversity_pts",
-    "vina_consensus_pts",
-    "ppi_spatial_pts",
-    "ppi_overlap_pts",
-    "ppi_reproducibility_pts",
-    "cross_receptor_pts",
-    "cross_receptor_support_pts",
-    "exp_sensitivity_pts",
-    "exp_enrichment_pts",
-    "exp_specificity_pts",
-    "exp_score",
-    "score_denominator",
-    "ppi_data_available",
-    "best_affinity",
-    "n_pose",
-    "n_ligand",
-    "dominant_ligand_fraction",
-    "ligand_pose_entropy",
-    "spatial_dist_to_ppi",
-    "closest_ppi_partner",
-    "n_ppi_partners_near",
-    "n_shared_with_ppi",
-    "ppi_frac_runs_supporting",
-    "ppi_best_interface_delta_e",
-    "cross_receptor_matches",
-    "cross_receptor_support",
-    "consensus_site_id",
-    "exp_sensitivity",
-    "exp_specificity",
-    "exp_enrichment",
-    "exp_rank_impact",
-    "pocket_stability",
-    "evidence_profile",
-    "reason_tags",
-    "decision_trace",
-    "reasons",
-    "is_atp_site",
-    "exclusion_reason",
-]
-
-CONSENSUS_FIELDS = [
-    "consensus_site_id",
-    "n_receptors",
-    "receptor_list",
-    "pocket_list",
-    "centroid_x",
-    "centroid_y",
-    "centroid_z",
-    "best_affinity",
-    "total_n_ligand",
-    "total_n_pose",
-    "consensus_residues",
-]
+AGREEMENT_FIELDS = CROSS_METHOD_AGREEMENT
+VERDICT_FIELDS = VALID_SITES
+CONSENSUS_FIELDS = VINA_CONSENSUS_SITES
 
 # ---------------------------------------------------------------------------
 # ATP binding site detection (absolute rule #2: never STRONG)

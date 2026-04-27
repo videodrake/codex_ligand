@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from egfr_pipeline.config import load_config
 from egfr_pipeline import paths
+from egfr_pipeline.schemas import VINA_POCKET_BOOTSTRAP
 from egfr_pipeline.vina.pocket_cluster import (
     assign_pockets,
     euclidean_distance,
@@ -201,20 +202,7 @@ def match_pockets_to_reference(
 # A4: Aggregate bootstrap statistics
 # ---------------------------------------------------------------------------
 
-BOOTSTRAP_FIELDS = [
-    "receptor_id",
-    "pocket_id",
-    "pocket_exists_frac",
-    "centroid_std_A",
-    "affinity_mean",
-    "affinity_std",
-    "affinity_iqr",
-    "n_pose_mean",
-    "n_pose_std",
-    "n_replicates",
-    "sample_fraction",
-    "stability_scope",
-]
+BOOTSTRAP_FIELDS = VINA_POCKET_BOOTSTRAP
 
 
 def compute_bootstrap_stats(
