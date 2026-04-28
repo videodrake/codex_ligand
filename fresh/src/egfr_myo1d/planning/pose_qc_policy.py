@@ -4,8 +4,6 @@ Task 6 only serializes deterministic policy. It does not classify real docking
 poses and does not run a docking engine.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 
@@ -22,7 +20,7 @@ POSE_CLASSES = [
 ]
 
 
-def build_pose_acceptance_policy(contract: dict[str, Any]) -> dict[str, Any]:
+def build_pose_acceptance_policy(contract):
     myo = contract.get("myo1d", {})
     receptor = contract.get("receptor", {})
     active_face = list(myo.get("active_face", []))
@@ -71,8 +69,8 @@ def build_pose_acceptance_policy(contract: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def audit_pose_policy(policy: dict[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def audit_pose_policy(policy):
+    rows = []
     for pose_class in policy["future_pose_classes"]:
         decision = "accept" if pose_class.startswith("accepted_") else ("review" if pose_class.startswith("review_") else "reject")
         rows.append(

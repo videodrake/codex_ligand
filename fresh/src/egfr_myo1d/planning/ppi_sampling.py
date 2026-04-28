@@ -1,7 +1,5 @@
 """Deterministic spec-only PPI sampling plan builder."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +14,7 @@ PRIMARY_SEEDS = [0, 1]
 COMPARATOR_SEEDS = [0]
 
 
-def _method_tag(method: str) -> str:
+def _method_tag(method):
     if method == "pyrosetta_global_ppi":
         return "pyrosetta"
     if method == "lightdock_gso_ppi":
@@ -24,37 +22,38 @@ def _method_tag(method: str) -> str:
     return method.replace("_", "-")
 
 
-def _as_repo_path(ctx: RunContext, path: Path) -> str:
+def _as_repo_path(ctx, path):
     return ctx.relative_to_repo(path)
 
 
-def source_file_entries(ctx: RunContext, input_root: Path, contract: dict[str, Any], contract_path: Path) -> dict[str, dict[str, Any]]:
-    entries: dict[str, dict[str, Any]] = {
-        "contract": {"path": _as_repo_path(ctx, contract_path), **describe_file(contract_path)}
-    }
+def _file_entry(ctx, path, source_path):
+    entry = {"path": _as_repo_path(ctx, path)}
+    entry.update(describe_file(source_path))
+    return entry
+
+
+def source_file_entries(ctx, input_root, contract, contract_path):
+    entries = {"contract": _file_entry(ctx, contract_path, contract_path)}
     receptor_path = resolve_input(input_root, contract["receptor"]["path"])
     primary_path = resolve_input(input_root, contract["myo1d"]["primary_construct"]["path"])
     comparator_path = resolve_input(input_root, contract["myo1d"]["comparator_construct"]["path"])
     membrane_path = resolve_input(input_root, contract["membrane_frame"]["path"])
     entries.update(
         {
-            "receptor": {"path": _as_repo_path(ctx, receptor_path), **describe_file(receptor_path)},
-            "myo1d_primary": {"path": _as_repo_path(ctx, primary_path), **describe_file(primary_path)},
-            "myo1d_comparator": {"path": _as_repo_path(ctx, comparator_path), **describe_file(comparator_path)},
-            "membrane_frame": {"path": _as_repo_path(ctx, membrane_path), **describe_file(membrane_path)},
+            "receptor": _file_entry(ctx, receptor_path, receptor_path),
+            "myo1d_primary": _file_entry(ctx, primary_path, primary_path),
+            "myo1d_comparator": _file_entry(ctx, comparator_path, comparator_path),
+            "membrane_frame": _file_entry(ctx, membrane_path, membrane_path),
         }
     )
     for item in contract.get("negative_controls", []):
         control_path = resolve_input(input_root, item["path"])
-        entries[f"negative_control:{item['id']}"] = {
-            "path": _as_repo_path(ctx, control_path),
-            **describe_file(control_path),
-        }
+        entries["negative_control:{0}".format(item['id'])] = _file_entry(ctx, control_path, control_path)
     return entries
 
 
-def negative_control_quarantine_rows(contract: dict[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def negative_control_quarantine_rows(contract):
+    rows = []
     for item in contract.get("negative_controls", []):
         control_id = item.get("id", "")
         if "962_1006" in control_id or "terminal_artifact" in control_id:
@@ -99,8 +98,8 @@ def negative_control_quarantine_rows(contract: dict[str, Any]) -> list[dict[str,
     return rows
 
 
-def readiness_blocker_rows(readiness_report: dict[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def readiness_blocker_rows(readiness_report):
+    rows = []
     for item in readiness_report.get("blockers", []):
         rows.append(
             {
@@ -117,7 +116,7 @@ def readiness_blocker_rows(readiness_report: dict[str, Any]) -> list[dict[str, A
     return rows
 
 
-def accepted_protomers(contract: dict[str, Any], readiness_report: dict[str, Any]) -> list[dict[str, Any]]:
+def accepted_protomers(contract, readiness_report):
     expected = list(contract["receptor"].get("expected_chains", []))
     observed = set(readiness_report.get("egfr", {}).get("chains", []))
     return [
@@ -128,13 +127,13 @@ def accepted_protomers(contract: dict[str, Any], readiness_report: dict[str, Any
 
 
 def build_job_specs(
-    ctx: RunContext,
-    mode: str,
-    profile: str,
-    input_root: Path,
-    contract: dict[str, Any],
-    readiness_report: dict[str, Any],
-) -> list[dict[str, Any]]:
+    ctx,
+    mode,
+    profile,
+    input_root,
+    contract,
+    readiness_report,
+):
     receptor = contract["receptor"]
     myo = contract["myo1d"]
     primary = myo["primary_construct"]
@@ -143,12 +142,12 @@ def build_job_specs(
     primary_path = resolve_input(input_root, primary["path"])
     comparator_path = resolve_input(input_root, comparator["path"])
     membrane_id = Path(contract["membrane_frame"]["path"]).stem
-    jobs: list[dict[str, Any]] = []
+    jobs = []
     for method in METHODS:
         method_tag = _method_tag(method)
         for protomer in accepted_protomers(contract, readiness_report):
             for seed in PRIMARY_SEEDS:
-                job_id = f"ppi_smoke_primary_{protomer['protomer_id']}_seed{seed:03d}_{method_tag}_spec"
+                job_id = "ppi_smoke_primary_{0}_seed{1:03d}_{2}_spec".format(protomer['protomer_id'], seed, method_tag)
                 jobs.append(
                     {
                         "job_id": job_id,
@@ -180,7 +179,7 @@ def build_job_specs(
                     }
                 )
             for seed in COMPARATOR_SEEDS:
-                job_id = f"ppi_smoke_noise_{protomer['protomer_id']}_seed{seed:03d}_{method_tag}_spec"
+                job_id = "ppi_smoke_noise_{0}_seed{1:03d}_{2}_spec".format(protomer['protomer_id'], seed, method_tag)
                 jobs.append(
                     {
                         "job_id": job_id,
@@ -215,15 +214,15 @@ def build_job_specs(
 
 
 def build_sampling_plan(
-    ctx: RunContext,
-    mode: str,
-    profile: str,
-    input_root: Path,
-    contract: dict[str, Any],
-    readiness_report: dict[str, Any],
-    jobs: list[dict[str, Any]],
-    blockers: list[dict[str, Any]],
-) -> dict[str, Any]:
+    ctx,
+    mode,
+    profile,
+    input_root,
+    contract,
+    readiness_report,
+    jobs,
+    blockers,
+):
     primary_count = sum(1 for job in jobs if job["partner_role"] == "production_primary")
     comparator_count = sum(1 for job in jobs if job["partner_role"] == "noise_monitor")
     return {
@@ -267,8 +266,8 @@ def build_sampling_plan(
     }
 
 
-def job_audit_rows(jobs: list[dict[str, Any]], blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def job_audit_rows(jobs, blockers):
+    rows = []
     for job in jobs:
         rows.append(
             {

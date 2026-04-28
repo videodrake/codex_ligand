@@ -5,8 +5,6 @@ PPI input contract style. It is a readiness/audit layer only: it does not write
 prepared PDBs, normalize structures, run docking, or invoke external tools.
 """
 
-from __future__ import annotations
-
 import csv
 import json
 from pathlib import Path
@@ -40,7 +38,7 @@ NOT_IMPLEMENTED = [
 ]
 
 
-def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str], ctx: RunContext) -> None:
+def write_csv(path, rows, fieldnames, ctx):
     safe_path = ctx.require_within_run_dir(path)
     safe_path.parent.mkdir(parents=True, exist_ok=True)
     with safe_path.open("w", encoding="utf-8", newline="") as handle:
@@ -51,13 +49,13 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str], ctx
 
 
 def real_warning_policy(
-    code: str,
-    input_id: str,
-    contract: dict[str, Any],
-    mode: str,
-    profile: str,
-    strict: bool,
-) -> tuple[str, str, bool, bool]:
+    code,
+    input_id,
+    contract,
+    mode,
+    profile,
+    strict,
+):
     """Return severity, classification, production_blocker, quarantine."""
     whitelist = set(contract.get("task3_closeout", {}).get("fixture_warning_whitelist", []))
     fixture_allowed = input_id in whitelist and profile == "codex_dev" and not strict
@@ -67,14 +65,14 @@ def real_warning_policy(
 
 
 def message(
-    input_id: str,
-    severity: str,
-    classification: str,
-    code: str,
-    text: str,
-    production_blocker: bool = False,
-    quarantine: bool = False,
-) -> dict[str, Any]:
+    input_id,
+    severity,
+    classification,
+    code,
+    text,
+    production_blocker=False,
+    quarantine=False,
+):
     return {
         "input_id": input_id,
         "severity": severity,
@@ -86,7 +84,7 @@ def message(
     }
 
 
-def status_from_messages(messages: list[dict[str, Any]]) -> str:
+def status_from_messages(messages):
     if any(item["severity"] == "FAIL" for item in messages):
         return "FAIL"
     if any(item["severity"] == "WARN" for item in messages):
@@ -94,7 +92,7 @@ def status_from_messages(messages: list[dict[str, Any]]) -> str:
     return "PASS"
 
 
-def count_summary(messages: list[dict[str, Any]], pass_count: int = 0) -> dict[str, Any]:
+def count_summary(messages, pass_count=0):
     fail_count = sum(1 for item in messages if item["severity"] == "FAIL")
     warn_count = sum(1 for item in messages if item["severity"] == "WARN")
     return {
@@ -108,7 +106,7 @@ def count_summary(messages: list[dict[str, Any]], pass_count: int = 0) -> dict[s
     }
 
 
-def residue_reset_risk(structure: PDBStructure, expected_range: list[int]) -> bool:
+def residue_reset_risk(structure, expected_range):
     expected_start = int(expected_range[0])
     for chain_id in structure.chain_ids:
         numbers = structure.residue_numbers_for_chain(chain_id)
@@ -118,21 +116,22 @@ def residue_reset_risk(structure: PDBStructure, expected_range: list[int]) -> bo
 
 
 def validate_real_receptor(
-    contract: dict[str, Any],
-    input_root: Path,
-    mode: str,
-    profile: str,
-    strict: bool,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    contract,
+    input_root,
+    mode,
+    profile,
+    strict,
+):
     receptor = contract["receptor"]
     input_id = receptor["id"]
     path = resolve_input(input_root, receptor["path"])
     desc = describe_file(path)
-    manifest_record = {"input_id": input_id, "role": "receptor", "path": str(path), **desc}
-    rows: list[dict[str, Any]] = []
-    messages: list[dict[str, Any]] = []
+    manifest_record = {"input_id": input_id, "role": "receptor", "path": str(path)}
+    manifest_record.update(desc)
+    rows = []
+    messages = []
     if not path.exists():
-        messages.append(message(input_id, "FAIL", "missing_input", "missing_receptor", f"missing receptor input: {path}", True, True))
+        messages.append(message(input_id, "FAIL", "missing_input", "missing_receptor", "missing receptor input: {0}".format(path), True, True))
         return {"status": "FAIL", "chains": [], "protomer_count": 0, "messages": messages}, rows, messages, manifest_record
 
     try:
@@ -148,16 +147,16 @@ def validate_real_receptor(
         messages.append(message(input_id, sev, cls, "single_chain_dimer_ambiguity", "real receptor has fewer than two explicit chains", blocker, quarantine))
     if not expected_chains.issubset(observed_chains):
         sev, cls, blocker, quarantine = real_warning_policy("expected_chains_AB_missing", input_id, contract, mode, profile, strict)
-        messages.append(message(input_id, sev, cls, "expected_chains_AB_missing", f"expected chains {sorted(expected_chains)}; observed {sorted(observed_chains)}", blocker, quarantine))
+        messages.append(message(input_id, sev, cls, "expected_chains_AB_missing", "expected chains {0}; observed {1}".format(sorted(expected_chains), sorted(observed_chains)), blocker, quarantine))
     duplicate_count = structure.duplicate_atom_identity_count()
     if duplicate_count:
         sev, cls, blocker, quarantine = real_warning_policy("duplicate_atom_identities", input_id, contract, mode, profile, strict)
-        messages.append(message(input_id, sev, cls, "duplicate_atom_identities", f"{duplicate_count} duplicate atom identities observed", blocker, quarantine))
+        messages.append(message(input_id, sev, cls, "duplicate_atom_identities", "{0} duplicate atom identities observed".format(duplicate_count), blocker, quarantine))
     if residue_reset_risk(structure, receptor["biological_residue_range"]):
         messages.append(message(input_id, "FAIL", "quarantine", "residue_number_reset_risk", "residue numbering appears reset rather than project numbering", True, True))
 
     warn_mutations = receptor.get("warn_mutations", [])
-    mutation_residues: set[int] = set()
+    mutation_residues = set()
     for check in warn_mutations:
         residue_number = int(check["residue_number"])
         warn_if = check["warn_if"]
@@ -165,7 +164,7 @@ def validate_real_receptor(
         if warn_if in observed:
             mutation_residues.add(residue_number)
             sev, cls, blocker, quarantine = real_warning_policy("v924r_like_mutation", input_id, contract, mode, profile, strict)
-            messages.append(message(input_id, sev, cls, "v924r_like_mutation", check.get("reason", f"{warn_if}{residue_number} detected; do not repair silently"), blocker, quarantine))
+            messages.append(message(input_id, sev, cls, "v924r_like_mutation", check.get("reason", "{0}{1} detected; do not repair silently".format(warn_if, residue_number)), blocker, quarantine))
 
     for residue in structure.residues:
         protomer_id = residue.chain_id if residue.chain_id in expected_chains else "unknown"
@@ -205,25 +204,26 @@ def validate_real_receptor(
 
 
 def validate_real_myo1d(
-    contract: dict[str, Any],
-    input_root: Path,
-    mode: str,
-    profile: str,
-    strict: bool,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    contract,
+    input_root,
+    mode,
+    profile,
+    strict,
+):
     myo = contract["myo1d"]
     primary = myo["primary_construct"]
     comparator = myo.get("comparator_construct")
-    messages: list[dict[str, Any]] = []
-    rows: list[dict[str, Any]] = []
-    inputs: dict[str, Any] = {}
+    messages = []
+    rows = []
+    inputs = {}
 
-    def check_construct(construct: dict[str, Any], role: str) -> dict[str, Any]:
+    def check_construct(construct, role):
         input_id = construct["id"]
         path = resolve_input(input_root, construct["path"])
-        inputs[role] = {"input_id": input_id, "role": role, "path": str(path), **describe_file(path)}
+        inputs[role] = {"input_id": input_id, "role": role, "path": str(path)}
+        inputs[role].update(describe_file(path))
         if not path.exists():
-            messages.append(message(input_id, "FAIL", "missing_input", "missing_myo1d_construct", f"missing MYO1D {role}: {path}", True, True))
+            messages.append(message(input_id, "FAIL", "missing_input", "missing_myo1d_construct", "missing MYO1D {0}: {1}".format(role, path), True, True))
             return {"status": "FAIL", "path": str(path), "residues": []}
         try:
             structure = parse_pdb(path)
@@ -237,7 +237,7 @@ def validate_real_myo1d(
             sev, cls, blocker, quarantine = real_warning_policy(code, input_id, contract, mode, profile, strict)
             if role == "primary" and code != "myo1d_terminal_artifact":
                 sev, cls, blocker, quarantine = "FAIL", "quarantine", True, True
-            messages.append(message(input_id, sev, cls, code, f"{role} construct observed range {biological_numbers[:1]}-{biological_numbers[-1:]}; expected {start}-{end}", blocker, quarantine))
+            messages.append(message(input_id, sev, cls, code, "{0} construct observed range {1}-{2}; expected {3}-{4}".format(role, biological_numbers[:1], biological_numbers[-1:], start, end), blocker, quarantine))
         if role == "primary" and biological_numbers and min(biological_numbers) == 962:
             sev, cls, blocker, quarantine = real_warning_policy("myo1d_terminal_artifact", input_id, contract, mode, profile, strict)
             messages.append(message(input_id, sev, cls, "myo1d_terminal_artifact", "primary MYO1D starts at 962 and lacks 955-960 structural buffer", blocker, quarantine))
@@ -246,7 +246,7 @@ def validate_real_myo1d(
         residue_numbers = set(biological_numbers)
         for required in myo["active_face"] + myo["sheet12_support"]:
             if required not in residue_numbers:
-                messages.append(message(input_id, "FAIL", "quarantine", "missing_myo1d_annotation_residue", f"missing annotation residue {required}", True, True))
+                messages.append(message(input_id, "FAIL", "quarantine", "missing_myo1d_annotation_residue", "missing annotation residue {0}".format(required), True, True))
         for residue in structure.residues:
             rows.append(
                 {
@@ -287,16 +287,17 @@ def validate_real_myo1d(
 
 
 def validate_real_membrane_frame(
-    contract: dict[str, Any],
-    input_root: Path,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    contract,
+    input_root,
+):
     frame_path = resolve_input(input_root, contract["membrane_frame"]["path"])
     desc = describe_file(frame_path)
-    manifest_record = {"input_id": "membrane_frame", "role": "membrane_frame", "path": str(frame_path), **desc}
-    rows: list[dict[str, Any]] = []
-    messages: list[dict[str, Any]] = []
+    manifest_record = {"input_id": "membrane_frame", "role": "membrane_frame", "path": str(frame_path)}
+    manifest_record.update(desc)
+    rows = []
+    messages = []
     if not frame_path.exists():
-        messages.append(message("membrane_frame", "FAIL", "missing_input", "missing_membrane_frame", f"missing membrane frame: {frame_path}", True, True))
+        messages.append(message("membrane_frame", "FAIL", "missing_input", "missing_membrane_frame", "missing membrane frame: {0}".format(frame_path), True, True))
         return {"status": "FAIL", "messages": messages}, rows, messages, manifest_record
     try:
         frame = json.loads(frame_path.read_text(encoding="utf-8"))
@@ -314,8 +315,8 @@ def validate_real_membrane_frame(
                 "field": field,
                 "path": str(frame_path),
                 "status": frame_report["status"],
-                "norm": frame_report.get(f"{field}_norm"),
-                "unit_vector": json.dumps(frame_report.get(f"{field}_unit")),
+                "norm": frame_report.get("{0}_norm".format(field)),
+                "unit_vector": json.dumps(frame_report.get("{0}_unit".format(field))),
                 "coordinate_convention": frame_report.get("coordinate_convention", ""),
                 "notes": "; ".join(item["message"] for item in frame_report.get("messages", [])),
             }
@@ -325,13 +326,13 @@ def validate_real_membrane_frame(
 
 
 def failure_outputs(
-    ctx: RunContext,
-    mode: str,
-    profile: str,
-    input_root: Path,
-    contract_path: Path | None,
-    text: str,
-) -> dict[str, Any]:
+    ctx,
+    mode,
+    profile,
+    input_root,
+    contract_path,
+    text,
+):
     msg = message("contract", "FAIL", "missing_or_malformed_contract", "contract_error", text, True, True)
     summary = count_summary([msg])
     manifest = {
@@ -381,13 +382,13 @@ REAL_BLOCKER_FIELDS = ["input_id", "severity", "classification", "production_blo
 
 
 def validate_real_inputs(
-    ctx: RunContext,
-    mode: str,
-    profile: str,
-    input_root: Path,
-    contract_path: Path | None = None,
-    strict: bool = False,
-) -> dict[str, Any]:
+    ctx,
+    mode,
+    profile,
+    input_root,
+    contract_path=None,
+    strict=False,
+):
     initialize_manifests(ctx, mode)
     root = input_root if input_root.is_absolute() else (ctx.repo_root / input_root)
     root = root.resolve()
@@ -396,7 +397,7 @@ def validate_real_inputs(
     except (FileNotFoundError, RunContextError, ValueError) as exc:
         return failure_outputs(ctx, mode, profile, root, contract_path, str(exc))
 
-    messages: list[dict[str, Any]] = []
+    messages = []
     egfr_report, egfr_rows, egfr_messages, egfr_input = validate_real_receptor(contract, root, mode, profile, strict or profile == "hpc_strict")
     messages.extend(egfr_messages)
     myo_report, myo_rows, myo_messages, myo_inputs = validate_real_myo1d(contract, root, mode, profile, strict or profile == "hpc_strict")
@@ -422,12 +423,14 @@ def validate_real_inputs(
     if active_face_contract["score_bonus_allowed"] is not False:
         messages.append(message("active_face", "FAIL", "quarantine", "score_bonus_not_allowed", "active-face residues must not create score bonuses", True, True))
 
+    contract_input = {"path": str(resolved_contract_path)}
+    contract_input.update(describe_file(resolved_contract_path))
     present_inputs = {
-        "contract": {"path": str(resolved_contract_path), **describe_file(resolved_contract_path)},
+        "contract": contract_input,
         "receptor": egfr_input,
         "membrane_frame": membrane_input,
-        **myo_inputs,
     }
+    present_inputs.update(myo_inputs)
     pass_count = sum(1 for item in present_inputs.values() if item.get("present"))
     summary = count_summary(messages, pass_count=pass_count)
     blockers = [item for item in messages if item["severity"] == "FAIL"]
@@ -437,7 +440,7 @@ def validate_real_inputs(
         "mode": mode,
         "profile": profile,
         "input_root": str(root),
-        "contract": {"path": str(resolved_contract_path), **describe_file(resolved_contract_path)},
+        "contract": contract_input,
         "inputs": present_inputs,
         "status": summary["verdict"],
         "qc_summary": summary,
@@ -475,7 +478,7 @@ def validate_real_inputs(
         ctx,
         "validate-real-inputs",
         summary["verdict"],
-        f"real input readiness completed with {summary['verdict']}",
+        "real input readiness completed with {0}".format(summary['verdict']),
         {"mode": mode, "profile": profile, "strict": strict},
     )
     append_job_status(ctx, "validate_real_inputs_local", summary["verdict"], details={"message": "local pure-Python readiness validation"})

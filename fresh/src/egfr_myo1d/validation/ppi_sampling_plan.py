@@ -1,7 +1,5 @@
 """Task 6 PPI sampling-plan validation and serialization."""
 
-from __future__ import annotations
-
 import csv
 import json
 from pathlib import Path
@@ -59,7 +57,7 @@ BLOCKER_FIELDS = [
 ]
 
 
-def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str], ctx: RunContext) -> None:
+def write_csv(path, rows, fieldnames, ctx):
     safe_path = ctx.require_within_run_dir(path)
     safe_path.parent.mkdir(parents=True, exist_ok=True)
     with safe_path.open("w", encoding="utf-8", newline="") as handle:
@@ -75,7 +73,7 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str], ctx
             writer.writerow(encoded)
 
 
-def write_jsonl(path: Path, rows: list[dict[str, Any]], ctx: RunContext) -> None:
+def write_jsonl(path, rows, ctx):
     safe_path = ctx.require_within_run_dir(path)
     safe_path.parent.mkdir(parents=True, exist_ok=True)
     with safe_path.open("w", encoding="utf-8") as handle:
@@ -83,18 +81,18 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]], ctx: RunContext) -> None
             handle.write(json.dumps(row, sort_keys=True) + "\n")
 
 
-def _resolve_root(ctx: RunContext, input_root: Path) -> Path:
+def _resolve_root(ctx, input_root):
     return input_root.resolve() if input_root.is_absolute() else (ctx.repo_root / input_root).resolve()
 
 
 def _failure_outputs(
-    ctx: RunContext,
-    mode: str,
-    profile: str,
-    input_root: Path,
-    contract_path: Path | None,
-    message: str,
-) -> dict[str, Any]:
+    ctx,
+    mode,
+    profile,
+    input_root,
+    contract_path,
+    message,
+):
     ppi_dir = ctx.require_within_run_dir(ctx.run_dir / "prepared" / "ppi")
     ppi_dir.mkdir(parents=True, exist_ok=True)
     blocker = {
@@ -143,6 +141,8 @@ def _failure_outputs(
         "ppi_pose_qc_policy_audit": ctx.relative_to_repo(ctx.qc_dir / "ppi_pose_qc_policy_audit.csv"),
         "ppi_sampling_blockers": ctx.relative_to_repo(ctx.qc_dir / "ppi_sampling_blockers.csv"),
     }
+    contract_record = {"path": str(resolved_contract_path)}
+    contract_record.update(describe_file(resolved_contract_path))
     report = {
         "run_id": ctx.run_id,
         "created_at": now_iso(),
@@ -172,14 +172,14 @@ def _failure_outputs(
 
 
 def plan_ppi_sampling(
-    ctx: RunContext,
-    mode: str,
-    profile: str,
-    input_root: Path,
-    contract_path: Path | None = None,
-    strict: bool = False,
-    command_line: str | None = None,
-) -> dict[str, Any]:
+    ctx,
+    mode,
+    profile,
+    input_root,
+    contract_path=None,
+    strict=False,
+    command_line=None,
+):
     initialize_manifests(ctx, mode)
     root = _resolve_root(ctx, input_root)
     ppi_dir = ctx.require_within_run_dir(ctx.run_dir / "prepared" / "ppi")
@@ -201,7 +201,7 @@ def plan_ppi_sampling(
     fixture_rows = negative_control_quarantine_rows(contract)
     blockers_for_csv = blocker_rows + fixture_rows
     if readiness["status"] == "FAIL":
-        jobs: list[dict[str, Any]] = []
+        jobs = []
     else:
         jobs = build_job_specs(ctx, mode, profile, root, contract, readiness)
 
@@ -263,9 +263,9 @@ def plan_ppi_sampling(
     summary = [
         "# Task 6 PPI Sampling Plan Summary",
         "",
-        f"- Status: {status}",
-        f"- Planned spec-only jobs: {len(jobs)}",
-        f"- Blocked/quarantined input records: {len(blockers_for_csv)}",
+        "- Status: {0}".format(status),
+        "- Planned spec-only jobs: {0}".format(len(jobs)),
+        "- Blocked/quarantined input records: {0}".format(len(blockers_for_csv)),
         "- Docking executed: no",
         "- Score bonuses allowed: no",
         "",
@@ -286,7 +286,7 @@ def plan_ppi_sampling(
         ctx,
         "plan-ppi-sampling",
         phase_status,
-        f"PPI sampling plan completed with {status}",
+        "PPI sampling plan completed with {0}".format(status),
         {"mode": mode, "profile": profile, "strict": strict, "job_count": len(jobs)},
     )
     append_job_status(
