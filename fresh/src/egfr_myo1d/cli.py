@@ -150,6 +150,62 @@ def build_parser():
     )
     prepare_parser.set_defaults(func=_cmd_prepare_ppi_inputs)
 
+    real_parser = subparsers.add_parser(
+        "validate-real-inputs",
+        help="Validate real EGFR/MYO1D/membrane-frame inputs for readiness without docking.",
+    )
+    real_parser.add_argument("--run-id", required=True, help="Run identifier under fresh/runs/.")
+    real_parser.add_argument("--mode", default="smoke_input", choices=["smoke_env", "smoke_input"])
+    real_parser.add_argument(
+        "--profile",
+        default="hpc_strict",
+        choices=["codex_dev", "hpc_strict"],
+        help="hpc_strict treats fixture-only warning classes as blockers/quarantine.",
+    )
+    real_parser.add_argument(
+        "--input-root",
+        default="fresh/data/raw",
+        help="Directory containing real ppi_input_contract.json and referenced inputs.",
+    )
+    real_parser.add_argument(
+        "--contract",
+        help="Optional real contract path. Absolute paths and paths under --input-root are accepted.",
+    )
+    real_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Force production-like blocker policy even under codex_dev.",
+    )
+    real_parser.set_defaults(func=_cmd_validate_real_inputs)
+
+    sampling_parser = subparsers.add_parser(
+        "plan-ppi-sampling",
+        help="Write spec-only EGFR-MYO1D PPI sampling jobs and future pose-QC policy.",
+    )
+    sampling_parser.add_argument("--run-id", required=True, help="Run identifier under fresh/runs/.")
+    sampling_parser.add_argument("--mode", default="smoke_input", choices=["smoke_env", "smoke_input"])
+    sampling_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="codex_dev allows fixture quarantines; hpc_strict blocks production-unsafe inputs.",
+    )
+    sampling_parser.add_argument(
+        "--input-root",
+        default="fresh/data/raw",
+        help="Directory containing ppi_input_contract.json and referenced inputs.",
+    )
+    sampling_parser.add_argument(
+        "--contract",
+        help="Optional PPI input contract path. Absolute paths and paths under --input-root are accepted.",
+    )
+    sampling_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Force production-like blocker policy even under codex_dev.",
+    )
+    sampling_parser.set_defaults(func=_cmd_plan_ppi_sampling)
+
     return parser
 
 
@@ -295,6 +351,57 @@ def _cmd_prepare_ppi_inputs(args):
     status = report["status"]
     print("prepare-ppi-inputs {0}".format(status))
     print("preparation_qc_report={0}".format(ctx.manifest_dir / "preparation_qc_report.json"))
+    if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_validate_real_inputs(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.validation.real_inputs import validate_real_inputs
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+    report = validate_real_inputs(
+        ctx,
+        args.mode,
+        args.profile,
+        Path(args.input_root),
+        Path(args.contract) if args.contract else None,
+        strict=args.strict,
+    )
+    status = report["status"]
+    print("validate-real-inputs {0}".format(status))
+    print("real_input_readiness_report={0}".format(ctx.manifest_dir / "real_input_readiness_report.json"))
+    if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_plan_ppi_sampling(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.validation.ppi_sampling_plan import plan_ppi_sampling
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+    report = plan_ppi_sampling(
+        ctx,
+        args.mode,
+        args.profile,
+        Path(args.input_root),
+        Path(args.contract) if args.contract else None,
+        strict=args.strict,
+        command_line=" ".join(sys.argv),
+    )
+    status = report["status"]
+    print("plan-ppi-sampling {0}".format(status))
+    print("ppi_sampling_plan_report={0}".format(ctx.manifest_dir / "ppi_sampling_plan_report.json"))
     if status == "FAIL":
         return 1
     return 0
