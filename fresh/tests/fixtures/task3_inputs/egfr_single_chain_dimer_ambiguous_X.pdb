@@ -1,0 +1,12 @@
+HEADER    TASK3 SYNTHETIC EGFR AMBIGUOUS SINGLE CHAIN X DIMER
+ATOM      1  N   ALA X 699       0.000   0.000   0.000  1.00 10.00           N
+ATOM      2  CA  ALA X 699       1.000   0.000   0.000  1.00 10.00           C
+ATOM      3  N   GLY X 700       2.000   0.000   0.000  1.00 10.00           N
+ATOM      4  CA  GLY X 700       3.000   0.000   0.000  1.00 10.00           C
+TER       5      GLY X 700
+ATOM      6  N   ALA X 699      20.000   0.000   0.000  1.00 10.00           N
+ATOM      7  CA  ALA X 699      21.000   0.000   0.000  1.00 10.00           C
+ATOM      8  N   GLY X 700      22.000   0.000   0.000  1.00 10.00           N
+ATOM      9  CA  GLY X 700      23.000   0.000   0.000  1.00 10.00           C
+TER      10      GLY X 700
+END

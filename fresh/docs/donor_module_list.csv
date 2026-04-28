@@ -1,0 +1,6 @@
+module_path,functionality,current_dependency,reuse_class,risk,required_refactor,test_required,decision
+egfr_pipeline/parsing_utils.py,PDB parsing reference,stdlib,logic_reuse_only,medium,yes,yes,review before future reuse
+egfr_pipeline/paths.py,Path conventions,stdlib,logic_reuse_only,low,yes,yes,review before future reuse
+egfr_pipeline/vina/,Vina donor implementation,external vina,do_not_reuse,high,yes,yes,out of scope for Task 1
+egfr_pipeline/pyrosetta_docking/,PyRosetta donor implementation,pyrosetta,do_not_reuse,high,yes,yes,out of scope for Task 1
+scripts/run_pre_qsub_checks.sh,HPC shell reference,bash and PBS,logic_reuse_only,medium,yes,yes,review before future reuse

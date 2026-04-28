@@ -1,0 +1,8 @@
+HEADER    TASK4 SYNTHETIC EGFR SINGLE-CHAIN X AMBIGUOUS FIXTURE
+ATOM      1  CA  ALA X 699       0.000   0.000   0.000  1.00 10.00           C
+ATOM      2  CA  GLY X 700       1.000   0.000   0.000  1.00 10.00           C
+TER       3      GLY X 700
+ATOM      4  CA  ALA X 699      20.000   0.000   0.000  1.00 10.00           C
+ATOM      5  CA  GLY X 700      21.000   0.000   0.000  1.00 10.00           C
+TER       6      GLY X 700
+END

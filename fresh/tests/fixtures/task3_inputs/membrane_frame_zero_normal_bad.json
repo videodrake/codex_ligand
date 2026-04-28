@@ -1,0 +1,9 @@
+{
+  "receptor_id": "EGFR_plus10_membrane_validated_dimer",
+  "membrane_normal": [0.0, 0.0, 0.0],
+  "membrane_plane_point": [0.0, 0.0, 0.0],
+  "dimer_axis": [1.0, 0.0, 0.0],
+  "protomer_a_centroid": [0.0, 0.0, 0.0],
+  "protomer_b_centroid": [20.0, 0.0, 0.0],
+  "coordinate_convention": "invalid fixture with zero membrane normal"
+}

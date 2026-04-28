@@ -1,0 +1,56 @@
+{
+  "task3_closeout": {
+    "pass_with_warnings_allowed_only_for_explicit_fixtures": true,
+    "production_same_warning_policy": "fail_or_quarantine",
+    "fixture_warning_whitelist": [
+      "egfr_single_chain_X_ambiguous",
+      "egfr_duplicate_atom_identity_same_chain_dimer",
+      "egfr_expected_chains_AB_missing_ambiguous_X",
+      "egfr_v924r_warn",
+      "myo1d_962_1006_terminal_artifact_bad",
+      "myo1d_955_1006_tail_masked_source"
+    ]
+  },
+  "receptor": {
+    "id": "EGFR_synthetic_inactive_dimer_AB",
+    "path": "egfr_dimer_AB_valid.pdb",
+    "expected_chains": ["A", "B"],
+    "required_protomer_count": 2,
+    "biological_residue_range": [699, 1007],
+    "warn_mutations": [
+      {"residue_number": 924, "expected": "VAL", "warn_if": "ARG", "reason": "3GT8 V924R-like crystallization/interface artifact"}
+    ],
+    "non_target_masks": {
+      "atp_site_residues": [745, 855],
+      "membrane_proximal_label": "computed_from_membrane_frame"
+    }
+  },
+  "myo1d": {
+    "primary_construct": {
+      "id": "MYO1D_sheet8_9_12_core_955_1001",
+      "path": "myo1d_955_1001_source.pdb",
+      "biological_residue_range": [955, 1001]
+    },
+    "comparator_construct": {
+      "id": "MYO1D_ext_beta_meander_955_1006_tail_masked",
+      "path": "myo1d_955_1006_tail_masked_source.pdb",
+      "biological_residue_range": [955, 1006]
+    },
+    "active_face": [961, 962, 963, 964, 968, 969, 970, 971, 972],
+    "sheet12_support": [993, 994, 995, 996, 997],
+    "structural_buffer": [955, 956, 957, 958, 959, 960],
+    "contact_monitoring_cap": [998, 999, 1000, 1001, 1002, 1003, 1004, 1005, 1006],
+    "key_residue_contact_is_annotation_only": true
+  },
+  "membrane_frame": {
+    "path": "membrane_frame_valid.json"
+  },
+  "negative_controls": [
+    {"id": "egfr_single_chain_X_ambiguous", "path": "egfr_single_chain_X_ambiguous.pdb"},
+    {"id": "egfr_v924r_warn", "path": "egfr_v924r_warn.pdb"},
+    {"id": "myo1d_962_1006_terminal_artifact_bad", "path": "myo1d_962_1006_terminal_artifact_bad.pdb"}
+  ],
+  "regression_inputs": {
+    "capped_hetatm_myo1d": "myo1d_capped_hetatm_955_1001.pdb"
+  }
+}

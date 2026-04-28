@@ -1,0 +1,48 @@
+{
+  "receptors": [
+    {
+      "receptor_id": "EGFR_valid_dimer_AB",
+      "path": "egfr_valid_dimer_AB.pdb",
+      "expected_assembly": "dimer",
+      "expected_protomers": [
+        {"protomer_id": "A", "chain_ids": ["A"], "required_ranges": [[699, 700]]},
+        {"protomer_id": "B", "chain_ids": ["B"], "required_ranges": [[699, 700]]}
+      ],
+      "numbering_system": "project_uniprot_or_documented_mapping",
+      "allow_single_chain_dimer_with_mapping": true,
+      "known_mutation_checks": [
+        {"label": "3GT8_V924R", "residue_number": 924, "expected_wt": "VAL", "warn_if_resname": "ARG"}
+      ]
+    },
+    {
+      "receptor_id": "EGFR_single_chain_dimer_ambiguous_X",
+      "path": "egfr_single_chain_dimer_ambiguous_X.pdb",
+      "expected_assembly": "dimer",
+      "expected_protomers": [
+        {"protomer_id": "A", "chain_ids": ["A"], "required_ranges": [[699, 700]]},
+        {"protomer_id": "B", "chain_ids": ["B"], "required_ranges": [[699, 700]]}
+      ],
+      "numbering_system": "project_uniprot_or_documented_mapping",
+      "allow_single_chain_dimer_with_mapping": true,
+      "known_mutation_checks": [
+        {"label": "3GT8_V924R", "residue_number": 924, "expected_wt": "VAL", "warn_if_resname": "ARG"}
+      ]
+    },
+    {
+      "receptor_id": "EGFR_v924r_warn",
+      "path": "egfr_v924r_warn.pdb",
+      "expected_assembly": "dimer",
+      "expected_protomers": [
+        {"protomer_id": "A", "chain_ids": ["A"], "required_ranges": [[923, 925]]},
+        {"protomer_id": "B", "chain_ids": ["B"], "required_ranges": [[923, 925]]}
+      ],
+      "numbering_system": "project_uniprot_or_documented_mapping",
+      "allow_single_chain_dimer_with_mapping": true,
+      "known_mutation_checks": [
+        {"label": "3GT8_V924R", "residue_number": 924, "expected_wt": "VAL", "warn_if_resname": "ARG"}
+      ]
+    }
+  ],
+  "membrane_frame": "membrane_frame_valid.json",
+  "myo1d_partner": "myo1d_955_1001_valid.pdb"
+}

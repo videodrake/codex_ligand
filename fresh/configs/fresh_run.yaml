@@ -1,0 +1,22 @@
+project_name: egfr_myo1d_fresh
+workflow_version: milestone1_foundation
+stage: foundation
+run_mode: smoke
+fresh_library_stage1: false
+compound_stage1: false
+compound_public_ids: [Cpd-A, Cpd-B, Cpd-C]
+primary_receptor_states: [EGFR_160-185, EGFR_170-200]
+reference_receptor_states: [3GT8_raw]
+notes: "Milestone 1 builds foundation only; no docking or scoring."
+myo1d:
+  source_model: AF-O94832-F1-model_v6
+  construct_start: 955
+  construct_end: 1006
+  key_residues:
+    sheet8: "961-964"
+    sheet9: "968-972"
+    sheet12: "993-997"
+  watch_residues:
+    n_terminal: "955-957"
+    c_terminal: "1001-1006"
+  key_residue_bonus_weight: 0.0

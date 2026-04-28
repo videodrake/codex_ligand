@@ -1,0 +1,14 @@
+primary_membrane_validated_states:
+  - EGFR_160-185
+  - EGFR_170-200
+reference_control_states:
+  - 3GT8_raw
+state_policy:
+  EGFR_160-185: primary_membrane_validated_state
+  EGFR_170-200: primary_membrane_validated_state
+  3GT8_raw: crystallographic_reference_control_not_primary_membrane_state
+input_files:
+  EGFR_160-185: fresh/data/raw/receptors/EGFR_160-185.pdb
+  EGFR_170-200: fresh/data/raw/receptors/EGFR_170-200.pdb
+  3GT8_raw: fresh/data/raw/receptors/3GT8_raw.pdb
+  plus10_full_frame: fresh/data/raw/receptors/plus10_full_frame.pdb

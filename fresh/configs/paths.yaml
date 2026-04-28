@@ -1,0 +1,10 @@
+fresh_root: fresh
+raw_receptors: fresh/data/raw/receptors
+raw_myo1d: fresh/data/raw/myo1d
+raw_ligands: fresh/data/raw/ligands
+private_data: fresh/data/private
+normalized_data: fresh/data/normalized
+runs_root: fresh/runs
+logs_subdir: logs
+qc_subdir: qc
+reports_subdir: reports

@@ -1,0 +1,20 @@
+HEADER    TASK4 SYNTHETIC EGFR A/B DIMER VALID
+ATOM      1  CA  ALA A 699       0.000   0.000   0.000  1.00 10.00           C
+ATOM      2  CA  GLY A 700       1.000   0.000   0.000  1.00 10.00           C
+ATOM      3  CA  LEU A 745       2.000   0.000   0.000  1.00 10.00           C
+ATOM      4  CA  VAL A 855       3.000   0.000   0.000  1.00 10.00           C
+ATOM      5  CA  VAL A 923       4.000   0.000   0.000  1.00 10.00           C
+ATOM      6  CA  VAL A 924       5.000   0.000   0.000  1.00 10.00           C
+ATOM      7  CA  GLY A 925       6.000   0.000   0.000  1.00 10.00           C
+ATOM      8  CA  ASP A1007       7.000   0.000   0.000  1.00 10.00           C
+TER       9      ASP A1007
+ATOM     10  CA  ALA B 699      20.000   0.000   0.000  1.00 10.00           C
+ATOM     11  CA  GLY B 700      21.000   0.000   0.000  1.00 10.00           C
+ATOM     12  CA  LEU B 745      22.000   0.000   0.000  1.00 10.00           C
+ATOM     13  CA  VAL B 855      23.000   0.000   0.000  1.00 10.00           C
+ATOM     14  CA  VAL B 923      24.000   0.000   0.000  1.00 10.00           C
+ATOM     15  CA  VAL B 924      25.000   0.000   0.000  1.00 10.00           C
+ATOM     16  CA  GLY B 925      26.000   0.000   0.000  1.00 10.00           C
+ATOM     17  CA  ASP B1007      27.000   0.000   0.000  1.00 10.00           C
+TER      18      ASP B1007
+END

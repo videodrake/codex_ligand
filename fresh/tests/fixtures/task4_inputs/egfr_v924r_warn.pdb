@@ -1,0 +1,10 @@
+HEADER    TASK4 SYNTHETIC EGFR V924R WARNING FIXTURE
+ATOM      1  CA  VAL A 923       0.000   0.000   0.000  1.00 10.00           C
+ATOM      2  CA  ARG A 924       1.000   0.000   0.000  1.00 10.00           C
+ATOM      3  CA  GLY A 925       2.000   0.000   0.000  1.00 10.00           C
+TER       4      GLY A 925
+ATOM      5  CA  VAL B 923      20.000   0.000   0.000  1.00 10.00           C
+ATOM      6  CA  ARG B 924      21.000   0.000   0.000  1.00 10.00           C
+ATOM      7  CA  GLY B 925      22.000   0.000   0.000  1.00 10.00           C
+TER       8      GLY B 925
+END

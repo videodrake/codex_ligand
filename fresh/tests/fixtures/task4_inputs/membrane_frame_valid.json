@@ -1,0 +1,9 @@
+{
+  "receptor_id": "EGFR_synthetic_inactive_dimer_AB",
+  "membrane_normal": [0.0, 0.0, 1.0],
+  "membrane_plane_point": [0.0, 0.0, 0.0],
+  "dimer_axis": [1.0, 0.0, 0.0],
+  "protomer_a_centroid": [0.0, 0.0, 0.0],
+  "protomer_b_centroid": [20.0, 0.0, 0.0],
+  "coordinate_convention": "synthetic +10 membrane-frame fixture for Task 4 QC only"
+}

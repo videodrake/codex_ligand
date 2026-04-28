@@ -6,3 +6,48 @@ worker_debug.log
 *.pdb
 *.pdbqt
 output/
+
+# Fresh workflow run outputs
+fresh/runs/*
+!fresh/runs/.gitkeep
+
+# Normalized/generated data
+fresh/data/normalized/*
+!fresh/data/normalized/.gitkeep
+
+# Confidential ligand structures and private mappings
+fresh/data/raw/ligands/*
+!fresh/data/raw/ligands/.gitkeep
+!fresh/data/raw/ligands/README.md
+fresh/data/private/*
+!fresh/data/private/.gitkeep
+!fresh/data/private/README.md
+
+# Fresh PDB exceptions for public-safe receptor, MYO1D, and fixture files
+!fresh/data/raw/receptors/*.pdb
+!fresh/data/raw/myo1d/*.pdb
+!fresh/tests/fixtures/*.pdb
+!fresh/tests/fixtures/**/*.pdb
+
+# Large MD/trajectory files in fresh data areas
+fresh/data/raw/receptors/*.xtc
+fresh/data/raw/receptors/*.trr
+fresh/data/raw/receptors/*.dcd
+fresh/data/raw/receptors/*.nc
+fresh/data/raw/receptors/*.tpr
+fresh/data/raw/receptors/*.cpt
+fresh/data/raw/receptors/*.edr
+fresh/data/raw/receptors/*.log
+fresh/data/raw/receptors/*.gro
+
+# Common transient files
+fresh/**/__pycache__/
+fresh/**/*.pyc
+fresh/**/*.tmp
+fresh/**/*.bak
+fresh/**/*.log.tmp
+fresh/**/*.pdbqt.tmp
+fresh/**/*.vina.tmp
+fresh/**/*.silent
+fresh/**/scratch/
+fresh/**/tmp/

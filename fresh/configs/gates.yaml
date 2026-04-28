@@ -1,0 +1,19 @@
+cleanup:
+  test_policy: keep_manifest_logs_qc_report_delete_intermediates
+  allow_delete_outside_run_dir: false
+  production_cleanup_default: dry_run
+
+myo1d:
+  construct: "955-1006"
+  key_residues:
+    sheet8: "961-964"
+    sheet9: "968-972"
+    sheet12: "993-997"
+  watch_residues:
+    n_terminal: "955-957"
+    c_terminal: "1001-1006"
+  key_residue_bonus_weight: 0.0
+
+receptor:
+  dockable_crop_default: "669-1014"
+  excluded_tm_core_default: "634-668"

@@ -1,0 +1,25 @@
+scheduler: PBS
+queue: workq
+nodes: [node04, node05, node06]
+ppn:
+  smoke: 4
+  mini: 16
+  scaling: 32
+  production: 32
+walltime:
+  smoke: "02:00:00"
+  mini: "12:00:00"
+  scaling: "02:00:00"
+  production: "999:00:00"
+conda:
+  env_name: pyrosetta
+  activate_command: "source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh && conda activate pyrosetta"
+python:
+  path_hint: "~/.conda/envs/pyrosetta/bin/python"
+known_resource_syntax: "#PBS -l nodes=<node>:ppn=<n>"
+thread_limits:
+  OMP_NUM_THREADS: 1
+  OPENBLAS_NUM_THREADS: 1
+  MKL_NUM_THREADS: 1
+  NUMEXPR_NUM_THREADS: 1
+  VECLIB_MAXIMUM_THREADS: 1

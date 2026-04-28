@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "egfr-myo1d-fresh"
+version = "0.1.0"
+description = "Fresh EGFR-MYO1D foundation workflow skeleton"
+requires-python = ">=3.9"
+dependencies = ["PyYAML>=6"]
+
+[project.scripts]
+egfr-myo1d = "egfr_myo1d.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
