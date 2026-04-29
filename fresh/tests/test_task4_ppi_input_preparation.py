@@ -9,7 +9,7 @@ import pytest
 
 from egfr_myo1d.core.logging_utils import initialize_logs
 from egfr_myo1d.core.run_context import RunContext, RunContextError
-from egfr_myo1d.preparation.constructs import prepare_myo1d_construct
+from egfr_myo1d.myo1d.construct import prepare_myo1d_construct
 from egfr_myo1d.structure.pdb_parser import parse_pdb
 from egfr_myo1d.validation.prepared_inputs import (
     audit_receptor,

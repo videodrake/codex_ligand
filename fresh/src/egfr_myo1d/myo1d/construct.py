@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from egfr_myo1d.preparation.pdb_writer import select_atoms_by_residue_range, write_pdb_atoms
+from egfr_myo1d.myo1d.pdb_writer import select_atoms_by_residue_range, write_pdb_atoms
 from egfr_myo1d.structure.myo1d_annotation import expand_multi_range, expand_range
 from egfr_myo1d.structure.pdb_parser import AtomRecord, PDBStructure, parse_pdb
 
