@@ -300,6 +300,39 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    myo1d_parser = subparsers.add_parser(
+        "prepare-myo1d",
+        help="Slice MYO1D source PDB to canonical M1 construct and emit QC.",
+    )
+    myo1d_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    myo1d_parser.add_argument(
+        "--source",
+        required=True,
+        help="Path to MYO1D source PDB (real input or fixture).",
+    )
+    myo1d_parser.add_argument(
+        "--construct",
+        default=None,
+        help="Residue range as 'start-end'. Defaults to gates.yaml myo1d.construct (955-1006).",
+    )
+    myo1d_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+        help="Mode label recorded in manifests.",
+    )
+    myo1d_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="codex_dev tolerates missing source (WARN); hpc_strict treats as FAIL.",
+    )
+    myo1d_parser.set_defaults(func=_cmd_prepare_myo1d)
+
     cleanup_parser = subparsers.add_parser(
         "cleanup",
         help="Delete intermediate/scratch files inside a run directory; preserves manifest/logs/qc/reports.",
@@ -605,6 +638,41 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_myo1d(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.myo1d.qc import run_myo1d_qc
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    report = run_myo1d_qc(
+        ctx,
+        Path(args.source),
+        construct_range=args.construct,
+        profile=args.profile,
+    )
+    print(
+        "prepare-myo1d {0}: construct={1} n_residues={2} caps={3} warnings={4}".format(
+            report.status,
+            report.construct_id,
+            report.n_residues,
+            report.ace_nme_caps_present,
+            len(report.warnings),
+        )
+    )
+    print(
+        "myo1d_construct_manifest={0}".format(
+            ctx.manifest_dir / "myo1d_construct_manifest.json"
+        )
+    )
+    if report.status == "FAIL":
         return 1
     return 0
 
