@@ -300,6 +300,43 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    ligand_parser = subparsers.add_parser(
+        "manifest-ligands",
+        help="Build ligand manifest shell (public IDs only; gitignored private mapping).",
+    )
+    ligand_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    ligand_parser.add_argument(
+        "--ligands-dir",
+        default=None,
+        help="Directory containing public-ID SDF files. Default: paths.yaml raw_ligands.",
+    )
+    ligand_parser.add_argument(
+        "--private-mapping",
+        default=None,
+        help="Private mapping CSV path. Default: paths.yaml private_data/compound_id_map.csv.",
+    )
+    ligand_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+    )
+    ligand_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+    )
+    ligand_parser.add_argument(
+        "--compound-stage-enabled",
+        choices=["true", "false"],
+        default="false",
+        help="Whether compound docking stage is enabled (affects severity of missing files).",
+    )
+    ligand_parser.set_defaults(func=_cmd_manifest_ligands)
+
     pbs_parser = subparsers.add_parser(
         "prepare-pbs",
         help="Generate a concrete PBS job file under runs/<run_id>/scripts/. Does NOT call qsub.",
@@ -764,6 +801,38 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_manifest_ligands(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.ligand.manifest import build_ligand_manifest
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    manifest = build_ligand_manifest(
+        ctx,
+        ligands_dir=Path(args.ligands_dir) if args.ligands_dir else None,
+        private_mapping_path=Path(args.private_mapping) if args.private_mapping else None,
+        profile=args.profile,
+        compound_stage_enabled=(args.compound_stage_enabled == "true"),
+    )
+    print(
+        "manifest-ligands {0}: present={1} missing={2} leak={3}".format(
+            manifest.status,
+            manifest.present_count,
+            manifest.missing_count,
+            manifest.internal_ids_leaked_into_outputs,
+        )
+    )
+    print("ligand_manifest_qc_csv={0}".format(manifest.output_qc_csv))
+    print("ligand_manifest_report_json={0}".format(manifest.output_manifest_json))
+    if manifest.status == "FAIL":
         return 1
     return 0
 
