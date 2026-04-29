@@ -206,6 +206,35 @@ def build_parser():
     )
     sampling_parser.set_defaults(func=_cmd_plan_ppi_sampling)
 
+    consensus_parser = subparsers.add_parser(
+        "summarize-ppi-consensus",
+        help="Summarize supplied PPI contact records into guarded EGFR-side consensus patches.",
+    )
+    consensus_parser.add_argument("--run-id", required=True, help="Run identifier under fresh/runs/.")
+    consensus_parser.add_argument("--mode", default="smoke_env", choices=["smoke_env", "smoke_input"])
+    consensus_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="Profile label recorded in consensus manifests; no external tools are run.",
+    )
+    consensus_parser.add_argument(
+        "--input-root",
+        default="fresh/data/raw",
+        help="Directory containing accepted_ppi_contacts.csv or the selected contact table.",
+    )
+    consensus_parser.add_argument(
+        "--contact-table",
+        help="Optional contact table path relative to --input-root.",
+    )
+    consensus_parser.add_argument(
+        "--input-kind",
+        default="synthetic_fixture",
+        choices=["synthetic_fixture", "real_input_derived", "future_accepted_pose_export"],
+        help="Provenance label for supplied PPI contact records.",
+    )
+    consensus_parser.set_defaults(func=_cmd_summarize_ppi_consensus)
+
     return parser
 
 
@@ -402,6 +431,31 @@ def _cmd_plan_ppi_sampling(args):
     status = report["status"]
     print("plan-ppi-sampling {0}".format(status))
     print("ppi_sampling_plan_report={0}".format(ctx.manifest_dir / "ppi_sampling_plan_report.json"))
+    if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_summarize_ppi_consensus(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.validation.ppi_consensus import summarize_ppi_consensus
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+    report = summarize_ppi_consensus(
+        ctx,
+        args.mode,
+        args.profile,
+        Path(args.input_root),
+        Path(args.contact_table) if args.contact_table else None,
+        input_kind=args.input_kind,
+    )
+    status = report["status"]
+    print("summarize-ppi-consensus {0}".format(status))
+    print("ppi_consensus_qc_report={0}".format(ctx.manifest_dir / "ppi_consensus_qc_report.json"))
     if status == "FAIL":
         return 1
     return 0
