@@ -235,6 +235,35 @@ def build_parser():
     )
     consensus_parser.set_defaults(func=_cmd_summarize_ppi_consensus)
 
+    pocket_parser = subparsers.add_parser(
+        "plan-pocket-discovery",
+        help="Plan PPI-guided EGFR pocket selection from Task 7 consensus evidence without running pocket tools.",
+    )
+    pocket_parser.add_argument("--run-id", required=True, help="Run identifier under fresh/runs/.")
+    pocket_parser.add_argument("--mode", default="smoke_env", choices=["smoke_env", "smoke_input"])
+    pocket_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="Profile label recorded in pocket-planning manifests; no external tools are run.",
+    )
+    pocket_parser.add_argument(
+        "--input-root",
+        default="fresh/data/raw",
+        help="Directory containing ppi_consensus_patch.csv or the selected Task 7 consensus patch table.",
+    )
+    pocket_parser.add_argument(
+        "--ppi-consensus",
+        help="Optional Task 7 consensus patch CSV path relative to --input-root.",
+    )
+    pocket_parser.add_argument(
+        "--input-kind",
+        default="task7_consensus",
+        choices=["task7_consensus", "synthetic_fixture", "real_input_derived"],
+        help="Provenance label for supplied Task 7 PPI consensus evidence.",
+    )
+    pocket_parser.set_defaults(func=_cmd_plan_pocket_discovery)
+
     return parser
 
 
@@ -458,6 +487,29 @@ def _cmd_summarize_ppi_consensus(args):
     print("ppi_consensus_qc_report={0}".format(ctx.manifest_dir / "ppi_consensus_qc_report.json"))
     if status == "FAIL":
         return 1
+    return 0
+
+
+def _cmd_plan_pocket_discovery(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.validation.pocket_discovery import plan_pocket_discovery
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+    report = plan_pocket_discovery(
+        ctx,
+        args.mode,
+        args.profile,
+        Path(args.input_root),
+        Path(args.ppi_consensus) if args.ppi_consensus else None,
+        input_kind=args.input_kind,
+    )
+    status = report["status"]
+    print("plan-pocket-discovery {0}".format(status))
+    print("pocket_discovery_manifest={0}".format(ctx.manifest_dir / "pocket_discovery_manifest.json"))
     return 0
 
 

@@ -1,0 +1,76 @@
+# Task 8 Pocket Discovery Planning
+
+Task 8 adds a deterministic pocket-selection planning and intake layer. It uses
+Task 7 `ppi_consensus_patch.csv` evidence to define guarded EGFR pocket-plan
+records for future pocket discovery and focused compound docking.
+
+Task 8 does not run Vina, PyRosetta, LightDock, fpocket, P2Rank, AlphaFold,
+Boltz, Chai, qsub, PBS, sbatch, pocket discovery, docking, ligand scoring, or
+candidate nomination. It does not mutate EGFR and does not rewrite biological
+residue numbering.
+
+## CLI
+
+Bash:
+
+```bash
+export PYTHONPATH="$PWD/fresh/src:${PYTHONPATH:-}"
+python -m egfr_myo1d.cli init-run --mode smoke_env --run-id test_task8_local
+python -m egfr_myo1d.cli plan-pocket-discovery \
+  --run-id test_task8_local \
+  --mode smoke_env \
+  --profile codex_dev \
+  --input-root fresh/tests/fixtures/task8_pocket_planning
+```
+
+PowerShell:
+
+```powershell
+$env:PYTHONPATH = "$PWD\fresh\src;$env:PYTHONPATH"
+python -m egfr_myo1d.cli init-run --mode smoke_env --run-id test_task8_local
+python -m egfr_myo1d.cli plan-pocket-discovery `
+  --run-id test_task8_local `
+  --mode smoke_env `
+  --profile codex_dev `
+  --input-root fresh/tests/fixtures/task8_pocket_planning
+```
+
+## Inputs
+
+Default input is `ppi_consensus_patch.csv` under `--input-root`. The table must
+match the Task 7 consensus patch schema and preserve:
+
+- `ppi_patch_id`
+- `receptor_id`
+- `receptor_state`
+- `protomer_id`
+- EGFR residue numbering in `egfr_consensus_residues`
+- Task 7 evidence class and warning fractions
+
+## Outputs
+
+All outputs are written under `fresh/runs/<run_id>/`:
+
+- `pockets/egfr_myo1d_ppi_adjacent_pockets.csv`
+- `pockets/pocket_discovery_plan.json`
+- `qc/pocket_selection_audit.csv`
+- `qc/atp_overlap_audit.csv`
+- `qc/membrane_accessibility_audit.csv`
+- `qc/dimer_accessibility_audit.csv`
+- `manifest/pocket_discovery_manifest.json`
+- `reports/pocket_discovery_summary.md`
+
+## Guardrails
+
+Accepted Task 7 PPI patches are limited to cautious evidence classes such as
+`CONVERGENT_PATCH` and `BROAD_PATCH`, and only when tail/terminal, ATP-overlap,
+and membrane-proximal fractions are not blocking. If no accepted PPI patch is
+available, Task 8 emits `NO_GO` with zero planned docking jobs.
+
+ATP-overlap and membrane-proximal evidence remain visible in audits and are
+blockers or strong warnings for PPI-disruptive objectives. Protomer identity and
+EGFR residue numbering are copied from the Task 7 consensus table.
+
+Task 8 creates pocket-selection planning records only. It prepares a handoff to
+future pocket discovery, but does not claim real pocket discovery was run.
+
