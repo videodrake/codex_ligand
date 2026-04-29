@@ -1,0 +1,24 @@
+HEADER    SYNTHETIC DIMER WITH TM/JM COORDINATES FOR MEMBRANE FRAME TEST
+REMARK    Chain A around x=0; Chain B around x=15
+REMARK    TM/JM residues 640, 650, 660, 670, 674 span z = -50 .. 0
+REMARK    KD residues 700, 800 located z = 15 .. 30 (above membrane)
+REMARK    Expected: n_membrane ~ +z, x_dimer_axis ~ +x
+ATOM      1  N   PHE A 640       0.000   0.000 -50.000  1.00 10.00           N
+ATOM      2  CA  PHE A 640       0.000   0.000 -50.000  1.00 10.00           C
+ATOM      3  CA  LEU A 650       0.000   0.000 -38.000  1.00 10.00           C
+ATOM      4  CA  ILE A 660       0.000   0.000 -25.000  1.00 10.00           C
+ATOM      5  CA  THR A 670       0.000   0.000 -12.000  1.00 10.00           C
+ATOM      6  CA  GLY A 674       0.000   0.000   0.000  1.00 10.00           C
+ATOM      7  CA  ASN A 700      -2.000   5.000  15.000  1.00 10.00           C
+ATOM      8  CA  GLU A 800      -3.000   8.000  30.000  1.00 10.00           C
+TER       9      GLU A 800
+ATOM     10  N   PHE B 640      15.000   0.000 -50.000  1.00 10.00           N
+ATOM     11  CA  PHE B 640      15.000   0.000 -50.000  1.00 10.00           C
+ATOM     12  CA  LEU B 650      15.000   0.000 -38.000  1.00 10.00           C
+ATOM     13  CA  ILE B 660      15.000   0.000 -25.000  1.00 10.00           C
+ATOM     14  CA  THR B 670      15.000   0.000 -12.000  1.00 10.00           C
+ATOM     15  CA  GLY B 674      15.000   0.000   0.000  1.00 10.00           C
+ATOM     16  CA  ASN B 700      17.000   5.000  15.000  1.00 10.00           C
+ATOM     17  CA  GLU B 800      18.000   8.000  30.000  1.00 10.00           C
+TER      18      GLU B 800
+END

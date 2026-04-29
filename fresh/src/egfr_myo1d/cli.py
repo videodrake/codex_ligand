@@ -300,6 +300,287 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    prepare_inputs_parser = subparsers.add_parser(
+        "prepare-inputs",
+        help="Orchestrator: preflight + prepare-receptor (per state) + compute-membrane-frame + prepare-myo1d + manifest-ligands.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--mode",
+        default="smoke_input",
+        choices=["smoke_env", "smoke_input"],
+    )
+    prepare_inputs_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="hpc_strict stops orchestration at first sub-step FAIL.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--input-root",
+        default=None,
+        help=(
+            "Optional directory layout: "
+            "<root>/{receptors,myo1d,ligands,private}/. "
+            "Default: per-config paths (fresh/data/raw/...)."
+        ),
+    )
+    prepare_inputs_parser.add_argument(
+        "--states",
+        default=None,
+        help="Comma-separated state IDs. Default: all from receptor_states.yaml.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--skip-ligands",
+        choices=["true", "false"],
+        default="false",
+        help="Skip the manifest-ligands sub-step.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Force production-like blocker policy even in codex_dev.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--compound-stage-enabled",
+        choices=["true", "false"],
+        default="false",
+    )
+    prepare_inputs_parser.set_defaults(func=_cmd_prepare_inputs)
+
+    ligand_parser = subparsers.add_parser(
+        "manifest-ligands",
+        help="Build ligand manifest shell (public IDs only; gitignored private mapping).",
+    )
+    ligand_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    ligand_parser.add_argument(
+        "--ligands-dir",
+        default=None,
+        help="Directory containing public-ID SDF files. Default: paths.yaml raw_ligands.",
+    )
+    ligand_parser.add_argument(
+        "--private-mapping",
+        default=None,
+        help="Private mapping CSV path. Default: paths.yaml private_data/compound_id_map.csv.",
+    )
+    ligand_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+    )
+    ligand_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+    )
+    ligand_parser.add_argument(
+        "--compound-stage-enabled",
+        choices=["true", "false"],
+        default="false",
+        help="Whether compound docking stage is enabled (affects severity of missing files).",
+    )
+    ligand_parser.set_defaults(func=_cmd_manifest_ligands)
+
+    pbs_parser = subparsers.add_parser(
+        "prepare-pbs",
+        help="Generate a concrete PBS job file under runs/<run_id>/scripts/. Does NOT call qsub.",
+    )
+    pbs_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    pbs_parser.add_argument(
+        "--job-name",
+        required=True,
+        help="PBS job name (alnum/underscore/dot/dash).",
+    )
+    pbs_parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["smoke_env", "smoke_input", "mini", "scaling", "production"],
+        help="Mode label; resolves ppn/walltime defaults from hpc.yaml.",
+    )
+    pbs_parser.add_argument(
+        "--node",
+        default=None,
+        choices=["node04", "node05", "node06"],
+        help="Target node. Default: first entry in hpc.yaml nodes.",
+    )
+    pbs_parser.add_argument(
+        "--ppn",
+        type=int,
+        default=None,
+        help="Override ppn. Default: hpc.yaml ppn[mode].",
+    )
+    pbs_parser.add_argument(
+        "--walltime",
+        default=None,
+        help="Override walltime as HH:MM:SS. Default: hpc.yaml walltime[mode].",
+    )
+    pbs_parser.add_argument(
+        "--output-path",
+        default=None,
+        help="Optional output path. Default: runs/<run_id>/scripts/<job_name>.pbs.",
+    )
+    pbs_parser.add_argument(
+        "--input-root",
+        default="fresh/data/raw",
+        help="--input-root used by smoke_input mode body.",
+    )
+    pbs_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+    )
+    pbs_parser.set_defaults(func=_cmd_prepare_pbs)
+
+    membrane_parser = subparsers.add_parser(
+        "compute-membrane-frame",
+        help="Compute state-aware membrane_frame.json from coordinates (no hardcoded vectors).",
+    )
+    membrane_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    membrane_parser.add_argument(
+        "--state",
+        default="all",
+        choices=["EGFR_160-185", "EGFR_170-200", "3GT8_raw", "all"],
+        help="State to compute. Default 'all' iterates all three states.",
+    )
+    membrane_parser.add_argument(
+        "--full-frame-source",
+        default=None,
+        help="Optional fallback PDB path; default uses plus10_full_frame.pdb from receptor_states.yaml.",
+    )
+    membrane_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+    )
+    membrane_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="codex_dev tolerates missing source (WARN); hpc_strict treats missing as FAIL.",
+    )
+    membrane_parser.set_defaults(func=_cmd_compute_membrane_frame)
+
+    receptor_parser = subparsers.add_parser(
+        "prepare-receptor",
+        help="Normalize EGFR receptor input: explicit A/B split, 669-1014 dockable crop, +1000 runtime offset, mapping CSV.",
+    )
+    receptor_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    receptor_parser.add_argument(
+        "--state",
+        required=True,
+        choices=["EGFR_160-185", "EGFR_170-200", "3GT8_raw"],
+        help="Receptor state ID. 3GT8_raw is a reference/control, not a primary membrane-validated state.",
+    )
+    receptor_parser.add_argument(
+        "--source",
+        required=True,
+        help="Path to source receptor PDB.",
+    )
+    receptor_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+        help="Mode label recorded in manifests.",
+    )
+    receptor_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="codex_dev tolerates fixture warnings; hpc_strict treats them as FAIL/quarantine.",
+    )
+    receptor_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Force production-like blocker policy even in codex_dev.",
+    )
+    receptor_parser.set_defaults(func=_cmd_prepare_receptor)
+
+    myo1d_parser = subparsers.add_parser(
+        "prepare-myo1d",
+        help="Slice MYO1D source PDB to canonical M1 construct and emit QC.",
+    )
+    myo1d_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    myo1d_parser.add_argument(
+        "--source",
+        required=True,
+        help="Path to MYO1D source PDB (real input or fixture).",
+    )
+    myo1d_parser.add_argument(
+        "--construct",
+        default=None,
+        help="Residue range as 'start-end'. Defaults to gates.yaml myo1d.construct (955-1006).",
+    )
+    myo1d_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+        help="Mode label recorded in manifests.",
+    )
+    myo1d_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="codex_dev tolerates missing source (WARN); hpc_strict treats as FAIL.",
+    )
+    myo1d_parser.set_defaults(func=_cmd_prepare_myo1d)
+
+    cleanup_parser = subparsers.add_parser(
+        "cleanup",
+        help="Delete intermediate/scratch files inside a run directory; preserves manifest/logs/qc/reports.",
+    )
+    cleanup_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Existing run identifier under fresh/runs/.",
+    )
+    cleanup_parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["test", "production"],
+        help="test deletes intermediates; production defaults to dry-run.",
+    )
+    cleanup_parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        choices=["true", "false"],
+        default=None,
+        help=(
+            "Override default. Default is 'false' for --mode test and 'true' "
+            "for --mode production. Pass 'true' or 'false' explicitly to override."
+        ),
+    )
+    cleanup_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="Profile label recorded in cleanup_report.json; no external tools are run.",
+    )
+    cleanup_parser.set_defaults(func=_cmd_cleanup)
+
     return parser
 
 
@@ -572,6 +853,249 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_inputs(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.orchestrator.prepare_inputs import run_prepare_inputs
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    state_list = (
+        [s.strip() for s in args.states.split(",") if s.strip()]
+        if args.states
+        else None
+    )
+    aggregate = run_prepare_inputs(
+        ctx,
+        mode=args.mode,
+        profile=args.profile,
+        input_root=Path(args.input_root) if args.input_root else None,
+        states=state_list,
+        skip_ligands=(args.skip_ligands == "true"),
+        strict=args.strict,
+        compound_stage_enabled=(args.compound_stage_enabled == "true"),
+    )
+    print(
+        "prepare-inputs {0}: substeps={1} missing={2} blockers={3}".format(
+            aggregate.status,
+            len(aggregate.sub_steps),
+            len(aggregate.missing_required_inputs),
+            len(aggregate.blockers),
+        )
+    )
+    print("aggregate_manifest={0}".format(aggregate.aggregate_manifest_path))
+    print("summary_report={0}".format(aggregate.summary_report_path))
+    if aggregate.status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_manifest_ligands(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.ligand.manifest import build_ligand_manifest
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    manifest = build_ligand_manifest(
+        ctx,
+        ligands_dir=Path(args.ligands_dir) if args.ligands_dir else None,
+        private_mapping_path=Path(args.private_mapping) if args.private_mapping else None,
+        profile=args.profile,
+        compound_stage_enabled=(args.compound_stage_enabled == "true"),
+    )
+    print(
+        "manifest-ligands {0}: present={1} missing={2} leak={3}".format(
+            manifest.status,
+            manifest.present_count,
+            manifest.missing_count,
+            manifest.internal_ids_leaked_into_outputs,
+        )
+    )
+    print("ligand_manifest_qc_csv={0}".format(manifest.output_qc_csv))
+    print("ligand_manifest_report_json={0}".format(manifest.output_manifest_json))
+    if manifest.status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_pbs(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.hpc.pbs import generate_pbs
+
+    # Use --mode 'smoke_env' as the run-context init mode for non-smoke modes
+    init_mode = args.mode if args.mode in ("smoke_env", "smoke_input") else "smoke_env"
+    try:
+        ctx = RunContext.for_existing(args.run_id)
+    except Exception:
+        ctx = RunContext.create(args.run_id, init_mode)
+    initialize_logs(ctx)
+
+    output_path = Path(args.output_path) if args.output_path else None
+
+    pbs = generate_pbs(
+        ctx,
+        job_name=args.job_name,
+        mode=args.mode,
+        node=args.node,
+        ppn=args.ppn,
+        walltime=args.walltime,
+        output_path=output_path,
+        profile=args.profile,
+        input_root=args.input_root,
+    )
+    print(
+        "prepare-pbs {0}: job={1} mode={2} node={3} ppn={4} walltime={5}".format(
+            pbs.status, pbs.job_name, pbs.mode, pbs.node, pbs.ppn, pbs.walltime
+        )
+    )
+    print("pbs_file={0}".format(pbs.output_path))
+    if pbs.status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_compute_membrane_frame(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.model.membrane_frame import (
+        ALL_STATES,
+        run_membrane_frame_computation,
+    )
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    state_ids = list(ALL_STATES) if args.state == "all" else [args.state]
+    source = Path(args.full_frame_source) if args.full_frame_source else None
+
+    frames, overall = run_membrane_frame_computation(
+        ctx, state_ids=state_ids, full_frame_source=source, profile=args.profile
+    )
+    print(
+        "compute-membrane-frame {0}: states={1} statuses={2}".format(
+            overall,
+            len(frames),
+            ",".join("{0}={1}".format(f.state_id, f.status) for f in frames),
+        )
+    )
+    print("membrane_frame_json={0}".format(ctx.manifest_dir / "membrane_frame.json"))
+    if overall == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_receptor(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.model.receptor_normalize import normalize_receptor
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    report = normalize_receptor(
+        ctx,
+        Path(args.source),
+        state_id=args.state,
+        profile=args.profile,
+        strict=args.strict,
+    )
+    print(
+        "prepare-receptor {0}: state={1} case={2} protomers={3} v924r_warn={4} warnings={5}".format(
+            report.status,
+            report.state_id,
+            report.case,
+            report.protomer_count,
+            report.v924r_warn,
+            len(report.warnings),
+        )
+    )
+    print("receptor_manifest={0}".format(report.manifest_json))
+    if report.status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_myo1d(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.myo1d.qc import run_myo1d_qc
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    report = run_myo1d_qc(
+        ctx,
+        Path(args.source),
+        construct_range=args.construct,
+        profile=args.profile,
+    )
+    print(
+        "prepare-myo1d {0}: construct={1} n_residues={2} caps={3} warnings={4}".format(
+            report.status,
+            report.construct_id,
+            report.n_residues,
+            report.ace_nme_caps_present,
+            len(report.warnings),
+        )
+    )
+    print(
+        "myo1d_construct_manifest={0}".format(
+            ctx.manifest_dir / "myo1d_construct_manifest.json"
+        )
+    )
+    if report.status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_cleanup(args):
+    from egfr_myo1d.core.cleanup import run_cleanup
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+
+    ctx = RunContext.for_existing(args.run_id)
+    initialize_logs(ctx)
+
+    if args.dry_run is None:
+        dry_run = None
+    else:
+        dry_run = args.dry_run == "true"
+
+    report = run_cleanup(ctx, mode=args.mode, dry_run=dry_run, profile=args.profile)
+
+    print(
+        "cleanup {0}: mode={1} dry_run={2} candidates={3} deleted={4} preserved={5} errors={6}".format(
+            report.status,
+            report.mode,
+            report.dry_run,
+            report.candidate_count,
+            report.deleted_count,
+            report.preserved_count,
+            len(report.errors),
+        )
+    )
+    print("cleanup_report={0}".format(ctx.manifest_dir / "cleanup_report.json"))
+    if report.status == "FAIL":
         return 1
     return 0
 

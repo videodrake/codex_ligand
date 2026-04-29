@@ -31,3 +31,22 @@ Task 4 added pure-Python PPI input preparation and QC reports for future EGFR-MY
 
 The implementation preserves chain IDs, residue numbering, insertion codes, record types, and source mappings. It does not mutate EGFR residues, normalize ambiguous receptors into production inputs, drop caps/HETATM biological residues, run docking, generate PBS/qsub jobs, delete cleanup targets, score candidates, or nominate compounds.
 
+
+---
+
+## M1 dependency (added by Phase 9 alignment)
+
+This task module was originally designed to run before the M1 foundation
+modules (cleanup, receptor normalize, membrane frame, MYO1D construct, ligand
+manifest) existed. After M1 Phases 1-8 the canonical input artifacts now live
+under `fresh/runs/<run_id>/normalized/`, `fresh/runs/<run_id>/manifest/membrane_frame.json`,
+and `fresh/runs/<run_id>/qc/<state>_receptor_mapping.csv`.
+
+Phase 9 takes an **additive** approach: this module's logic and output paths
+are unchanged. The alignment between M1 outputs and this task's consumption
+points is recorded by `validation/m1_alignment.py`'s `record_m1_alignment(ctx)`
+helper, which writes `manifest/m1_alignment.json` listing which M1 artifacts
+are present and which Task 4-9 modules would naturally consume them in a future
+M2 actual-execution phase.
+
+See `fresh/docs/m1_phase9_tasks4to9_realignment.md` for the full rationale.

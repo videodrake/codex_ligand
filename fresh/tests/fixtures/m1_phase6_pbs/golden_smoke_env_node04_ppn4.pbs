@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -q workq
+#PBS -N smoke_env_RUNID
+#PBS -l nodes=node04:ppn=4
+#PBS -l walltime=02:00:00
+#PBS -V
+#PBS -o /test/repo/fresh/runs/RUNID/logs/jobs/smoke_env_RUNID.stdout
+#PBS -e /test/repo/fresh/runs/RUNID/logs/jobs/smoke_env_RUNID.stderr
+
+set -euo pipefail
+cd /test/repo
+
+source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
+conda activate pyrosetta
+
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export PYTHONIOENCODING=utf-8
+export REPO_ROOT="/test/repo"
+export PYTHONPATH="$REPO_ROOT/fresh/src:${PYTHONPATH:-}"
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+python -m egfr_myo1d.cli preflight --run-id RUNID --mode smoke_env --profile hpc_strict
+python -m egfr_myo1d.cli cleanup --run-id RUNID --mode test --dry-run false

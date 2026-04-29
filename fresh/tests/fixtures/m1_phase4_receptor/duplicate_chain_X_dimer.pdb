@@ -1,0 +1,14 @@
+HEADER    SYNTHETIC DUPLICATE CHAIN X DIMER FIXTURE
+ATOM      1  N   SER X 669       0.000   0.000   1.000  1.00 10.00           N
+ATOM      2  CA  SER X 669       1.200   0.000   1.000  1.00 10.00           C
+ATOM      3  C   SER X 669       1.800   1.200   1.000  1.00 10.00           C
+ATOM      4  N   THR X 670       3.000   1.200   1.000  1.00 10.00           N
+ATOM      5  CA  THR X 670       3.700   2.400   1.000  1.00 10.00           C
+TER       6      THR X 670
+ATOM      7  N   SER X 669       0.000   5.000   1.000  1.00 10.00           N
+ATOM      8  CA  SER X 669       1.200   5.000   1.000  1.00 10.00           C
+ATOM      9  C   SER X 669       1.800   6.200   1.000  1.00 10.00           C
+ATOM     10  N   THR X 670       3.000   6.200   1.000  1.00 10.00           N
+ATOM     11  CA  THR X 670       3.700   7.400   1.000  1.00 10.00           C
+TER      12      THR X 670
+END

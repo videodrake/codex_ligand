@@ -11,7 +11,7 @@ from egfr_myo1d.core.logging_utils import append_job_status, append_phase_status
 from egfr_myo1d.core.manifest import initialize_manifests, now_iso, write_json
 from egfr_myo1d.core.run_context import RunContext, RunContextError, ensure_within
 from egfr_myo1d.io.hashing import describe_file
-from egfr_myo1d.preparation.constructs import (
+from egfr_myo1d.myo1d.construct import (
     CAP_RESNAMES,
     STANDARD_AA,
     detect_terminal_artifact,
@@ -19,8 +19,8 @@ from egfr_myo1d.preparation.constructs import (
     residue_rows_for_construct,
     validate_active_face_presence,
 )
+from egfr_myo1d.myo1d.pdb_writer import write_pdb_atoms
 from egfr_myo1d.preparation.masks import build_egfr_masks, write_json as write_contract_json
-from egfr_myo1d.preparation.pdb_writer import write_pdb_atoms
 from egfr_myo1d.preparation.restraints import write_active_face_contract
 from egfr_myo1d.structure.pdb_parser import PDBParseError, PDBStructure, parse_pdb
 

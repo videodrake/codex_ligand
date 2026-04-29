@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from egfr_myo1d.preparation.pdb_writer import select_atoms_by_residue_range, write_pdb_atoms
+from egfr_myo1d.myo1d.pdb_writer import select_atoms_by_residue_range, write_pdb_atoms
 from egfr_myo1d.structure.myo1d_annotation import expand_multi_range, expand_range
 from egfr_myo1d.structure.pdb_parser import AtomRecord, PDBStructure, parse_pdb
 
@@ -185,4 +185,53 @@ def validate_active_face_presence(prepared_structure: PDBStructure, contract_myo
                 }
             )
     return status, rows
+
+
+# ---------------------------------------------------------------------------
+# M1 Phase 3 additions: spec-compliant slicing + emission helpers (handoff §16)
+# ---------------------------------------------------------------------------
+
+
+def slice_myo1d_construct(
+    structure: PDBStructure,
+    start: int,
+    end: int,
+    include_caps: bool = True,
+) -> PDBStructure:
+    """Return a new PDBStructure containing residues whose ``residue_number``
+    is within ``[start, end]`` (inclusive). Caps (ACE/NME) are preserved by
+    default. Chain identity, residue numbering, and insertion codes are NOT
+    modified.
+    """
+    if end < start:
+        raise ValueError("residue range invalid: end < start ({0}-{1})".format(start, end))
+    include_resnames = CAP_RESNAMES if include_caps else set()
+    selected_atoms = select_atoms_by_residue_range(
+        structure.atoms,
+        start,
+        end,
+        include_resnames=include_resnames,
+    )
+    selected_residues = tuple(
+        residue
+        for residue in structure.residues
+        if start <= residue.residue_number <= end or residue.resname in include_resnames
+    )
+    return PDBStructure(
+        path=structure.path,
+        atoms=tuple(selected_atoms),
+        residues=selected_residues,
+    )
+
+
+def emit_myo1d_construct_pdb(ctx, structure: PDBStructure, output_path: Path) -> dict[str, Any]:
+    """Write ``structure`` to ``output_path`` under ``ctx.run_dir``.
+
+    Refuses to write outside ``ctx.run_dir`` via
+    :py:meth:`RunContext.require_within_run_dir`. Preserves cap HETATM records
+    when present in ``structure``.
+    """
+    safe = ctx.require_within_run_dir(Path(output_path))
+    safe.parent.mkdir(parents=True, exist_ok=True)
+    return write_pdb_atoms(safe, list(structure.atoms))
 

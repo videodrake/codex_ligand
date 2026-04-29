@@ -1,29 +1,39 @@
 #!/usr/bin/env bash
+# M1 Phase 6: emit a smoke-env PBS file under fresh/runs/<run_id>/scripts/
+# and print the qsub command for the user to run manually on HPC.
+#
+# Does NOT auto-call qsub.
+#
+# Usage:
+#   bash fresh/scripts/submit_smoke_env.sh [<run_id>] [<node>]
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-$(pwd)}"
-
-cat <<'MSG'
-Milestone 1 Task 1 placeholder: this script does not call qsub.
-
-Future smoke-env PBS jobs should include:
-
-#PBS -q workq
-#PBS -l nodes=node04:ppn=4
-#PBS -l walltime=02:00:00
+RUN_ID="${1:-smoke_env_$(date +%Y%m%d_%H%M%S)}"
+NODE="${2:-node04}"
+JOB_NAME="smoke_env_${RUN_ID}"
 
 export PYTHONPATH="$REPO_ROOT/fresh/src:${PYTHONPATH:-}"
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
-export VECLIB_MAXIMUM_THREADS=1
 
-source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
-conda activate pyrosetta
+# 1. Create or reuse the run directory
+python -m egfr_myo1d.cli init-run --mode smoke_env --run-id "$RUN_ID" >/dev/null
 
-No qsub command is run by this Task 1 placeholder.
+# 2. Generate the concrete PBS file under runs/<run_id>/scripts/
+PBS_FILE="$REPO_ROOT/fresh/runs/$RUN_ID/scripts/${JOB_NAME}.pbs"
+python -m egfr_myo1d.cli prepare-pbs \
+    --run-id "$RUN_ID" \
+    --job-name "$JOB_NAME" \
+    --mode smoke_env \
+    --node "$NODE"
+
+cat <<MSG
+Smoke-env PBS file generated:
+
+    $PBS_FILE
+
+To submit on HPC, run from repo root:
+
+    qsub $PBS_FILE
+
+This script does NOT auto-call qsub. Inspect the generated file before submission.
 MSG
-
-export PYTHONPATH="$REPO_ROOT/fresh/src:${PYTHONPATH:-}"
-python -m egfr_myo1d.cli version

@@ -14,7 +14,7 @@ from egfr_myo1d.core.logging_utils import append_job_status, append_phase_status
 from egfr_myo1d.core.manifest import initialize_manifests, now_iso, write_json
 from egfr_myo1d.core.run_context import RunContext, RunContextError
 from egfr_myo1d.io.hashing import describe_file
-from egfr_myo1d.preparation.constructs import CAP_RESNAMES, STANDARD_AA, residue_annotation
+from egfr_myo1d.myo1d.construct import CAP_RESNAMES, STANDARD_AA, residue_annotation
 from egfr_myo1d.preparation.masks import build_egfr_masks
 from egfr_myo1d.preparation.restraints import build_active_face_contract
 from egfr_myo1d.structure.geometry import validate_membrane_frame

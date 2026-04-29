@@ -1,0 +1,14 @@
+HEADER    SYNTHETIC 3GT8-LIKE KINASE-ONLY DIMER (CRYSTALLOGRAPHIC REFERENCE)
+REMARK    No TM/JM (residues 700-979 only). 3GT8_raw is reference_control,
+REMARK    so vectors are not computed regardless of input.
+ATOM      1  CA  THR A 700       0.000   0.000   0.000  1.00 10.00           C
+ATOM      2  CA  ASN A 800       0.000   5.000  10.000  1.00 10.00           C
+ATOM      3  CA  GLN A 900       0.000  10.000  20.000  1.00 10.00           C
+ATOM      4  CA  PRO A 979       0.000  15.000  30.000  1.00 10.00           C
+TER       5      PRO A 979
+ATOM      6  CA  THR B 700      20.000   0.000   0.000  1.00 10.00           C
+ATOM      7  CA  ASN B 800      20.000   5.000  10.000  1.00 10.00           C
+ATOM      8  CA  GLN B 900      20.000  10.000  20.000  1.00 10.00           C
+ATOM      9  CA  PRO B 979      20.000  15.000  30.000  1.00 10.00           C
+TER      10      PRO B 979
+END

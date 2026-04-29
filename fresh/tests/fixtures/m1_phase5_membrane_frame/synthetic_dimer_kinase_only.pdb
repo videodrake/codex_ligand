@@ -1,0 +1,13 @@
+HEADER    SYNTHETIC DIMER KINASE-ONLY (NO TM/JM 634-674)
+REMARK    Tests fallback path: state has no TM/JM -> use plus10 fallback
+ATOM      1  CA  ASN A 700      -2.000   5.000  15.000  1.00 10.00           C
+ATOM      2  CA  GLU A 750       0.000   3.000  20.000  1.00 10.00           C
+ATOM      3  CA  THR A 800      -3.000   8.000  30.000  1.00 10.00           C
+ATOM      4  CA  GLY A 900      -1.000   2.000  25.000  1.00 10.00           C
+TER       5      GLY A 900
+ATOM      6  CA  ASN B 700      17.000   5.000  15.000  1.00 10.00           C
+ATOM      7  CA  GLU B 750      19.000   3.000  20.000  1.00 10.00           C
+ATOM      8  CA  THR B 800      18.000   8.000  30.000  1.00 10.00           C
+ATOM      9  CA  GLY B 900      16.000   2.000  25.000  1.00 10.00           C
+TER      10      GLY B 900
+END
