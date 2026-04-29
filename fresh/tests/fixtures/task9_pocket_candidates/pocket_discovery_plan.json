@@ -1,0 +1,25 @@
+{
+  "accepted_ppi_patch_count": 1,
+  "candidate_nomination_executed": false,
+  "compound_docking_or_scoring_executed": false,
+  "detected_pocket_record": false,
+  "phase": "plan-pocket-discovery",
+  "planned_docking_job_count": 0,
+  "planned_pocket_count": 1,
+  "pocket_detector_runtime_executed": false,
+  "pocket_records": [
+    {
+      "detected_pocket_record": false,
+      "egfr_residues": "A:742;A:746;A:923",
+      "pocket_plan_id": "pocket_plan_001",
+      "ppi_patch_id": "ppi_patch_001",
+      "record_semantics": "ppi_guided_pocket_plan",
+      "receptor_id": "EGFR_synthetic_inactive_dimer_AB",
+      "receptor_state": "EGFR_fixture_state",
+      "source_evidence_class": "CONVERGENT_PATCH"
+    }
+  ],
+  "record_semantics": "ppi_guided_pocket_plan",
+  "run_id": "fixture_task9",
+  "status": "PASS"
+}

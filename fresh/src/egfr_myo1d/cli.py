@@ -264,6 +264,42 @@ def build_parser():
     )
     pocket_parser.set_defaults(func=_cmd_plan_pocket_discovery)
 
+    pocket_candidate_parser = subparsers.add_parser(
+        "prioritize-pocket-candidates",
+        help="Ingest provided pocket candidate records and prioritize PPI-guided non-ATP EGFR pockets without docking.",
+    )
+    pocket_candidate_parser.add_argument("--run-id", required=True, help="Run identifier under fresh/runs/.")
+    pocket_candidate_parser.add_argument("--mode", default="smoke_env", choices=["smoke_env", "smoke_input"])
+    pocket_candidate_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="Profile label recorded in pocket candidate manifests; no external tools are run.",
+    )
+    pocket_candidate_parser.add_argument(
+        "--input-root",
+        default="fresh/data/raw",
+        help="Directory containing pocket_discovery_plan.json and provided detector-style candidate CSV records.",
+    )
+    pocket_candidate_parser.add_argument(
+        "--pocket-plan",
+        help="Task 8 pocket_discovery_plan.json path relative to --input-root.",
+    )
+    pocket_candidate_parser.add_argument(
+        "--candidate-pockets",
+        help="Provided detector-style pocket candidate CSV path relative to --input-root.",
+    )
+    pocket_candidate_parser.add_argument(
+        "--ppi-consensus",
+        help="Optional Task 7 consensus CSV path relative to --input-root, recorded for provenance.",
+    )
+    pocket_candidate_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Record strict mode policy; external runtimes still are not executed.",
+    )
+    pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
+
     return parser
 
 
@@ -510,6 +546,33 @@ def _cmd_plan_pocket_discovery(args):
     status = report["status"]
     print("plan-pocket-discovery {0}".format(status))
     print("pocket_discovery_manifest={0}".format(ctx.manifest_dir / "pocket_discovery_manifest.json"))
+    return 0
+
+
+def _cmd_prioritize_pocket_candidates(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.validation.pocket_candidate_prioritization import prioritize_pocket_candidates
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+    report = prioritize_pocket_candidates(
+        ctx,
+        args.mode,
+        args.profile,
+        Path(args.input_root),
+        Path(args.pocket_plan) if args.pocket_plan else None,
+        Path(args.candidate_pockets) if args.candidate_pockets else None,
+        Path(args.ppi_consensus) if args.ppi_consensus else None,
+        strict=args.strict,
+    )
+    status = report["status"]
+    print("prioritize-pocket-candidates {0}".format(status))
+    print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
+    if status == "FAIL":
+        return 1
     return 0
 
 

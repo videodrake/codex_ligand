@@ -88,6 +88,9 @@ def _summary_text(report):
         "- input consensus: {0}".format(report["ppi_consensus_patch"]["path"]),
         "- accepted PPI patches: {0}".format(report["accepted_ppi_patch_count"]),
         "- planned pocket records: {0}".format(report["planned_pocket_count"]),
+        "- record semantics: {0}".format(report["record_semantics"]),
+        "- detected pocket records: {0}".format(report["detected_pocket_record"]),
+        "- schema audit: {0}".format(report["outputs"].get("task7_consensus_schema_audit", "")),
         "- planned docking jobs: 0",
         "",
         "Task 8 is pocket-selection planning/intake only.",
@@ -112,7 +115,9 @@ def plan_pocket_discovery(ctx, mode, profile, input_root, consensus_path=None, i
     pockets_dir.mkdir(parents=True, exist_ok=True)
 
     pocket_csv = pockets_dir / "egfr_myo1d_ppi_adjacent_pockets.csv"
+    pocket_alias_csv = pockets_dir / "egfr_myo1d_ppi_guided_pocket_plan_records.csv"
     plan_json = pockets_dir / "pocket_discovery_plan.json"
+    schema_audit_path = ctx.qc_dir / "task7_consensus_schema_audit.csv"
     selection_audit_path = ctx.qc_dir / "pocket_selection_audit.csv"
     atp_audit_path = ctx.qc_dir / "atp_overlap_audit.csv"
     membrane_audit_path = ctx.qc_dir / "membrane_accessibility_audit.csv"
@@ -126,10 +131,16 @@ def plan_pocket_discovery(ctx, mode, profile, input_root, consensus_path=None, i
     schema_audit = []
     if not consensus_file.exists():
         blockers.append({"code": "missing_task7_consensus_patch", "message": "Task 7 ppi_consensus_patch.csv is missing"})
+        schema_audit = validate_consensus_schema([])[1]
+        schema_audit.insert(0, {
+            "check": "input_file",
+            "field": "ppi_consensus_patch.csv",
+            "status": "FAIL",
+            "details": "missing Task 7 consensus patch table",
+        })
         status = "NO_GO"
     else:
-        missing, consensus_rows = load_consensus_patch_table(consensus_file)
-        fieldnames = CONSENSUS_REQUIRED_COLUMNS if not missing else [column for column in CONSENSUS_REQUIRED_COLUMNS if column not in missing]
+        missing, consensus_rows, fieldnames = load_consensus_patch_table(consensus_file)
         missing_schema, schema_audit = validate_consensus_schema(fieldnames)
         if missing:
             blockers.append({"code": "invalid_task7_consensus_schema", "message": ";".join(missing)})
@@ -164,6 +175,8 @@ def plan_pocket_discovery(ctx, mode, profile, input_root, consensus_path=None, i
         }]
 
     _write_csv(pocket_csv, pocket_rows if status != "NO_GO" else [], POCKET_FIELDS, ctx)
+    _write_csv(pocket_alias_csv, pocket_rows if status != "NO_GO" else [], POCKET_FIELDS, ctx)
+    _write_csv(schema_audit_path, schema_audit, ["check", "field", "status", "details"], ctx)
     _write_csv(selection_audit_path, selection_audit, SELECTION_FIELDS, ctx)
     _write_csv(atp_audit_path, atp_audit, ATP_FIELDS, ctx)
     _write_csv(membrane_audit_path, membrane_audit, MEMBRANE_FIELDS, ctx)
@@ -171,7 +184,10 @@ def plan_pocket_discovery(ctx, mode, profile, input_root, consensus_path=None, i
 
     outputs = {
         "pockets_csv": ctx.relative_to_repo(pocket_csv),
+        "legacy_pockets_csv": ctx.relative_to_repo(pocket_csv),
+        "pocket_plan_records_csv": ctx.relative_to_repo(pocket_alias_csv),
         "pocket_discovery_plan": ctx.relative_to_repo(plan_json),
+        "task7_consensus_schema_audit": ctx.relative_to_repo(schema_audit_path),
         "pocket_selection_audit": ctx.relative_to_repo(selection_audit_path),
         "atp_overlap_audit": ctx.relative_to_repo(atp_audit_path),
         "membrane_accessibility_audit": ctx.relative_to_repo(membrane_audit_path),
@@ -188,6 +204,9 @@ def plan_pocket_discovery(ctx, mode, profile, input_root, consensus_path=None, i
         "profile": profile,
         "input_kind": input_kind,
         "ppi_consensus_patch": _input_record(ctx, consensus_file),
+        "task7_consensus_schema_audit": schema_audit,
+        "record_semantics": "ppi_guided_pocket_plan",
+        "detected_pocket_record": False,
         "accepted_ppi_patch_count": accepted_count,
         "planned_pocket_count": len(pocket_rows) if status != "NO_GO" else 0,
         "planned_docking_job_count": 0,
@@ -219,4 +238,3 @@ def plan_pocket_discovery(ctx, mode, profile, input_root, consensus_path=None, i
         details={"message": "local pure-Python pocket-selection planning only"},
     )
     return plan
-

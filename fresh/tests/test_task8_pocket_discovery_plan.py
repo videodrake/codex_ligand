@@ -154,13 +154,22 @@ def test_accepted_ppi_patch_produces_pocket_selection_plan(tmp_path):
     root = copy_task8_inputs(tmp_path)
     ctx, report = run_plan(tmp_path, root)
     pocket_csv = ctx.run_dir / "pockets" / "egfr_myo1d_ppi_adjacent_pockets.csv"
+    alias_csv = ctx.run_dir / "pockets" / "egfr_myo1d_ppi_guided_pocket_plan_records.csv"
     plan_json = ctx.run_dir / "pockets" / "pocket_discovery_plan.json"
     rows = read_csv(pocket_csv)
+    alias_rows = read_csv(alias_csv)
+    plan = read_json(plan_json)
 
     assert report["status"] == "PASS"
     assert report["accepted_ppi_patch_count"] == 1
     assert pocket_csv.is_file()
+    assert alias_csv.is_file()
     assert plan_json.is_file()
+    assert rows == alias_rows
+    assert plan["record_semantics"] == "ppi_guided_pocket_plan"
+    assert plan["pocket_detector_runtime_executed"] is False
+    assert plan["detected_pocket_record"] is False
+    assert plan["compound_docking_or_scoring_executed"] is False
     assert any(row["ppi_patch_id"] == "ppi_patch_001" and row["future_discovery_allowed"] == "True" for row in rows)
 
 
@@ -177,6 +186,28 @@ def test_no_accepted_ppi_patch_produces_no_go(tmp_path):
     assert report["status"] == "NO_GO"
     assert report["planned_docking_job_count"] == 0
     assert rows == []
+
+
+def test_schema_audit_written_for_pass_and_missing_schema(tmp_path):
+    root = copy_task8_inputs(tmp_path)
+    ctx, report = run_plan(tmp_path, root)
+    schema_rows = read_csv(ctx.qc_dir / "task7_consensus_schema_audit.csv")
+
+    assert report["status"] == "PASS"
+    assert schema_rows
+    assert all(row["status"] == "PASS" for row in schema_rows)
+
+    bad_root = tmp_path / "bad_schema"
+    bad_root.mkdir()
+    row = base_patch()
+    bad_header = [column for column in HEADER if column != "evidence_class"]
+    write_consensus(bad_root, [row], header=bad_header)
+    bad_ctx, bad_report = run_plan(tmp_path, bad_root)
+    bad_schema_rows = read_csv(bad_ctx.qc_dir / "task7_consensus_schema_audit.csv")
+
+    assert bad_report["status"] == "NO_GO"
+    assert any(row["field"] == "evidence_class" and row["status"] == "FAIL" for row in bad_schema_rows)
+    assert any(blocker["code"] == "invalid_task7_consensus_schema" for blocker in bad_report["blockers"])
 
 
 def test_atp_overlap_pocket_is_flagged(tmp_path):
@@ -225,7 +256,9 @@ def test_all_outputs_remain_under_run_dir(tmp_path):
     ctx, _report = run_plan(tmp_path, root)
     required = [
         ctx.run_dir / "pockets" / "egfr_myo1d_ppi_adjacent_pockets.csv",
+        ctx.run_dir / "pockets" / "egfr_myo1d_ppi_guided_pocket_plan_records.csv",
         ctx.run_dir / "pockets" / "pocket_discovery_plan.json",
+        ctx.qc_dir / "task7_consensus_schema_audit.csv",
         ctx.qc_dir / "pocket_selection_audit.csv",
         ctx.qc_dir / "atp_overlap_audit.csv",
         ctx.qc_dir / "membrane_accessibility_audit.csv",
@@ -253,6 +286,7 @@ def test_no_external_scientific_runtime_tool_is_executed(tmp_path, monkeypatch):
     plan = read_json(ctx.run_dir / "pockets" / "pocket_discovery_plan.json")
 
     assert report["pocket_detector_runtime_executed"] is False
+    assert plan["detected_pocket_record"] is False
+    assert plan["record_semantics"] == "ppi_guided_pocket_plan"
     assert plan["compound_docking_or_scoring_executed"] is False
     assert plan["candidate_nomination_executed"] is False
-

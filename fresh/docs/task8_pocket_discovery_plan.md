@@ -1,8 +1,9 @@
 # Task 8 Pocket Discovery Planning
 
 Task 8 adds a deterministic pocket-selection planning and intake layer. It uses
-Task 7 `ppi_consensus_patch.csv` evidence to define guarded EGFR pocket-plan
-records for future pocket discovery and focused compound docking.
+Task 7 `ppi_consensus_patch.csv` evidence to define guarded EGFR pocket-planning
+records for future pocket discovery and focused compound docking. These rows are
+not detected pocket records.
 
 Task 8 does not run Vina, PyRosetta, LightDock, fpocket, P2Rank, AlphaFold,
 Boltz, Chai, qsub, PBS, sbatch, pocket discovery, docking, ligand scoring, or
@@ -52,7 +53,9 @@ match the Task 7 consensus patch schema and preserve:
 All outputs are written under `fresh/runs/<run_id>/`:
 
 - `pockets/egfr_myo1d_ppi_adjacent_pockets.csv`
+- `pockets/egfr_myo1d_ppi_guided_pocket_plan_records.csv`
 - `pockets/pocket_discovery_plan.json`
+- `qc/task7_consensus_schema_audit.csv`
 - `qc/pocket_selection_audit.csv`
 - `qc/atp_overlap_audit.csv`
 - `qc/membrane_accessibility_audit.csv`
@@ -71,6 +74,17 @@ ATP-overlap and membrane-proximal evidence remain visible in audits and are
 blockers or strong warnings for PPI-disruptive objectives. Protomer identity and
 EGFR residue numbering are copied from the Task 7 consensus table.
 
+For backward compatibility, `egfr_myo1d_ppi_adjacent_pockets.csv` is still
+written. The clearer alias `egfr_myo1d_ppi_guided_pocket_plan_records.csv`
+contains the same rows and should be preferred in later tasks.
+
+Planning rows include explicit semantics:
+
+- `record_semantics = ppi_guided_pocket_plan`
+- `pocket_detector_runtime_executed = false`
+- `detected_pocket_record = false`
+- `compound_docking_or_scoring_executed = false`
+- `candidate_nomination_executed = false`
+
 Task 8 creates pocket-selection planning records only. It prepares a handoff to
 future pocket discovery, but does not claim real pocket discovery was run.
-

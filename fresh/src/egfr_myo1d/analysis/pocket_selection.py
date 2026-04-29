@@ -36,6 +36,11 @@ CONSENSUS_REQUIRED_COLUMNS = [
 
 POCKET_FIELDS = [
     "pocket_plan_id",
+    "record_semantics",
+    "pocket_detector_runtime_executed",
+    "detected_pocket_record",
+    "compound_docking_or_scoring_executed",
+    "candidate_nomination_executed",
     "ppi_patch_id",
     "receptor_id",
     "receptor_state",
@@ -83,7 +88,7 @@ def load_consensus_patch_table(path):
         fieldnames = reader.fieldnames or []
         rows = list(reader)
     missing = [column for column in CONSENSUS_REQUIRED_COLUMNS if column not in fieldnames]
-    return missing, rows
+    return missing, rows, fieldnames
 
 
 def validate_consensus_schema(fieldnames):
@@ -211,6 +216,11 @@ def build_pocket_records(consensus_rows):
         pocket_id = "pocket_plan_{0:03d}".format(index)
         pocket_row = {
             "pocket_plan_id": pocket_id,
+            "record_semantics": "ppi_guided_pocket_plan",
+            "pocket_detector_runtime_executed": False,
+            "detected_pocket_record": False,
+            "compound_docking_or_scoring_executed": False,
+            "candidate_nomination_executed": False,
             "ppi_patch_id": row.get("ppi_patch_id", ""),
             "receptor_id": row.get("receptor_id", ""),
             "receptor_state": row.get("receptor_state", ""),
@@ -269,4 +279,3 @@ def build_pocket_records(consensus_rows):
             "notes": "protomer identity preserved from Task 7 consensus patch",
         })
     return pocket_rows, selection_audit, atp_audit, membrane_audit, dimer_audit, accepted_count
-
