@@ -300,6 +300,39 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    cleanup_parser = subparsers.add_parser(
+        "cleanup",
+        help="Delete intermediate/scratch files inside a run directory; preserves manifest/logs/qc/reports.",
+    )
+    cleanup_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Existing run identifier under fresh/runs/.",
+    )
+    cleanup_parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["test", "production"],
+        help="test deletes intermediates; production defaults to dry-run.",
+    )
+    cleanup_parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        choices=["true", "false"],
+        default=None,
+        help=(
+            "Override default. Default is 'false' for --mode test and 'true' "
+            "for --mode production. Pass 'true' or 'false' explicitly to override."
+        ),
+    )
+    cleanup_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="Profile label recorded in cleanup_report.json; no external tools are run.",
+    )
+    cleanup_parser.set_defaults(func=_cmd_cleanup)
+
     return parser
 
 
@@ -572,6 +605,38 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_cleanup(args):
+    from egfr_myo1d.core.cleanup import run_cleanup
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+
+    ctx = RunContext.for_existing(args.run_id)
+    initialize_logs(ctx)
+
+    if args.dry_run is None:
+        dry_run = None
+    else:
+        dry_run = args.dry_run == "true"
+
+    report = run_cleanup(ctx, mode=args.mode, dry_run=dry_run, profile=args.profile)
+
+    print(
+        "cleanup {0}: mode={1} dry_run={2} candidates={3} deleted={4} preserved={5} errors={6}".format(
+            report.status,
+            report.mode,
+            report.dry_run,
+            len(report.deleted_files),
+            report.deleted_count,
+            report.preserved_count,
+            len(report.errors),
+        )
+    )
+    print("cleanup_report={0}".format(ctx.manifest_dir / "cleanup_report.json"))
+    if report.status == "FAIL":
         return 1
     return 0
 
