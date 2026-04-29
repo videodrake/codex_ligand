@@ -300,6 +300,45 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    receptor_parser = subparsers.add_parser(
+        "prepare-receptor",
+        help="Normalize EGFR receptor input: explicit A/B split, 669-1014 dockable crop, +1000 runtime offset, mapping CSV.",
+    )
+    receptor_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    receptor_parser.add_argument(
+        "--state",
+        required=True,
+        choices=["EGFR_160-185", "EGFR_170-200", "3GT8_raw"],
+        help="Receptor state ID. 3GT8_raw is a reference/control, not a primary membrane-validated state.",
+    )
+    receptor_parser.add_argument(
+        "--source",
+        required=True,
+        help="Path to source receptor PDB.",
+    )
+    receptor_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+        help="Mode label recorded in manifests.",
+    )
+    receptor_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="codex_dev tolerates fixture warnings; hpc_strict treats them as FAIL/quarantine.",
+    )
+    receptor_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Force production-like blocker policy even in codex_dev.",
+    )
+    receptor_parser.set_defaults(func=_cmd_prepare_receptor)
+
     myo1d_parser = subparsers.add_parser(
         "prepare-myo1d",
         help="Slice MYO1D source PDB to canonical M1 construct and emit QC.",
@@ -638,6 +677,39 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_receptor(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.model.receptor_normalize import normalize_receptor
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    report = normalize_receptor(
+        ctx,
+        Path(args.source),
+        state_id=args.state,
+        profile=args.profile,
+        strict=args.strict,
+    )
+    print(
+        "prepare-receptor {0}: state={1} case={2} protomers={3} v924r_warn={4} warnings={5}".format(
+            report.status,
+            report.state_id,
+            report.case,
+            report.protomer_count,
+            report.v924r_warn,
+            len(report.warnings),
+        )
+    )
+    print("receptor_manifest={0}".format(report.manifest_json))
+    if report.status == "FAIL":
         return 1
     return 0
 

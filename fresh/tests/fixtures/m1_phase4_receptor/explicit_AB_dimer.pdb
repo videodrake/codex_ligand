@@ -1,0 +1,14 @@
+HEADER    SYNTHETIC EXPLICIT A/B DIMER FIXTURE
+ATOM      1  N   ALA A 669       0.000   0.000   0.000  1.00 10.00           N
+ATOM      2  CA  ALA A 669       1.200   0.000   0.000  1.00 10.00           C
+ATOM      3  C   ALA A 669       1.800   1.200   0.000  1.00 10.00           C
+ATOM      4  N   GLY A 670       3.000   1.200   0.000  1.00 10.00           N
+ATOM      5  CA  GLY A 670       3.700   2.400   0.000  1.00 10.00           C
+TER       6      GLY A 670
+ATOM      7  N   ALA B 669       0.000   5.000   0.000  1.00 10.00           N
+ATOM      8  CA  ALA B 669       1.200   5.000   0.000  1.00 10.00           C
+ATOM      9  C   ALA B 669       1.800   6.200   0.000  1.00 10.00           C
+ATOM     10  N   GLY B 670       3.000   6.200   0.000  1.00 10.00           N
+ATOM     11  CA  GLY B 670       3.700   7.400   0.000  1.00 10.00           C
+TER      12      GLY B 670
+END

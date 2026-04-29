@@ -1,0 +1,24 @@
+HEADER    SYNTHETIC DIMER WITH RESIDUES INSIDE AND OUTSIDE 669-1014 DOCKABLE CROP
+REMARK    Includes TM-core residues 640, 660 (excluded by 669-1014 crop)
+REMARK    Includes JM/KD residues 670, 700, 800, 1000 (kept by 669-1014 crop)
+REMARK    Includes excluded post-1014 residue 1100 (excluded by 669-1014 crop)
+REMARK    HETATM CHL lipid and HOH water are dropped from dockable receptor
+ATOM      1  CA  PHE A 640       0.000   0.000   0.000  1.00 10.00           C
+ATOM      2  CA  LEU A 660       1.000   0.000   0.000  1.00 10.00           C
+ATOM      3  CA  ILE A 670       2.000   0.000   0.000  1.00 10.00           C
+ATOM      4  CA  THR A 700       3.000   0.000   0.000  1.00 10.00           C
+ATOM      5  CA  GLU A 800       4.000   0.000   0.000  1.00 10.00           C
+ATOM      6  CA  ASN A1000       5.000   0.000   0.000  1.00 10.00           C
+ATOM      7  CA  GLN A1100       6.000   0.000   0.000  1.00 10.00           C
+HETATM    8  C1  CHL A 990       7.000   0.000   0.000  1.00 10.00           C
+HETATM    9  O   HOH A 991       8.000   0.000   0.000  1.00 10.00           O
+TER      10      GLN A1100
+ATOM     11  CA  PHE B 640       0.000   5.000   0.000  1.00 10.00           C
+ATOM     12  CA  LEU B 660       1.000   5.000   0.000  1.00 10.00           C
+ATOM     13  CA  ILE B 670       2.000   5.000   0.000  1.00 10.00           C
+ATOM     14  CA  THR B 700       3.000   5.000   0.000  1.00 10.00           C
+ATOM     15  CA  GLU B 800       4.000   5.000   0.000  1.00 10.00           C
+ATOM     16  CA  ASN B1000       5.000   5.000   0.000  1.00 10.00           C
+ATOM     17  CA  GLN B1100       6.000   5.000   0.000  1.00 10.00           C
+TER      18      GLN B1100
+END
