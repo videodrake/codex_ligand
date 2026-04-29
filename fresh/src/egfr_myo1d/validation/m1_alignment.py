@@ -48,6 +48,9 @@ class M1AlignmentReport:
     task_consumption_map: dict[str, list[str]] = field(default_factory=dict)
     aligned_count: int = 0
     expected_count: int = 0
+    fixed_expected_count: int = 0
+    fixed_aligned_count: int = 0
+    receptor_artifact_count: int = 0
     status: str = "PASS"
     notes: list[str] = field(default_factory=list)
 
@@ -115,8 +118,10 @@ def record_m1_alignment(ctx: RunContext) -> M1AlignmentReport:
         present = full_path.is_file()
         report.m1_outputs_present[key] = present
         report.expected_count += 1
+        report.fixed_expected_count += 1
         if present:
             report.aligned_count += 1
+            report.fixed_aligned_count += 1
             report.m1_canonical_paths[key] = _safe_rel(full_path, ctx)
             for task_id in consumers:
                 report.task_consumption_map.setdefault(task_id, []).append(key)
@@ -131,6 +136,7 @@ def record_m1_alignment(ctx: RunContext) -> M1AlignmentReport:
             key = "{0}/{1}".format(subdir, path.name)
             report.m1_outputs_present[key] = True
             report.aligned_count += 1
+            report.receptor_artifact_count += 1
             report.m1_canonical_paths[key] = _safe_rel(path, ctx)
             receptor_artifacts.setdefault(subdir, []).append(path.name)
 
@@ -145,11 +151,11 @@ def record_m1_alignment(ctx: RunContext) -> M1AlignmentReport:
     if report.aligned_count == 0:
         report.status = "WARN"
         report.notes.append("no_m1_canonical_artifacts_found_in_run_dir")
-    elif report.aligned_count < report.expected_count:
+    elif report.fixed_aligned_count < report.fixed_expected_count:
         report.status = "WARN"
         report.notes.append(
-            "partial_m1_artifacts_present:{0}_of_{1}".format(
-                report.aligned_count, report.expected_count
+            "partial_fixed_m1_artifacts_present:{0}_of_{1}".format(
+                report.fixed_aligned_count, report.fixed_expected_count
             )
         )
 
@@ -160,6 +166,9 @@ def record_m1_alignment(ctx: RunContext) -> M1AlignmentReport:
         "task_consumption_map": report.task_consumption_map,
         "aligned_count": report.aligned_count,
         "expected_count": report.expected_count,
+        "fixed_aligned_count": report.fixed_aligned_count,
+        "fixed_expected_count": report.fixed_expected_count,
+        "receptor_artifact_count": report.receptor_artifact_count,
         "status": report.status,
         "notes": report.notes,
         "approach": "additive_phase9_no_task_module_logic_changed",

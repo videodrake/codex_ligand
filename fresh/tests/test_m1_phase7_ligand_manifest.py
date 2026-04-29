@@ -326,7 +326,17 @@ def test_internal_id_leak_detection_fails_status(tmp_path):
     )
     assert manifest.internal_ids_leaked_into_outputs is True
     assert manifest.status == "FAIL"
-    assert "INTERNAL_TEST_LEAK" in manifest.leaked_internal_ids
+    assert manifest.leaked_internal_id_count == 1
+    assert "INTERNAL_TEST_LEAK" not in "\n".join(manifest.leaked_internal_ids)
+    assert manifest.leaked_internal_ids[0].startswith("<redacted_internal_id_sha256:")
+    assert all("INTERNAL_TEST_LEAK" not in warning for warning in manifest.warnings)
+    payload = read_json(manifest.output_manifest_json)
+    assert payload["leaked_internal_id_count"] == 1
+    assert payload["leaked_internal_ids"][0].startswith(
+        "<redacted_internal_id_sha256:"
+    )
+    assert "INTERNAL_TEST_LEAK" not in "\n".join(payload["leaked_internal_ids"])
+    assert all("INTERNAL_TEST_LEAK" not in warning for warning in payload["warnings"])
 
 
 # ---------------------------------------------------------------------------

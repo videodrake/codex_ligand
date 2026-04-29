@@ -15,6 +15,7 @@ M1 does NOT run ligand docking. This module is shell-only.
 from __future__ import annotations
 
 import csv
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -77,6 +78,8 @@ class LigandManifest:
     private_mapping_present: bool = False
     private_mapping_schema_valid: bool | None = None
     internal_ids_leaked_into_outputs: bool = False
+    leaked_internal_id_count: int = 0
+    leaked_internal_id_hashes: list[str] = field(default_factory=list)
     leaked_internal_ids: list[str] = field(default_factory=list)
     compound_stage_enabled: bool = False
     profile: str = "codex_dev"
@@ -175,6 +178,22 @@ def _scan_for_internal_id_leaks(
     return sorted(leaks)
 
 
+def _redact_internal_id_leaks(leaks: Iterable[str]) -> tuple[list[str], list[str]]:
+    """Return redacted placeholders and stable hashes for leaked IDs.
+
+    Raw internal IDs must not be copied back into run outputs, including the
+    failure report that records a leak. Hashes make repeated leaks auditable
+    without exposing the confidential identifier itself.
+    """
+    hashes = []
+    redacted = []
+    for value in sorted(set(str(x) for x in leaks if x)):
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
+        hashes.append(digest)
+        redacted.append("<redacted_internal_id_sha256:{0}>".format(digest[:12]))
+    return redacted, hashes
+
+
 # ---------------------------------------------------------------------------
 # Output writers
 # ---------------------------------------------------------------------------
@@ -206,6 +225,8 @@ def _write_manifest_json(ctx: RunContext, manifest: LigandManifest) -> Path:
         "private_mapping_present": manifest.private_mapping_present,
         "private_mapping_schema_valid": manifest.private_mapping_schema_valid,
         "internal_ids_leaked_into_outputs": manifest.internal_ids_leaked_into_outputs,
+        "leaked_internal_id_count": manifest.leaked_internal_id_count,
+        "leaked_internal_id_hashes": manifest.leaked_internal_id_hashes,
         "leaked_internal_ids": manifest.leaked_internal_ids,
         "compound_stage_enabled": manifest.compound_stage_enabled,
         "ligands": [
@@ -343,11 +364,16 @@ def build_ligand_manifest(
     # Leak detection scans the outputs JUST written
     leaks = _scan_for_internal_id_leaks([qc_path, json_path], internal_ids)
     if leaks:
+        redacted_leaks, leak_hashes = _redact_internal_id_leaks(leaks)
         manifest.internal_ids_leaked_into_outputs = True
-        manifest.leaked_internal_ids = leaks
+        manifest.leaked_internal_id_count = len(leaks)
+        manifest.leaked_internal_id_hashes = leak_hashes
+        manifest.leaked_internal_ids = redacted_leaks
         manifest.status = "FAIL"
         manifest.warnings.append(
-            "internal_id_leak: {0}".format(",".join(leaks))
+            "internal_id_leak_detected: count={0} hashes={1}".format(
+                len(leaks), ",".join(leak_hashes)
+            )
         )
         # Re-write JSON to record the leak in the saved report
         json_path = _write_manifest_json(ctx, manifest)

@@ -107,6 +107,8 @@ def test_cleanup_dry_run_makes_no_changes(tmp_path):
     assert isinstance(report, CleanupReport)
     assert report.dry_run is True
     assert report.status == "PASS"
+    assert report.candidate_count == len(report.deleted_files)
+    assert report.deleted_count == 0
     # Files still exist on disk
     assert (ctx.scratch_dir / "pose_001.pdb").exists()
     assert (ctx.tmp_dir / "vina_run.pdbqt.tmp").exists()
@@ -162,7 +164,8 @@ def test_cleanup_production_default_is_dry_run(tmp_path):
     report = run_cleanup(ctx, mode="production", profile="codex_dev")
 
     assert report.dry_run is True
-    assert report.deleted_count == len(report.deleted_files)
+    assert report.candidate_count == len(report.deleted_files)
+    assert report.deleted_count == 0
     # Files NOT actually deleted
     assert (ctx.scratch_dir / "pose_001.pdb").exists()
     assert (ctx.tmp_dir / "vina_run.pdbqt.tmp").exists()

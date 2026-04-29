@@ -1088,7 +1088,7 @@ def _cmd_cleanup(args):
             report.status,
             report.mode,
             report.dry_run,
-            len(report.deleted_files),
+            report.candidate_count,
             report.deleted_count,
             report.preserved_count,
             len(report.errors),

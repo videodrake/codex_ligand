@@ -27,5 +27,3 @@ export VECLIB_MAXIMUM_THREADS=1
 
 python -m egfr_myo1d.cli preflight --run-id RUNID --mode smoke_env --profile hpc_strict
 python -m egfr_myo1d.cli cleanup --run-id RUNID --mode test --dry-run false
-
-

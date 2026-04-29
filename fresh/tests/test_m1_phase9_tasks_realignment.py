@@ -138,6 +138,26 @@ def test_record_m1_alignment_records_per_state_receptor_artifacts(tmp_path):
     assert receptor_keys, "no normalized receptor PDBs recorded"
 
 
+def test_record_m1_alignment_fixed_artifact_missing_not_hidden_by_receptors(tmp_path):
+    ctx = make_tmp_run_context(tmp_path)
+    initialize_logs(ctx)
+    receptor_dir = ctx.run_dir / "normalized" / "receptors"
+    receptor_dir.mkdir(parents=True, exist_ok=True)
+    for state in ("EGFR_160-185", "EGFR_170-200", "3GT8_raw"):
+        (receptor_dir / "{0}_full_frame_explicit_AB.pdb".format(state)).write_text(
+            "REMARK synthetic receptor artifact only\n",
+            encoding="utf-8",
+        )
+
+    report = record_m1_alignment(ctx)
+
+    assert report.receptor_artifact_count == 3
+    assert report.fixed_aligned_count == 0
+    assert report.fixed_expected_count == len(M1_TO_TASK_CONSUMPTION)
+    assert report.status == "WARN"
+    assert any("partial_fixed_m1_artifacts_present" in n for n in report.notes)
+
+
 def test_record_m1_alignment_consumption_map_includes_task_ids(tmp_path):
     ctx = make_tmp_run_context(tmp_path)
     initialize_logs(ctx)

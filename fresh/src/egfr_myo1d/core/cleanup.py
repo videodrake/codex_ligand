@@ -45,6 +45,7 @@ class CleanupReport:
     deleted_files: list[dict[str, Any]] = field(default_factory=list)
     preserved_files: list[dict[str, Any]] = field(default_factory=list)
     errors: list[dict[str, Any]] = field(default_factory=list)
+    candidate_count: int = 0
     deleted_count: int = 0
     preserved_count: int = 0
     status: str = "PASS"
@@ -59,6 +60,7 @@ class CleanupReport:
             "timestamp": self.timestamp,
             "deleted_files": self.deleted_files,
             "preserved_files": self.preserved_files,
+            "candidate_count": self.candidate_count,
             "deleted_count": self.deleted_count,
             "preserved_count": self.preserved_count,
             "errors": self.errors,
@@ -256,7 +258,8 @@ def run_cleanup(
         timestamp=now_iso(),
         deleted_files=deleted_records,
         preserved_files=preserved_records,
-        deleted_count=deleted_count if not dry_run else len(deleted_records),
+        candidate_count=len(deleted_records),
+        deleted_count=deleted_count,
         preserved_count=len(preserved_records),
         errors=errors,
         status=status,
