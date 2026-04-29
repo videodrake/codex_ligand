@@ -300,6 +300,60 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    pbs_parser = subparsers.add_parser(
+        "prepare-pbs",
+        help="Generate a concrete PBS job file under runs/<run_id>/scripts/. Does NOT call qsub.",
+    )
+    pbs_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    pbs_parser.add_argument(
+        "--job-name",
+        required=True,
+        help="PBS job name (alnum/underscore/dot/dash).",
+    )
+    pbs_parser.add_argument(
+        "--mode",
+        required=True,
+        choices=["smoke_env", "smoke_input", "mini", "scaling", "production"],
+        help="Mode label; resolves ppn/walltime defaults from hpc.yaml.",
+    )
+    pbs_parser.add_argument(
+        "--node",
+        default=None,
+        choices=["node04", "node05", "node06"],
+        help="Target node. Default: first entry in hpc.yaml nodes.",
+    )
+    pbs_parser.add_argument(
+        "--ppn",
+        type=int,
+        default=None,
+        help="Override ppn. Default: hpc.yaml ppn[mode].",
+    )
+    pbs_parser.add_argument(
+        "--walltime",
+        default=None,
+        help="Override walltime as HH:MM:SS. Default: hpc.yaml walltime[mode].",
+    )
+    pbs_parser.add_argument(
+        "--output-path",
+        default=None,
+        help="Optional output path. Default: runs/<run_id>/scripts/<job_name>.pbs.",
+    )
+    pbs_parser.add_argument(
+        "--input-root",
+        default="fresh/data/raw",
+        help="--input-root used by smoke_input mode body.",
+    )
+    pbs_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+    )
+    pbs_parser.set_defaults(func=_cmd_prepare_pbs)
+
     membrane_parser = subparsers.add_parser(
         "compute-membrane-frame",
         help="Compute state-aware membrane_frame.json from coordinates (no hardcoded vectors).",
@@ -710,6 +764,45 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_pbs(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.hpc.pbs import generate_pbs
+
+    # Use --mode 'smoke_env' as the run-context init mode for non-smoke modes
+    init_mode = args.mode if args.mode in ("smoke_env", "smoke_input") else "smoke_env"
+    try:
+        ctx = RunContext.for_existing(args.run_id)
+    except Exception:
+        ctx = RunContext.create(args.run_id, init_mode)
+    initialize_logs(ctx)
+
+    output_path = Path(args.output_path) if args.output_path else None
+
+    pbs = generate_pbs(
+        ctx,
+        job_name=args.job_name,
+        mode=args.mode,
+        node=args.node,
+        ppn=args.ppn,
+        walltime=args.walltime,
+        output_path=output_path,
+        profile=args.profile,
+        input_root=args.input_root,
+    )
+    print(
+        "prepare-pbs {0}: job={1} mode={2} node={3} ppn={4} walltime={5}".format(
+            pbs.status, pbs.job_name, pbs.mode, pbs.node, pbs.ppn, pbs.walltime
+        )
+    )
+    print("pbs_file={0}".format(pbs.output_path))
+    if pbs.status == "FAIL":
         return 1
     return 0
 
