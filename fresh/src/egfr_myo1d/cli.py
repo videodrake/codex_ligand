@@ -300,6 +300,58 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    prepare_inputs_parser = subparsers.add_parser(
+        "prepare-inputs",
+        help="Orchestrator: preflight + prepare-receptor (per state) + compute-membrane-frame + prepare-myo1d + manifest-ligands.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--mode",
+        default="smoke_input",
+        choices=["smoke_env", "smoke_input"],
+    )
+    prepare_inputs_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="hpc_strict stops orchestration at first sub-step FAIL.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--input-root",
+        default=None,
+        help=(
+            "Optional directory layout: "
+            "<root>/{receptors,myo1d,ligands,private}/. "
+            "Default: per-config paths (fresh/data/raw/...)."
+        ),
+    )
+    prepare_inputs_parser.add_argument(
+        "--states",
+        default=None,
+        help="Comma-separated state IDs. Default: all from receptor_states.yaml.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--skip-ligands",
+        choices=["true", "false"],
+        default="false",
+        help="Skip the manifest-ligands sub-step.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Force production-like blocker policy even in codex_dev.",
+    )
+    prepare_inputs_parser.add_argument(
+        "--compound-stage-enabled",
+        choices=["true", "false"],
+        default="false",
+    )
+    prepare_inputs_parser.set_defaults(func=_cmd_prepare_inputs)
+
     ligand_parser = subparsers.add_parser(
         "manifest-ligands",
         help="Build ligand manifest shell (public IDs only; gitignored private mapping).",
@@ -801,6 +853,46 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_prepare_inputs(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.orchestrator.prepare_inputs import run_prepare_inputs
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    state_list = (
+        [s.strip() for s in args.states.split(",") if s.strip()]
+        if args.states
+        else None
+    )
+    aggregate = run_prepare_inputs(
+        ctx,
+        mode=args.mode,
+        profile=args.profile,
+        input_root=Path(args.input_root) if args.input_root else None,
+        states=state_list,
+        skip_ligands=(args.skip_ligands == "true"),
+        strict=args.strict,
+        compound_stage_enabled=(args.compound_stage_enabled == "true"),
+    )
+    print(
+        "prepare-inputs {0}: substeps={1} missing={2} blockers={3}".format(
+            aggregate.status,
+            len(aggregate.sub_steps),
+            len(aggregate.missing_required_inputs),
+            len(aggregate.blockers),
+        )
+    )
+    print("aggregate_manifest={0}".format(aggregate.aggregate_manifest_path))
+    print("summary_report={0}".format(aggregate.summary_report_path))
+    if aggregate.status == "FAIL":
         return 1
     return 0
 
