@@ -1,0 +1,17 @@
+{
+  "workspace": "C:\\Users\\dudwn\\OneDrive\\문서\\EGFR_MYO1D\\analysis_v0_5\\reports",
+  "pptx": "C:\\Users\\dudwn\\OneDrive\\문서\\EGFR_MYO1D\\analysis_v0_5\\reports\\ppt_output\\EGFR_MYO1D_receptor_modeling_clustering_deck.pptx",
+  "checks": {
+    "output_hygiene": {
+      "output_dir": "C:\\Users\\dudwn\\OneDrive\\문서\\EGFR_MYO1D\\analysis_v0_5\\reports\\output",
+      "unexpected_files": [
+        "output directory is missing"
+      ]
+    }
+  },
+  "failures": [
+    "PPTX package inspection failed: unzip -Z1 C:\\Users\\dudwn\\OneDrive\\문서\\EGFR_MYO1D\\analysis_v0_5\\reports\\ppt_output\\EGFR_MYO1D_receptor_modeling_clustering_deck.pptx failed",
+    "output/ contains non-deliverable files: output directory is missing"
+  ],
+  "warnings": []
+}
