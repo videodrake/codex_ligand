@@ -300,6 +300,39 @@ def build_parser():
     )
     pocket_candidate_parser.set_defaults(func=_cmd_prioritize_pocket_candidates)
 
+    membrane_parser = subparsers.add_parser(
+        "compute-membrane-frame",
+        help="Compute state-aware membrane_frame.json from coordinates (no hardcoded vectors).",
+    )
+    membrane_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/.",
+    )
+    membrane_parser.add_argument(
+        "--state",
+        default="all",
+        choices=["EGFR_160-185", "EGFR_170-200", "3GT8_raw", "all"],
+        help="State to compute. Default 'all' iterates all three states.",
+    )
+    membrane_parser.add_argument(
+        "--full-frame-source",
+        default=None,
+        help="Optional fallback PDB path; default uses plus10_full_frame.pdb from receptor_states.yaml.",
+    )
+    membrane_parser.add_argument(
+        "--mode",
+        default="smoke_env",
+        choices=["smoke_env", "smoke_input"],
+    )
+    membrane_parser.add_argument(
+        "--profile",
+        default="codex_dev",
+        choices=["codex_dev", "hpc_strict"],
+        help="codex_dev tolerates missing source (WARN); hpc_strict treats missing as FAIL.",
+    )
+    membrane_parser.set_defaults(func=_cmd_compute_membrane_frame)
+
     receptor_parser = subparsers.add_parser(
         "prepare-receptor",
         help="Normalize EGFR receptor input: explicit A/B split, 669-1014 dockable crop, +1000 runtime offset, mapping CSV.",
@@ -677,6 +710,38 @@ def _cmd_prioritize_pocket_candidates(args):
     print("prioritize-pocket-candidates {0}".format(status))
     print("pocket_candidate_prioritization_manifest={0}".format(ctx.manifest_dir / "pocket_candidate_prioritization_manifest.json"))
     if status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_compute_membrane_frame(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.model.membrane_frame import (
+        ALL_STATES,
+        run_membrane_frame_computation,
+    )
+
+    ctx = RunContext.create(args.run_id, args.mode)
+    initialize_logs(ctx)
+
+    state_ids = list(ALL_STATES) if args.state == "all" else [args.state]
+    source = Path(args.full_frame_source) if args.full_frame_source else None
+
+    frames, overall = run_membrane_frame_computation(
+        ctx, state_ids=state_ids, full_frame_source=source, profile=args.profile
+    )
+    print(
+        "compute-membrane-frame {0}: states={1} statuses={2}".format(
+            overall,
+            len(frames),
+            ",".join("{0}={1}".format(f.state_id, f.status) for f in frames),
+        )
+    )
+    print("membrane_frame_json={0}".format(ctx.manifest_dir / "membrane_frame.json"))
+    if overall == "FAIL":
         return 1
     return 0
 
