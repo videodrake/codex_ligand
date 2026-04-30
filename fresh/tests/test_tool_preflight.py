@@ -1,0 +1,124 @@
+import json
+import uuid
+from pathlib import Path
+
+import pytest
+
+from egfr_myo1d.cli import main
+from egfr_myo1d.core.logging_utils import initialize_logs
+from egfr_myo1d.core.run_context import RunContext
+from egfr_myo1d.tools import tool_preflight
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def unique_run_id(prefix="tool_preflight"):
+    return "{}_{}".format(prefix, uuid.uuid4().hex[:12])
+
+
+def write_registry(path):
+    path.write_text(
+        "\n".join(
+            [
+                "tools:",
+                "  numpy:",
+                "    required_level: core",
+                "    env: pyrosetta",
+                "    python_import: numpy",
+                "  vina:",
+                "    required_level: core",
+                "    env: pyrosetta",
+                "    commands: [vina]",
+                "    smoke_args: ['--version']",
+                "  pyKVFinder:",
+                "    required_level: core_addition",
+                "    env: ppi_surface_or_pyrosetta",
+                "    python_import: pyKVFinder",
+                "  passer:",
+                "    required_level: external_server_only",
+                "    env: external_server",
+                "    status_override: external_server_only",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_tool_preflight_writes_status_logs_and_report(tmp_path, monkeypatch):
+    registry = tmp_path / "tool_registry.yaml"
+    write_registry(registry)
+
+    def fake_import(name):
+        if name == "numpy":
+            class Module:
+                __version__ = "1.0"
+
+            return Module()
+        raise ImportError("mock missing")
+
+    def fake_which(command):
+        if command == "vina":
+            return "/mock/bin/vina"
+        return None
+
+    def fake_run(args, stdout, stderr, text, timeout, check):
+        class Proc:
+            returncode = 0
+            stdout = "AutoDock Vina mock\n"
+
+        return Proc()
+
+    monkeypatch.setattr(tool_preflight.importlib, "import_module", fake_import)
+    monkeypatch.setattr(tool_preflight.shutil, "which", fake_which)
+    monkeypatch.setattr(tool_preflight.subprocess, "run", fake_run)
+
+    ctx = RunContext.create(unique_run_id(), "smoke_env", repo_root=REPO_ROOT)
+    initialize_logs(ctx)
+    report = tool_preflight.run_tool_preflight(
+        ctx,
+        mode="smoke",
+        profile="codex_dev",
+        registry_path=registry,
+    )
+
+    assert report["status"] == "WARN"
+    assert report["tools"]["numpy"]["status"] == "installed_and_smoke_passed"
+    assert report["tools"]["vina"]["smoke_test"] == "passed"
+    assert report["tools"]["pyKVFinder"]["status"] == "not_installed"
+    assert report["tools"]["passer"]["status"] == "external_server_only"
+    assert (ctx.manifest_dir / "tool_status.json").is_file()
+    assert (ctx.logs_dir / "phase_tool_preflight.log").is_file()
+    assert (ctx.logs_dir / "tools" / "vina.smoke.log").is_file()
+    assert (ctx.reports_dir / "tool_installation_report.md").is_file()
+
+
+def test_tool_preflight_hpc_strict_blocks_missing_core_addition(tmp_path, monkeypatch):
+    registry = tmp_path / "tool_registry.yaml"
+    write_registry(registry)
+
+    monkeypatch.setattr(tool_preflight.importlib, "import_module", lambda name: (_ for _ in ()).throw(ImportError("missing")))
+    monkeypatch.setattr(tool_preflight.shutil, "which", lambda command: None)
+
+    ctx = RunContext.create(unique_run_id(), "smoke_env", repo_root=REPO_ROOT)
+    initialize_logs(ctx)
+    report = tool_preflight.run_tool_preflight(
+        ctx,
+        mode="discover",
+        profile="hpc_strict",
+        registry_path=registry,
+    )
+
+    assert report["status"] == "FAIL"
+    assert any(item.startswith("numpy:") for item in report["blockers"])
+    assert any(item.startswith("pyKVFinder:") for item in report["blockers"])
+
+
+def test_cli_tool_preflight_help_includes_modes(capsys):
+    code = main(["tool-preflight", "--help"])
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "discover" in out
+    assert "smoke" in out
