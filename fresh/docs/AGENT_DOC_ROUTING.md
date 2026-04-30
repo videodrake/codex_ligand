@@ -18,6 +18,7 @@ are not controlling specifications.
 | Detailed receptor, MYO1D, PPI, pocket, and compound rationale | `fresh/docs/egfr_myo1d_final_research_overview_2026-04-27.md` |
 | PPI-surface tool installation and Milestone 3 integration plan | `ppi_surface_tool_installation_and_integration_handoff_v1_0.md` |
 | Verified HPC environment state | `fresh/docs/hpc_tool_environment_status.md` |
+| Optional AI tool install/runtime details | `fresh/docs/optional_ai_tool_runtime_status.md` |
 | Machine-readable tool environment policy | `fresh/configs/tool_envs.yaml` |
 | Tool preflight registry | `fresh/configs/tool_registry.yaml` |
 | Receptor, pocket, ATP-reference, path, gate, and run settings | `fresh/configs/*.yaml` |
@@ -69,7 +70,10 @@ Milestone 3 tool adapters must preserve explicit environment boundaries:
 - Run orchestration and core tools from `pyrosetta`.
 - Run pyKVFinder from `ppi_surface`.
 - Run P2Rank from `p2rank_java11`.
-- Keep InDeep, PeSTo, MaSIF, PocketMiner, and PASSer optional.
+- Run PeSTo from `pesto`.
+- Run PocketMiner from `pocketminer`.
+- Run MaSIF through rootless `podman`.
+- Keep InDeep and PASSer external/optional unless the user asks otherwise.
 - Record activated environment, command line, stdout, stderr, return code, and
   output manifest path for every external tool call.
 - Never silently fall back to system Java or global system tools.

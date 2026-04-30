@@ -12,6 +12,8 @@ job scripts.
 - Additional isolated envs created:
   - `ppi_surface`
   - `p2rank_java11`
+  - `pesto`
+  - `pocketminer`
 
 ## Core `pyrosetta` Env
 
@@ -127,12 +129,32 @@ Do not change `/bin/java`, global module state, or shared lab Java settings.
 
 ## Optional AI / Server Tools
 
-Not installed locally at the time of verification:
+Detailed optional AI runtime notes are in
+`fresh/docs/optional_ai_tool_runtime_status.md`.
+
+Verified locally after the first core preflight:
+
+- PeSTo:
+  - env: `/home/eunae/.conda/envs/pesto`
+  - repo: `/home/eunae/tools/PeSTo`
+  - model: `/home/eunae/tools/PeSTo/model/save/i_v4_1_2021-09-07_11-21/model_ckpt.pt`
+  - status: dependency import OK; CPU one-PDB prediction OK
+- PocketMiner:
+  - env: `/home/eunae/.conda/envs/pocketminer`
+  - repo: `/home/eunae/tools/gvp_pocketminer`
+  - branch/commit: `pocket_pred` / `187062d`
+  - checkpoint basename: `/home/eunae/tools/gvp_pocketminer/models/pocketminer`
+  - status: source imports OK; checkpoint restore OK; CPU one-PDB prediction OK
+  - required env var: `export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"`
+- MaSIF:
+  - runtime: rootless `podman 4.2.0`
+  - image: `docker.io/pablogainza/masif:latest`
+  - image id: `6b3c808b7bf7fabdadfee4c6dc2a48c4761b4a118d94983131f34e5a76754a12`
+  - status: container pull OK; basic container smoke OK; prediction smoke pending
+
+Not installed locally:
 
 - InDeep
-- PeSTo
-- MaSIF
-- PocketMiner / HOTPocket
 
 External-server only:
 
@@ -160,6 +182,9 @@ Implement tool adapters with explicit environment boundaries:
 - `pyrosetta` env: core workflow, PyRosetta, Vina, fpocket, mdpocket, Open Babel
 - `ppi_surface` env: pyKVFinder only
 - `p2rank_java11` env: P2Rank only
+- `pesto` env: PeSTo only
+- `pocketminer` env: PocketMiner only
+- rootless `podman`: MaSIF container only
 
 Adapters should record:
 

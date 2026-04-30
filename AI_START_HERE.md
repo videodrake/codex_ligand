@@ -16,8 +16,9 @@ Read these files in this order:
 4. `fresh/docs/egfr_myo1d_final_research_overview_2026-04-27.md`
 5. `ppi_surface_tool_installation_and_integration_handoff_v1_0.md`
 6. `fresh/docs/hpc_tool_environment_status.md`
-7. `fresh/configs/tool_envs.yaml`
-8. The relevant `fresh/configs/*.yaml`, `fresh/docs/m*_*.md`, source files, and
+7. `fresh/docs/optional_ai_tool_runtime_status.md`
+8. `fresh/configs/tool_envs.yaml`
+9. The relevant `fresh/configs/*.yaml`, `fresh/docs/m*_*.md`, source files, and
    tests for the task you are changing.
 
 If two documents conflict, use this precedence:
@@ -63,7 +64,9 @@ Do not modify system Java. P2Rank needs Java 11 and must be run from the
 isolated `p2rank_java11` env.
 
 Use `fresh/docs/hpc_tool_environment_status.md` for human-readable verification
-notes and `fresh/configs/tool_envs.yaml` for machine-readable adapter policy.
+notes, `fresh/docs/optional_ai_tool_runtime_status.md` for optional AI tool
+runtime details, and `fresh/configs/tool_envs.yaml` for machine-readable adapter
+policy.
 
 ## Output and Git Rules
 
