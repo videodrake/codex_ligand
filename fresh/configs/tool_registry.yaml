@@ -1,0 +1,20 @@
+schema_version: tool_registry_v1
+
+tools:
+  numpy:
+    required_level: core
+    env: pyrosetta
+    python_import: numpy
+  vina:
+    required_level: core
+    env: pyrosetta
+    commands: [vina]
+    smoke_args: ["--version"]
+  pyKVFinder:
+    required_level: core_addition
+    env: ppi_surface_or_pyrosetta
+    python_import: pyKVFinder
+  passer:
+    required_level: external_server_only
+    env: external_server
+    status_override: external_server_only
