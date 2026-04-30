@@ -20,8 +20,15 @@ fresh/data/raw/ligands/*
 !fresh/data/raw/ligands/.gitkeep
 !fresh/data/raw/ligands/README.md
 fresh/data/private/*
+fresh/data/private/**
 !fresh/data/private/.gitkeep
 !fresh/data/private/README.md
+fresh/runs/*/phase3_compounds/ligands/*
+fresh/runs/*/phase3_compounds/ligands/**
+fresh/runs/*/phase3_compounds/prepared_ligands/*
+fresh/runs/*/phase3_compounds/prepared_ligands/**
+*.pdbqt.tmp
+*.vina.tmp
 
 # Fresh PDB exceptions for public-safe receptor, MYO1D, and fixture files
 !fresh/data/raw/receptors/*.pdb
@@ -51,3 +58,11 @@ fresh/**/*.vina.tmp
 fresh/**/*.silent
 fresh/**/scratch/
 fresh/**/tmp/
+
+# Local analysis/data packages - do not commit
+analysis_v0_5/
+analysis_v0_4_folder1_4/
+analysis_v0_5.zip
+analysis_v0_4_folder1_4.zip
+node_modules/
+

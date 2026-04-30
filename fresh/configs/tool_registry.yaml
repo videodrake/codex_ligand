@@ -1,0 +1,122 @@
+tools:
+  pyrosetta:
+    required_level: core
+    env: pyrosetta
+    python_import: pyrosetta
+    smoke: import
+
+  rdkit:
+    required_level: core
+    env: pyrosetta
+    python_import: rdkit
+    smoke: import
+
+  biopython:
+    required_level: core
+    env: pyrosetta
+    python_import: Bio
+    smoke: import
+
+  numpy:
+    required_level: core
+    env: pyrosetta
+    python_import: numpy
+    smoke: import
+
+  pandas:
+    required_level: core
+    env: pyrosetta
+    python_import: pandas
+    smoke: import
+
+  vina:
+    required_level: core
+    env: pyrosetta
+    commands: [vina]
+    smoke_args: ["--version"]
+
+  fpocket:
+    required_level: core
+    env: pyrosetta
+    commands: [fpocket]
+    smoke_args: []
+
+  mdpocket:
+    required_level: core_if_available
+    env: pyrosetta
+    commands: [mdpocket]
+    smoke_args: ["--help"]
+
+  obabel:
+    required_level: core
+    env: pyrosetta
+    commands: [obabel]
+    smoke_args: ["-V"]
+
+  qsub:
+    required_level: core
+    env: system
+    commands: [qsub]
+    smoke_args: ["--version"]
+
+  qstat:
+    required_level: core
+    env: system
+    commands: [qstat]
+    smoke_args: ["--version"]
+
+  qdel:
+    required_level: core
+    env: system
+    commands: [qdel]
+    smoke_args: ["--version"]
+
+  pyKVFinder:
+    required_level: core_addition
+    env: ppi_surface_or_pyrosetta
+    python_import: pyKVFinder
+    smoke: import
+    install_candidate: "pip install pyKVFinder"
+
+  gromacs:
+    required_level: optional_validation
+    env: msmd_or_system
+    commands: [gmx, gmx_mpi]
+    smoke_args: ["--version"]
+
+  p2rank:
+    required_level: optional
+    env: external_or_system
+    commands: [prank, p2rank, P2Rank]
+    smoke_args: ["--help"]
+
+  indeep:
+    required_level: optional_ai
+    env: indeep
+    external_path: /work4/eunae/external_tools/InDeep
+    commands: [indeep]
+    license_note: "GNU AGPLv3; do not vendor into public repo"
+
+  pesto:
+    required_level: optional_ai
+    env: pesto
+    external_path: /work4/eunae/external_tools/PeSTo
+    python_import: src
+    commands: [pesto]
+
+  masif:
+    required_level: optional_heavy_ai
+    env: masif_or_container
+    external_path: /work4/eunae/external_tools/masif
+    commands: [masif_site, masif]
+
+  pocketminer:
+    required_level: optional_ai
+    env: external
+    external_path: /work4/eunae/external_tools/HOTPocket_or_PocketMiner
+    commands: [pocketminer, hotpocket]
+
+  passer:
+    required_level: external_server_only
+    env: external_server
+    status_override: external_server_only

@@ -20,6 +20,8 @@ CONFIG_FILES = {
     "paths": "fresh/configs/paths.yaml",
     "gates": "fresh/configs/gates.yaml",
     "receptor_states": "fresh/configs/receptor_states.yaml",
+    "pocket": "fresh/configs/pocket.yaml",
+    "tool_registry": "fresh/configs/tool_registry.yaml",
 }
 
 

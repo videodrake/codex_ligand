@@ -1,0 +1,29 @@
+schema_version: m2_6_pocket_config_v1
+primary_pocket_tool: fpocket
+optional_later_tools:
+  p2rank:
+    enabled: false
+    notes: "Optional later only; M2.6 does not implement or run P2Rank."
+fpocket:
+  binary: fpocket
+  execution_policy: "production mode runs fpocket only on run-local staged receptor PDBs"
+merge:
+  centroid_merge_threshold_angstrom: 6.0
+  residue_jaccard_merge_threshold: 0.30
+  rule: "centroid_distance <= threshold OR residue_jaccard >= threshold"
+gates:
+  atp_overlap_fraction_reject_threshold: 0.15
+  atp_centroid_distance_reject_angstrom: 10.0
+  ppi_rim_heavy_atom_cutoff_angstrom: 6.0
+  ppi_rim_ca_cutoff_angstrom: 10.0
+  ppi_allosteric_heavy_atom_cutoff_angstrom: 12.0
+  ppi_allosteric_ca_cutoff_angstrom: 18.0
+  ppi_allosteric_near_centroid_cutoff_angstrom: 18.0
+  lateral_score_pass_threshold: 0.15
+  lower_z_minimum: -5.0
+  interface_heavy_atom_cutoff_angstrom: 5.0
+  interface_overlap_fraction_reject_threshold: 0.25
+  sasa_ratio_reject_threshold: 0.40
+  required_primary_state_count_for_primary: 2
+  allow_secondary_if_primary_state_count: 1
+  hard_gate_rule: "hard-gate-failed pockets cannot be rescued by soft score"

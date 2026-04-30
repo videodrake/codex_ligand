@@ -1,0 +1,30 @@
+#!/bin/bash
+#PBS -q {queue}
+#PBS -N {job_name}
+#PBS -l nodes={node}:ppn={ppn}
+#PBS -l walltime={walltime}
+#PBS -V
+#PBS -o {stdout_path}
+#PBS -e {stderr_path}
+
+set -euo pipefail
+cd {repo_root}
+
+source {conda_sh}
+conda activate {conda_env}
+
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export PYTHONIOENCODING=utf-8
+export REPO_ROOT="{repo_root}"
+export PYTHONPATH="$REPO_ROOT/fresh/src:${PYTHONPATH:-}"
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+# M2.2 dry-run harness only. Real PyRosetta execution is deferred.
+python -m egfr_myo1d.ppi.run_ppi_job --run-id {run_id} --job-name {job_name} --dry-run true
+

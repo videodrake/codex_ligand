@@ -1,0 +1,69 @@
+schema_version: atp_reference_v0_1
+
+allowed_ligand_resnames:
+  - ATP
+  - ADP
+  - AMP
+  - ANP
+  - AMP-PNP
+  - ACP
+
+ligand_neighbor_distance_angstrom: 5.0
+reference_radius_angstrom: 10.0
+
+configured_residue_set:
+  source_id: curated_egfr_atp_cleft_hard_gate_residue_set_v0_1
+  evidence_source: fresh/docs/task5_real_input_readiness.md;milestone2_ppi_to_pocket_detailed_plan_v0_2.md
+  minimum_residue_count: 8
+  notes: "Conservative EGFR ATP-cleft hard-gate residue set spanning glycine-rich loop, beta3/alphaC, gatekeeper/hinge, catalytic loop, and DFG regions; replace or augment with ligand-bearing production reference when available."
+  residues:
+    - uniprot_residue_number: 718
+      residue_name: ""
+      atp_site_region: glycine_rich_loop_or_atp_roof
+    - uniprot_residue_number: 719
+      residue_name: ""
+      atp_site_region: glycine_rich_loop_or_atp_roof
+    - uniprot_residue_number: 720
+      residue_name: ""
+      atp_site_region: glycine_rich_loop_or_atp_roof
+    - uniprot_residue_number: 721
+      residue_name: ""
+      atp_site_region: glycine_rich_loop_or_atp_roof
+    - uniprot_residue_number: 728
+      residue_name: ""
+      atp_site_region: n_lobe_atp_cleft
+    - uniprot_residue_number: 745
+      residue_name: ""
+      atp_site_region: beta3_catalytic_lysine_region
+    - uniprot_residue_number: 762
+      residue_name: ""
+      atp_site_region: alpha_c_glutamate_region
+    - uniprot_residue_number: 790
+      residue_name: ""
+      atp_site_region: gatekeeper_region
+    - uniprot_residue_number: 793
+      residue_name: ""
+      atp_site_region: hinge_region
+    - uniprot_residue_number: 797
+      residue_name: ""
+      atp_site_region: hinge_c_terminal_lobe_connector
+    - uniprot_residue_number: 800
+      residue_name: ""
+      atp_site_region: catalytic_loop_front
+    - uniprot_residue_number: 831
+      residue_name: ""
+      atp_site_region: catalytic_loop_region
+    - uniprot_residue_number: 855
+      residue_name: ""
+      atp_site_region: dfg_or_activation_loop
+    - uniprot_residue_number: 856
+      residue_name: ""
+      atp_site_region: dfg_or_activation_loop
+    - uniprot_residue_number: 857
+      residue_name: ""
+      atp_site_region: dfg_or_activation_loop
+
+gate_policy:
+  atp_overlap_fraction_reject_threshold: 0.15
+  atp_centroid_distance_reject_threshold_angstrom: 10.0
+  rule: "future non_atp_pass=false if atp_overlap_fraction >= threshold OR atp_centroid_distance <= threshold"
