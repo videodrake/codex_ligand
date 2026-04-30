@@ -1,5 +1,10 @@
 # EGFR-MYO1D Docking Pipeline
 
+> AI/agent routing note: the active implementation target is the fresh workflow
+> under `fresh/`. Start with `AI_START_HERE.md`, then
+> `fresh/docs/AGENT_DOC_ROUTING.md`. The older links below are legacy context and
+> must not be used as controlling scientific, workflow, or environment specs.
+
 EGFR 키나아제 도메인과 MYO1D beta-meander 간 단백질-단백질 상호작용(PPI)을 교란할 수 있는 **약물 결합 포켓**을 탐색하는 통합 파이프라인.
 
 - AutoDock Vina (소분자 blind docking) + PyRosetta (PPI global blind docking) 이중 증거 통합

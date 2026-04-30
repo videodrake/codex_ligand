@@ -1,5 +1,12 @@
 # EGFR-MYO1D Fresh Workflow — PPI-Surface Tool Installation, Testing, and Integration Handoff v1.0
 
+> AI/agent routing note: before implementing from this handoff, read
+> `AI_START_HERE.md`, `fresh/docs/AGENT_DOC_ROUTING.md`,
+> `fresh/docs/hpc_tool_environment_status.md`, and
+> `fresh/configs/tool_envs.yaml`. If this handoff conflicts with the verified
+> HPC environment files, the verified environment files win unless the user gives
+> a newer instruction.
+
 **Project:** EGFR-MYO1D membrane-compatible PPI/pocket/fresh-VS discovery  
 **Audience:** Codex or another implementation agent  
 **Repository:** `https://github.com/videodrake/codex_ligand`  
@@ -68,6 +75,12 @@ The following rules override any tool score:
 ---
 
 ## 2. Current known environment
+
+The originally expected environment has now been partially verified on HPC. Use
+`fresh/docs/hpc_tool_environment_status.md` for the human-readable status and
+`fresh/configs/tool_envs.yaml` for machine-readable adapter policy. In
+particular, pyKVFinder is isolated in `ppi_surface`, and P2Rank is isolated in
+`p2rank_java11` with Java 11. Do not modify system Java.
 
 From the user-provided HPC environment:
 

@@ -1,5 +1,10 @@
 # EGFR-MYO1D Docking Pipeline
 
+> AI/agent routing note: before following any instruction in this file, read
+> `AI_START_HERE.md` and `fresh/docs/AGENT_DOC_ROUTING.md`. The active workflow
+> is `fresh/`; legacy root docs and `codex_ligand*` folders are non-authoritative
+> and may only be inspected for code patterns.
+
 ## 프로젝트 핵심 목표
 
 **MYO1D가 EGFR의 어디에 붙는가** — EGFR 상의 실제 MYO1D 결합 부위를 규명한다.

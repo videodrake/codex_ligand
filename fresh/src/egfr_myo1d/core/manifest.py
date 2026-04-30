@@ -22,6 +22,7 @@ CONFIG_FILES = {
     "receptor_states": "fresh/configs/receptor_states.yaml",
     "pocket": "fresh/configs/pocket.yaml",
     "tool_registry": "fresh/configs/tool_registry.yaml",
+    "tool_envs": "fresh/configs/tool_envs.yaml",
 }
 
 

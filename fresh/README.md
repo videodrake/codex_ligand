@@ -2,6 +2,10 @@
 
 This is the fresh dimer/membrane-aware EGFR-MYO1D workflow area.
 
+AI agents must read the repository root `AI_START_HERE.md` and
+`fresh/docs/AGENT_DOC_ROUTING.md` before using any legacy document or folder.
+The fresh workflow docs and configs are authoritative for current work.
+
 Milestone 1 is foundation only. No docking, pocket discovery, scoring, final ranking, or candidate nomination is implemented in Task 1.
 
 All run outputs must go under:
