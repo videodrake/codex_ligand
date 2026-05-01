@@ -225,13 +225,14 @@ def compute_membrane_frame(
     chains = set(structure.chain_ids)
     cas = _ca_atoms(structure)
     warnings: list[str] = []
+    notes: list[str] = []
     if {"A", "B"}.issubset(chains):
         cas_a = [a for a in cas if a.chain_id == "A"]
         cas_b = [a for a in cas if a.chain_id == "B"]
     else:
         cas_a, cas_b = split_duplicate_chain(cas)
         if cas_a and cas_b:
-            warnings.append(
+            notes.append(
                 "duplicate_chain_ca_split_into_A_B_for_membrane_frame:"
                 " observed={0}".format(sorted(chains))
             )
@@ -321,6 +322,7 @@ def compute_membrane_frame(
         n_tm_jm_residues=len(tm_jm_cas),
         status=status,
         warnings=warnings,
+        notes=";".join(notes),
     )
 
 
@@ -405,7 +407,7 @@ def _resolve_state_paths(
     state_paths: dict[str, Path | None] = {}
     for state_id in ALL_STATES:
         if state_id in PRIMARY_STATES and override_path is not None:
-            state_paths[state_id] = None
+            state_paths[state_id] = override_path
             continue
         rel = input_files.get(state_id)
         candidate = (ctx.repo_root / rel) if rel else None

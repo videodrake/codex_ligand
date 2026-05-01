@@ -138,10 +138,7 @@ def test_plus10_blank_chain_duplicate_ca_split_in_hpc_strict(tmp_path):
     assert frame.status == "WARN"
     assert frame.n_membrane is not None
     assert frame.x_dimer_axis is not None
-    assert any(
-        "duplicate_chain_ca_split_into_A_B_for_membrane_frame" in warning
-        for warning in frame.warnings
-    )
+    assert "duplicate_chain_ca_split_into_A_B_for_membrane_frame" in frame.notes
 
 
 def test_3gt8_raw_marked_reference_control_not_primary_source():
@@ -233,8 +230,8 @@ def test_run_membrane_frame_computation_all_states(tmp_path):
         ctx, full_frame_source=DIMER_TM_JM, profile="codex_dev"
     )
     assert {f.state_id for f in frames} == set(ALL_STATES)
-    # 3GT8_raw is reference_control; primary states use plus10_inherited (WARN)
-    assert overall in {"PASS", "PASS_WITH_WARNINGS", "FAIL"}
+    # 3GT8_raw is reference_control; primary states use the explicit override.
+    assert overall == "PASS"
     assert (ctx.manifest_dir / "membrane_frame.json").is_file()
     assert (ctx.qc_dir / "membrane_frame_qc.csv").is_file()
     # Phase status appended
@@ -288,9 +285,9 @@ def test_full_frame_source_override_takes_priority_over_raw_state_pdb(tmp_path):
         profile="hpc_strict",
     )
 
-    assert overall == "PASS_WITH_WARNINGS"
-    assert frames[0].frame_source == "plus10_inherited"
-    assert frames[0].status == "WARN"
+    assert overall == "PASS"
+    assert frames[0].frame_source == "state_full_frame"
+    assert frames[0].status == "PASS"
     assert not any("parse_error" in warning for warning in frames[0].warnings)
 
 
