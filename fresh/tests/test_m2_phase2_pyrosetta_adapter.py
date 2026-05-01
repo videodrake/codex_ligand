@@ -12,7 +12,7 @@ from egfr_myo1d.core.run_context import RunContext
 from egfr_myo1d.m2.ppi_inputs import generate_m2_1_ppi_inputs
 from egfr_myo1d.orchestrator.prepare_inputs import run_prepare_inputs
 from egfr_myo1d.ppi.pyrosetta_adapter import generate_pyrosetta_harness
-from egfr_myo1d.ppi.run_ppi_job import dry_run_job
+from egfr_myo1d.ppi.run_ppi_job import build_ab_c_input, dry_run_job
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -104,6 +104,44 @@ def test_m2_2_dry_run_job_writes_status_without_pyrosetta_execution(ctx_with_m2_
     assert payload["docking_executed"] is False
     assert payload["relaxation_executed"] is False
     status_path.resolve().relative_to(ctx_with_m2_1.run_dir.resolve())
+
+
+def test_m2_2_real_runner_combines_receptor_ab_and_partner_c_without_pyrosetta(tmp_path):
+    ctx = make_tmp_run_context(tmp_path)
+    initialize_logs(ctx)
+    ctx.create_directories()
+    receptor = ctx.run_dir / "prepared" / "receptor_ab.pdb"
+    partner = ctx.run_dir / "prepared" / "myo1d_a.pdb"
+    output_dir = ctx.run_dir / "phase1_ppi" / "pyrosetta_adapter" / "outputs" / "job_ab_c"
+    receptor.parent.mkdir(parents=True, exist_ok=True)
+    partner.parent.mkdir(parents=True, exist_ok=True)
+
+    def atom(serial, chain, resseq, x):
+        return (
+            "ATOM  {0:5d} CA   GLY {1}{2:4d}    {3:8.3f}{4:8.3f}{5:8.3f}"
+            "  1.00 20.00           C\n"
+        ).format(serial, chain, resseq, x, 0.0, 0.0)
+
+    receptor.write_text(atom(1, "A", 669, 0.0) + atom(2, "B", 1669, 10.0), encoding="utf-8")
+    partner.write_text(atom(1, "A", 961, 20.0), encoding="utf-8")
+    job = {
+        "job_name": "job_ab_c",
+        "receptor_pdb": str(receptor),
+        "partner_pdb": str(partner),
+    }
+
+    combined, summary = build_ab_c_input(ctx, job, output_dir)
+
+    assert combined.is_file()
+    chains = [
+        line[21:22].strip()
+        for line in combined.read_text(encoding="utf-8").splitlines()
+        if line.startswith("ATOM")
+    ]
+    assert chains == ["A", "B", "C"]
+    assert summary["receptor_chains"] == ["A", "B"]
+    assert summary["partner_output_chain"] == "C"
+    combined.resolve().relative_to(ctx.run_dir.resolve())
 
 
 def test_m2_2_missing_m2_1_manifest_fails(tmp_path):
