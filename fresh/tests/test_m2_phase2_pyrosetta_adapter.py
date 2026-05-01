@@ -116,14 +116,37 @@ def test_m2_2_real_runner_combines_receptor_ab_and_partner_c_without_pyrosetta(t
     receptor.parent.mkdir(parents=True, exist_ok=True)
     partner.parent.mkdir(parents=True, exist_ok=True)
 
-    def atom(serial, chain, resseq, x):
+    def atom(serial, atom_name, resname, chain, resseq, x, occupancy=1.0, element=None, altloc=" "):
+        element = element or atom_name[0]
         return (
-            "ATOM  {0:5d} CA   GLY {1}{2:4d}    {3:8.3f}{4:8.3f}{5:8.3f}"
-            "  1.00 20.00           C\n"
-        ).format(serial, chain, resseq, x, 0.0, 0.0)
+            "ATOM  {0:5d} {1:>4}{2}{3:>3} {4}{5:4d}    {6:8.3f}{7:8.3f}{8:8.3f}"
+            "{9:6.2f} 20.00          {10:>2}\n"
+        ).format(serial, atom_name, altloc, resname, chain, resseq, x, 0.0, 0.0, occupancy, element)
 
-    receptor.write_text(atom(1, "A", 669, 0.0) + atom(2, "B", 1669, 10.0), encoding="utf-8")
-    partner.write_text(atom(1, "A", 961, 20.0), encoding="utf-8")
+    def residue(serial, chain, resseq, x, resname="GLY"):
+        return (
+            atom(serial, "N", resname, chain, resseq, x, element="N")
+            + atom(serial + 1, "CA", resname, chain, resseq, x + 1.0, element="C")
+            + atom(serial + 2, "C", resname, chain, resseq, x + 2.0, element="C")
+            + atom(serial + 3, "O", resname, chain, resseq, x + 3.0, element="O")
+        )
+
+    receptor.write_text(
+        residue(1, "A", 669, 0.0)
+        + "HETATM    5  O   HOH A 900       1.000   0.000   0.000  1.00 20.00           O\n"
+        + residue(6, "A", 670, 5.0, resname="HSD")
+        + residue(10, "A", 671, 10.0, resname="ILE")
+        + atom(14, "CD", "ILE", "A", 671, 14.0, element="C")
+        + atom(15, "CB", "ILE", "A", 671, 15.0, occupancy=0.0, element="C")
+        + atom(16, "CB", "ILE", "A", 671, 16.0, altloc="A", element="C")
+        + atom(17, "CB", "ILE", "A", 671, 17.0, altloc="B", element="C")
+        + atom(18, "N", "GLY", "A", 672, 18.0, element="N")
+        + atom(19, "CA", "GLY", "A", 672, 19.0, element="C")
+        + atom(20, "C", "GLY", "A", 672, 20.0, element="C")
+        + residue(21, "B", 1669, 30.0),
+        encoding="utf-8",
+    )
+    partner.write_text(residue(1, "A", 961, 20.0), encoding="utf-8")
     job = {
         "job_name": "job_ab_c",
         "receptor_pdb": str(receptor),
@@ -133,14 +156,30 @@ def test_m2_2_real_runner_combines_receptor_ab_and_partner_c_without_pyrosetta(t
     combined, summary = build_ab_c_input(ctx, job, output_dir)
 
     assert combined.is_file()
-    chains = [
+    combined_text = combined.read_text(encoding="utf-8")
+    chains = {
         line[21:22].strip()
-        for line in combined.read_text(encoding="utf-8").splitlines()
+        for line in combined_text.splitlines()
         if line.startswith("ATOM")
-    ]
-    assert chains == ["A", "B", "C"]
+    }
+    assert chains == {"A", "B", "C"}
+    assert "HETATM" not in combined_text
+    assert "HOH" not in combined_text
+    assert "HSD" not in combined_text
+    assert "HIS A 670" in combined_text
+    assert " CD " not in combined_text
+    assert "CD1" in combined_text
+    assert " A 672" not in combined_text
+    assert combined_text.count("TER") == 3
     assert summary["receptor_chains"] == ["A", "B"]
     assert summary["partner_output_chain"] == "C"
+    assert summary["receptor_rosetta_sanitize"]["hetatm_removed"] == 1
+    assert summary["receptor_rosetta_sanitize"]["zero_occupancy_removed"] == 1
+    assert summary["receptor_rosetta_sanitize"]["alternate_location_removed"] == 1
+    assert summary["receptor_rosetta_sanitize"]["alternate_locations_collapsed"] == 1
+    assert summary["receptor_rosetta_sanitize"]["incomplete_residues_removed"] == 1
+    assert summary["receptor_rosetta_sanitize"]["residue_renames"] == {"HSD->HIS": 4}
+    assert summary["receptor_rosetta_sanitize"]["atom_renames"] == {"ILE:CD->CD1": 1}
     combined.resolve().relative_to(ctx.run_dir.resolve())
 
 
