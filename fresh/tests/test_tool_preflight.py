@@ -32,7 +32,7 @@ def write_registry(path):
                 "    commands: [vina]",
                 "    smoke_args: ['--version']",
                 "  pyKVFinder:",
-                "    required_level: core_addition",
+                "    required_level: optional",
                 "    env: ppi_surface_or_pyrosetta",
                 "    python_import: pyKVFinder",
                 "  passer:",
@@ -94,7 +94,7 @@ def test_tool_preflight_writes_status_logs_and_report(tmp_path, monkeypatch):
     assert (ctx.reports_dir / "tool_installation_report.md").is_file()
 
 
-def test_tool_preflight_hpc_strict_blocks_missing_core_addition(tmp_path, monkeypatch):
+def test_tool_preflight_hpc_strict_blocks_missing_core_but_not_optional(tmp_path, monkeypatch):
     registry = tmp_path / "tool_registry.yaml"
     write_registry(registry)
 
@@ -112,7 +112,8 @@ def test_tool_preflight_hpc_strict_blocks_missing_core_addition(tmp_path, monkey
 
     assert report["status"] == "FAIL"
     assert any(item.startswith("numpy:") for item in report["blockers"])
-    assert any(item.startswith("pyKVFinder:") for item in report["blockers"])
+    assert not any(item.startswith("pyKVFinder:") for item in report["blockers"])
+    assert report["tools"]["pyKVFinder"]["required_level"] == "optional"
 
 
 def test_cli_tool_preflight_help_includes_modes(capsys):

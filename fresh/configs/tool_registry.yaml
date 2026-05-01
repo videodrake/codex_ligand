@@ -27,6 +27,7 @@
 # Behavior under hpc_strict profile: tools at required_level=core or
 # core_addition that are missing or fail their smoke test produce blockers
 # (status FAIL). codex_dev profile reports the same as warnings (status WARN).
+# pyKVFinder is recorded as optional until a runtime M2/M3 step consumes it.
 
 tools:
   numpy:
@@ -39,7 +40,7 @@ tools:
     commands: [vina]
     smoke_args: ['--version']
   pyKVFinder:
-    required_level: core_addition
+    required_level: optional
     env: ppi_surface_or_pyrosetta
     python_import: pyKVFinder
   passer:
