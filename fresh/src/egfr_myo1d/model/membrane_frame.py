@@ -23,6 +23,7 @@ from egfr_myo1d.core.logging_utils import append_phase_status
 from egfr_myo1d.core.manifest import load_yaml_config, now_iso, write_json
 from egfr_myo1d.core.run_context import RunContext, RunContextError
 from egfr_myo1d.io.hashing import describe_file
+from egfr_myo1d.model.receptor_qc import split_duplicate_chain
 from egfr_myo1d.structure.pdb_parser import (
     PDBParseError,
     PDBStructure,
@@ -222,19 +223,28 @@ def compute_membrane_frame(
         )
 
     chains = set(structure.chain_ids)
-    if not {"A", "B"}.issubset(chains):
-        return StateMembraneFrame(
-            state_id=state_id,
-            role=role,
-            frame_source=frame_source,
-            status="FAIL" if profile == "hpc_strict" else "WARN",
-            warnings=["chains_A_B_required_observed: {0}".format(sorted(chains))],
-            notes="centroid computation requires explicit A and B chains",
-        )
-
     cas = _ca_atoms(structure)
-    cas_a = [a for a in cas if a.chain_id == "A"]
-    cas_b = [a for a in cas if a.chain_id == "B"]
+    warnings: list[str] = []
+    if {"A", "B"}.issubset(chains):
+        cas_a = [a for a in cas if a.chain_id == "A"]
+        cas_b = [a for a in cas if a.chain_id == "B"]
+    else:
+        cas_a, cas_b = split_duplicate_chain(cas)
+        if cas_a and cas_b:
+            warnings.append(
+                "duplicate_chain_ca_split_into_A_B_for_membrane_frame:"
+                " observed={0}".format(sorted(chains))
+            )
+        else:
+            return StateMembraneFrame(
+                state_id=state_id,
+                role=role,
+                frame_source=frame_source,
+                status="FAIL" if profile == "hpc_strict" else "WARN",
+                warnings=["chains_A_B_required_observed: {0}".format(sorted(chains))],
+                notes="centroid computation requires explicit A and B chains",
+            )
+
     if not cas_a or not cas_b:
         return StateMembraneFrame(
             state_id=state_id,
@@ -261,8 +271,6 @@ def compute_membrane_frame(
     n_unit: tuple[float, float, float] | None = None
     n_norm: float | None = None
     p_jm_anchor: tuple[float, float, float] | None = None
-    warnings: list[str] = []
-
     if tm_jm_cas:
         coords_tm = _ca_coords(tm_jm_cas)
         principal, err = _principal_axis(coords_tm)

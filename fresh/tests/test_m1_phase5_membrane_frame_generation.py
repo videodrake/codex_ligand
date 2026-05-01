@@ -118,6 +118,32 @@ def test_plus10_fallback_used_when_state_lacks_TM_JM():
     assert any("plus10_inherited_frame_used_as_fallback" in w for w in frame.warnings)
 
 
+def test_plus10_blank_chain_duplicate_ca_split_in_hpc_strict(tmp_path):
+    blank_chain = tmp_path / "blank_chain_plus10.pdb"
+    lines = []
+    for line in DIMER_TM_JM.read_text(encoding="utf-8").splitlines():
+        if line.startswith(("ATOM  ", "HETATM")):
+            line = line[:21] + " " + line[22:]
+        lines.append(line)
+    blank_chain.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    frame = compute_membrane_frame(
+        None,
+        blank_chain,
+        "EGFR_160-185",
+        profile="hpc_strict",
+    )
+
+    assert frame.frame_source == "plus10_inherited"
+    assert frame.status == "WARN"
+    assert frame.n_membrane is not None
+    assert frame.x_dimer_axis is not None
+    assert any(
+        "duplicate_chain_ca_split_into_A_B_for_membrane_frame" in warning
+        for warning in frame.warnings
+    )
+
+
 def test_3gt8_raw_marked_reference_control_not_primary_source():
     frame = compute_membrane_frame(DIMER_3GT8, None, "3GT8_raw", profile="codex_dev")
     assert frame.role == "crystallographic_reference_control"
