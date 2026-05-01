@@ -81,10 +81,18 @@ def pdb_atom(serial, atom, resname, chain, resseq, x, y, z, element):
 def make_pose_pdb(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
+        pdb_atom(101, "CA", "PHE", "A", 667, 20.0, 0.0, 0.0, "C"),
+        pdb_atom(102, "CB", "PHE", "A", 667, 20.0, 0.0, 1.0, "C"),
+        pdb_atom(103, "CA", "PHE", "B", 1667, 30.0, 0.0, 0.0, "C"),
+        pdb_atom(104, "CB", "PHE", "B", 1667, 30.0, 0.0, 1.0, "C"),
         pdb_atom(1, "CA", "GLY", "A", 669, 0.0, 0.0, 0.0, "C"),
         pdb_atom(2, "CB", "GLY", "A", 669, 0.0, 0.0, 1.0, "C"),
         pdb_atom(3, "CA", "LEU", "B", 1669, 10.0, 0.0, 0.0, "C"),
         pdb_atom(4, "CB", "LEU", "B", 1669, 10.0, 0.0, 1.0, "C"),
+        pdb_atom(105, "CA", "SER", "C", 955, 20.0, 0.0, 4.0, "C"),
+        pdb_atom(106, "CB", "SER", "C", 955, 20.0, 0.0, 3.5, "C"),
+        pdb_atom(107, "CA", "SER", "C", 956, 30.0, 0.0, 4.0, "C"),
+        pdb_atom(108, "CB", "SER", "C", 956, 30.0, 0.0, 3.5, "C"),
         pdb_atom(5, "CA", "SER", "C", 961, 0.0, 0.0, 4.0, "C"),
         pdb_atom(6, "CB", "SER", "C", 961, 0.0, 0.0, 3.5, "C"),
         pdb_atom(7, "CA", "THR", "C", 968, 10.0, 0.0, 4.0, "C"),
@@ -163,6 +171,7 @@ def test_m2_2b_extracts_ab_to_c_contacts_for_mapping_restoration(tmp_path):
     rows = read_csv(report.raw_contact_table)
     assert {row["protomer_id"] for row in rows} == {"A", "B"}
     assert {row["egfr_chain_id"] for row in rows} == {"A", "B"}
+    assert {row["egfr_runtime_residue"] for row in rows} == {"669", "1669"}
     assert {row["myo1d_residue"] for row in rows} == {"961", "968"}
     assert all(row["pose_id"] == pose.stem for row in rows)
     assert all(row["accepted_pose_flag"] == "true" for row in rows)

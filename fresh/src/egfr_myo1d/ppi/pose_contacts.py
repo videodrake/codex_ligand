@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from egfr_myo1d.core.logging_utils import append_job_status, append_phase_status
-from egfr_myo1d.core.manifest import now_iso, write_json
+from egfr_myo1d.core.manifest import load_yaml_config, now_iso, write_json
 from egfr_myo1d.core.run_context import RunContext, RunContextError, ensure_within
 from egfr_myo1d.ppi.collect_ppi_outputs import RAW_CONTACT_REQUIRED_FIELDS
 from egfr_myo1d.ppi.pyrosetta_adapter import load_job_by_name
@@ -65,6 +65,15 @@ NON_GOALS_CONFIRMED = [
     "no_scheduler_submission",
     "no_cleanup_deletion",
 ]
+CHAIN_B_RUNTIME_OFFSET_THRESHOLD = 1500
+CHAIN_B_RUNTIME_OFFSET = 1000
+
+
+@dataclass(frozen=True)
+class EgfrContactFilter:
+    dockable_range: tuple[int, int] | None = None
+    excluded_ranges: tuple[tuple[int, int], ...] = ()
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass
@@ -173,6 +182,80 @@ def _pose_accepted(contact_count: int, min_contacts_for_acceptance: int) -> bool
     return contact_count >= min_contacts_for_acceptance
 
 
+def _parse_range(value: Any, label: str) -> tuple[tuple[int, int] | None, str | None]:
+    if value in (None, ""):
+        return None, None
+    if isinstance(value, str):
+        text = value.strip()
+        if "-" in text:
+            left, right = text.split("-", 1)
+            try:
+                start = int(left.strip())
+                end = int(right.strip())
+            except ValueError:
+                return None, "invalid_residue_range:{0}:{1}".format(label, value)
+        else:
+            try:
+                start = end = int(text)
+            except ValueError:
+                return None, "invalid_residue_range:{0}:{1}".format(label, value)
+    elif isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            start = int(value[0])
+            end = int(value[1])
+        except (TypeError, ValueError):
+            return None, "invalid_residue_range:{0}:{1}".format(label, value)
+    else:
+        return None, "invalid_residue_range:{0}:{1}".format(label, value)
+    if start > end:
+        start, end = end, start
+    return (start, end), None
+
+
+def _load_egfr_contact_filter(ctx: RunContext) -> EgfrContactFilter:
+    warnings: list[str] = []
+    config_path = ctx.repo_root / "fresh" / "configs" / "gates.yaml"
+    try:
+        gates = load_yaml_config(config_path)
+    except FileNotFoundError:
+        return EgfrContactFilter(warnings=("missing_gates_yaml_for_contact_filter",))
+    receptor = gates.get("receptor", {}) if isinstance(gates, dict) else {}
+    dockable_range, warning = _parse_range(
+        receptor.get("dockable_crop_default"), "dockable_crop_default"
+    )
+    if warning:
+        warnings.append(warning)
+    excluded_range, warning = _parse_range(
+        receptor.get("excluded_tm_core_default"), "excluded_tm_core_default"
+    )
+    if warning:
+        warnings.append(warning)
+    excluded_ranges = (excluded_range,) if excluded_range else ()
+    return EgfrContactFilter(
+        dockable_range=dockable_range,
+        excluded_ranges=excluded_ranges,
+        warnings=tuple(warnings),
+    )
+
+
+def _egfr_original_like_residue(atom: AtomRecord) -> int:
+    if atom.chain_id == "B" and atom.residue_number >= CHAIN_B_RUNTIME_OFFSET_THRESHOLD:
+        return atom.residue_number - CHAIN_B_RUNTIME_OFFSET
+    return atom.residue_number
+
+
+def _egfr_contact_allowed(atom: AtomRecord, contact_filter: EgfrContactFilter) -> bool:
+    residue = _egfr_original_like_residue(atom)
+    if contact_filter.dockable_range is not None:
+        start, end = contact_filter.dockable_range
+        if residue < start or residue > end:
+            return False
+    for start, end in contact_filter.excluded_ranges:
+        if start <= residue <= end:
+            return False
+    return True
+
+
 def extract_pose_contacts(
     *,
     ctx: RunContext,
@@ -182,6 +265,7 @@ def extract_pose_contacts(
     partner_chain: str = "C",
     min_contacts_for_acceptance: int = 1,
     score: str = "",
+    egfr_contact_filter: EgfrContactFilter | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Extract EGFR A/B to MYO1D partner-chain contacts from one pose PDB."""
 
@@ -193,8 +277,13 @@ def extract_pose_contacts(
 
     receptor_chains = {"A", "B"}
     atoms = [atom for atom in structure.atoms if atom.record_type in {"ATOM", "HETATM"}]
+    contact_filter = egfr_contact_filter or EgfrContactFilter()
     receptor_atoms = [
-        atom for atom in atoms if atom.chain_id in receptor_chains and _is_heavy(atom)
+        atom
+        for atom in atoms
+        if atom.chain_id in receptor_chains
+        and _is_heavy(atom)
+        and _egfr_contact_allowed(atom, contact_filter)
     ]
     partner_atoms = [
         atom for atom in atoms if atom.chain_id == partner_chain and _is_heavy(atom)
@@ -387,9 +476,10 @@ def extract_m2_pose_contacts(
         else None
     )
     output_path = _resolve_run_path(ctx, output_csv, DEFAULT_RAW_CONTACT_TABLE)
+    egfr_contact_filter = _load_egfr_contact_filter(ctx)
 
     rows: list[dict[str, Any]] = []
-    warnings: list[str] = []
+    warnings: list[str] = list(egfr_contact_filter.warnings)
     pose_count = 0
     accepted_pose_ids: set[tuple[str, str]] = set()
     for job in jobs:
@@ -408,6 +498,7 @@ def extract_m2_pose_contacts(
                 partner_chain=partner_chain,
                 min_contacts_for_acceptance=min_contacts_for_acceptance,
                 score=score_by_pose_id.get(pose_file.stem, ""),
+                egfr_contact_filter=egfr_contact_filter,
             )
             rows.extend(pose_rows)
             warnings.extend(pose_warnings)
@@ -441,6 +532,14 @@ def extract_m2_pose_contacts(
             "status": "PASS",
             "details": partner_chain,
         },
+        {
+            "check": "egfr_contact_filter",
+            "status": "PASS" if not egfr_contact_filter.warnings else "WARN",
+            "details": "dockable={0}; excluded={1}".format(
+                egfr_contact_filter.dockable_range,
+                list(egfr_contact_filter.excluded_ranges),
+            ),
+        },
     ]
     _write_csv(qc_path, qc_rows, QC_FIELDS, ctx)
 
@@ -473,6 +572,14 @@ def extract_m2_pose_contacts(
         "contact_cutoff_angstrom": contact_cutoff_angstrom,
         "partner_chain": partner_chain,
         "min_contacts_for_acceptance": min_contacts_for_acceptance,
+        "egfr_contact_filter": {
+            "dockable_range": list(egfr_contact_filter.dockable_range)
+            if egfr_contact_filter.dockable_range
+            else None,
+            "excluded_ranges": [list(item) for item in egfr_contact_filter.excluded_ranges],
+            "chain_b_runtime_offset_threshold": CHAIN_B_RUNTIME_OFFSET_THRESHOLD,
+            "chain_b_runtime_offset": CHAIN_B_RUNTIME_OFFSET,
+        },
         "pose_count": pose_count,
         "raw_contact_count": len(rows),
         "accepted_pose_count": len(accepted_pose_ids),
