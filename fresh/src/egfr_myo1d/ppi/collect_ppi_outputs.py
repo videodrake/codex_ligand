@@ -209,25 +209,28 @@ def _raw_pose_rows(ctx: RunContext, jobs: list[dict[str, Any]], state_roles: dic
         if chunks_dir.is_dir():
             for score_csv in sorted(chunks_dir.glob("*/pose_scores.csv")):
                 score_sources.append((score_csv, score_csv.parent / "real_run_status.json"))
+        score_pose_rows_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
         for score_csv, status_json in score_sources:
             for score_row in _read_csv(score_csv):
-                rows.append(
-                    {
-                        "run_id": str(score_row.get("run_id") or ctx.run_id),
-                        "state_id": state_id,
-                        "state_role": state_roles.get(state_id, ""),
-                        "method": str(job.get("method", "")),
-                        "seed": str(score_row.get("seed") or job.get("seed", "")),
-                        "job_name": str(score_row.get("job_name") or job.get("job_name", "")),
-                        "pose_id": str(score_row.get("pose_id", "")),
-                        "score": str(score_row.get("score", "")),
-                        "pose_path": str(score_row.get("pose_path", "")),
-                        "source_status_path": _repo_path(ctx, status_json) if status_json.is_file() else "",
-                        "status": str(score_row.get("status", "")) or "REAL_RUN_POSE",
-                        "notes": "real_run_pose_score",
-                    }
-                )
+                pose_id = str(score_row.get("pose_id", ""))
+                seed = str(score_row.get("seed") or job.get("seed", ""))
+                row = {
+                    "run_id": str(score_row.get("run_id") or ctx.run_id),
+                    "state_id": state_id,
+                    "state_role": state_roles.get(state_id, ""),
+                    "method": str(job.get("method", "")),
+                    "seed": seed,
+                    "job_name": str(score_row.get("job_name") or job.get("job_name", "")),
+                    "pose_id": pose_id,
+                    "score": str(score_row.get("score", "")),
+                    "pose_path": str(score_row.get("pose_path", "")),
+                    "source_status_path": _repo_path(ctx, status_json) if status_json.is_file() else "",
+                    "status": str(score_row.get("status", "")) or "REAL_RUN_POSE",
+                    "notes": "real_run_pose_score",
+                }
+                score_pose_rows_by_key[(state_id, seed, pose_id)] = row
         if score_sources:
+            rows.extend(score_pose_rows_by_key.values())
             continue
         dry_run_status = output_dir / "dry_run_status.json"
         if dry_run_status.is_file():
@@ -257,12 +260,24 @@ def _raw_pose_rows(ctx: RunContext, jobs: list[dict[str, Any]], state_roles: dic
     return rows
 
 
+def _raw_pose_key(row: dict[str, Any]) -> tuple[str, str, str] | None:
+    pose_id = str(row.get("pose_id", ""))
+    if not pose_id:
+        return None
+    return (
+        str(row.get("state_id", "")),
+        str(row.get("seed", "")),
+        pose_id,
+    )
+
+
 def _pose_rows_from_contacts(
     ctx: RunContext,
     raw_contact_rows: list[dict[str, Any]],
     state_roles: dict[str, str],
+    existing_pose_keys: set[tuple[str, str, str]] | None = None,
 ) -> list[dict[str, Any]]:
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str]] = set(existing_pose_keys or set())
     rows: list[dict[str, Any]] = []
     for row in raw_contact_rows:
         key = (
@@ -382,7 +397,17 @@ def collect_ppi_outputs(
         warnings.append("no_raw_contact_table_supplied_mapping_restoration_header_only")
 
     raw_pose_rows = _raw_pose_rows(ctx, jobs, state_roles)
-    raw_pose_rows.extend(_pose_rows_from_contacts(ctx, raw_contacts, state_roles))
+    existing_pose_keys = {
+        key for key in (_raw_pose_key(row) for row in raw_pose_rows) if key is not None
+    }
+    raw_pose_rows.extend(
+        _pose_rows_from_contacts(
+            ctx,
+            raw_contacts,
+            state_roles,
+            existing_pose_keys=existing_pose_keys,
+        )
+    )
 
     if blockers:
         restoration = MappingRestorationResult(
