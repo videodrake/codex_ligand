@@ -19,6 +19,9 @@ qsub config/run_advanced_pipeline.pbs
 
 상세 실행 방법: [docs/runbook.md](docs/runbook.md)
 
+Fresh workflow에서 진행 중인 M2 PyRosetta 입력 정규화 기록:
+[fresh/docs/m2_pyrosetta_input_sanitation.md](fresh/docs/m2_pyrosetta_input_sanitation.md)
+
 ## 문서 안내
 
 ### 구조 이해
@@ -37,6 +40,7 @@ qsub config/run_advanced_pipeline.pbs
 | [docs/environment_setup.md](docs/environment_setup.md) | 환경 설정 |
 | [docs/manual_vina.md](docs/manual_vina.md) | Vina 매뉴얼 |
 | [docs/manual_pyrosetta.md](docs/manual_pyrosetta.md) | PyRosetta 매뉴얼 |
+| [fresh/docs/m2_pyrosetta_input_sanitation.md](fresh/docs/m2_pyrosetta_input_sanitation.md) | Fresh M2 PyRosetta 입력 정규화 및 `fill_missing_atoms` 대응 기록 |
 
 ### 테스트/검증
 | 문서 | 내용 |

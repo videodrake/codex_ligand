@@ -28,4 +28,12 @@ python -m egfr_myo1d.cli --help
 python -m egfr_myo1d.cli version
 ```
 
+Current M2 PyRosetta real-run input handling is documented here:
+
+```text
+fresh/docs/m2_pyrosetta_input_sanitation.md
+```
+
+Read that note before running real PyRosetta jobs. It records the legacy-vs-fresh input comparison, official Rosetta/PyRosetta preparation rationale, the AB_C sanitation rules, and the expected HPC debug flow for `fill_missing_atoms` import failures.
+
 Future milestones will add runtime context, manifests, logging, receptor normalization, membrane-frame handling, MYO1D preparation, and smoke harnesses. Task 1 intentionally creates only the clean skeleton and guardrails.
