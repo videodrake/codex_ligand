@@ -219,6 +219,55 @@ def test_run_membrane_frame_computation_all_states(tmp_path):
     assert any(r.get("phase") == "compute-membrane-frame" for r in lines)
 
 
+def test_full_frame_source_override_takes_priority_over_raw_state_pdb(tmp_path):
+    repo_root = tmp_path / "repo"
+    raw_dir = repo_root / "fresh" / "data" / "raw" / "receptors"
+    config_dir = repo_root / "fresh" / "configs"
+    raw_dir.mkdir(parents=True)
+    config_dir.mkdir(parents=True)
+    (raw_dir / "EGFR_160-185.pdb").write_text("not a usable pdb\n", encoding="utf-8")
+    (config_dir / "receptor_states.yaml").write_text(
+        "\n".join(
+            [
+                "input_files:",
+                "  EGFR_160-185: fresh/data/raw/receptors/EGFR_160-185.pdb",
+                "  EGFR_170-200: fresh/data/raw/receptors/EGFR_170-200.pdb",
+                "  3GT8_raw: fresh/data/raw/receptors/3GT8_raw.pdb",
+                "  plus10_full_frame: fresh/data/raw/receptors/plus10_full_frame.pdb",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    ctx = RunContext(
+        repo_root=repo_root,
+        fresh_root=repo_root / "fresh",
+        run_id=unique_run_id(),
+        run_dir=tmp_path / "run",
+        manifest_dir=tmp_path / "run" / "manifest",
+        logs_dir=tmp_path / "run" / "logs",
+        jobs_log_dir=tmp_path / "run" / "logs" / "jobs",
+        errors_dir=tmp_path / "run" / "logs" / "errors",
+        qc_dir=tmp_path / "run" / "qc",
+        reports_dir=tmp_path / "run" / "reports",
+        scratch_dir=tmp_path / "run" / "scratch",
+        tmp_dir=tmp_path / "run" / "tmp",
+    )
+    initialize_logs(ctx)
+
+    frames, overall = run_membrane_frame_computation(
+        ctx,
+        state_ids=["EGFR_160-185"],
+        full_frame_source=DIMER_TM_JM,
+        profile="hpc_strict",
+    )
+
+    assert overall == "PASS_WITH_WARNINGS"
+    assert frames[0].frame_source == "plus10_inherited"
+    assert frames[0].status == "WARN"
+    assert not any("parse_error" in warning for warning in frames[0].warnings)
+
+
 def test_run_membrane_frame_computation_writes_under_run_dir_only(tmp_path):
     ctx = make_tmp_run_context(tmp_path)
     initialize_logs(ctx)

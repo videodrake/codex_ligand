@@ -1,0 +1,91 @@
+# M2.5 ATP-site reference configuration.
+#
+# This file backs `cli build-m2-atp-reference` when no override is supplied.
+# The residue set preserves the legacy ATP-pocket hard mask from
+# egfr_pipeline/verdict.py (ATP_POCKET_RESIDUES). Threshold changes here are
+# scientific decisions and should be reviewed together with pocket.yaml gates.
+
+schema_version: atp_reference_v1
+
+allowed_ligand_resnames:
+  - ATP
+  - ADP
+  - AMP
+  - ANP
+  - ACP
+  - AGS
+
+ligand_neighbor_distance_angstrom: 5.0
+reference_radius_angstrom: 10.0
+
+configured_residue_set:
+  source_id: legacy_egfr_atp_pocket_residue_mask
+  evidence_source: egfr_pipeline/verdict.py:ATP_POCKET_RESIDUES
+  minimum_residue_count: 3
+  notes: legacy_atp_mask_configured_reference_no_ligand_required
+  residues:
+    - uniprot_residue_number: 718
+      residue_name: LEU
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 719
+      residue_name: GLY
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 720
+      residue_name: SER
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 726
+      residue_name: VAL
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 743
+      residue_name: ALA
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 745
+      residue_name: LYS
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 751
+      residue_name: THR
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 790
+      residue_name: THR
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 791
+      residue_name: GLN
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 793
+      residue_name: MET
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 794
+      residue_name: PRO
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 795
+      residue_name: PHE
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 796
+      residue_name: GLY
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 797
+      residue_name: CYS
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 835
+      residue_name: HIS
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 838
+      residue_name: LEU
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 841
+      residue_name: ARG
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 844
+      residue_name: LEU
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 854
+      residue_name: THR
+      atp_site_region: legacy_atp_pocket_mask
+    - uniprot_residue_number: 855
+      residue_name: ASP
+      atp_site_region: legacy_atp_pocket_mask
+
+gate_policy:
+  atp_overlap_fraction_reject_threshold: 0.15
+  atp_centroid_distance_reject_threshold_angstrom: 10.0
+  rule: future non_atp_pass=false if atp_overlap_fraction >= threshold OR atp_centroid_distance <= threshold

@@ -374,27 +374,41 @@ def _resolve_state_paths(
     ctx: RunContext,
     full_frame_source_override: Path | None,
 ) -> tuple[dict[str, Path | None], Path | None]:
-    """Resolve per-state input paths from receptor_states.yaml plus an optional
-    user-supplied ``--full-frame-source`` override. Returns (state -> path|None,
-    plus10 fallback path|None)."""
+    """Resolve per-state input paths plus an optional full-frame override.
+
+    When an explicit full-frame source is provided, primary states intentionally
+    use it through the plus10 fallback channel instead of re-reading raw state
+    PDBs. The raw files may be kinase-only or duplicate-chain inputs that are
+    normalized elsewhere in prepare-inputs, while membrane-frame computation
+    needs the full-frame A/B source.
+    """
     config = load_yaml_config(
         ctx.repo_root / "fresh" / "configs" / "receptor_states.yaml"
     )
     input_files = config.get("input_files", {})
+    override_path = (
+        Path(full_frame_source_override)
+        if full_frame_source_override is not None
+        else None
+    )
+    if override_path is not None and not override_path.is_file():
+        override_path = None
+
     state_paths: dict[str, Path | None] = {}
     for state_id in ALL_STATES:
+        if state_id in PRIMARY_STATES and override_path is not None:
+            state_paths[state_id] = None
+            continue
         rel = input_files.get(state_id)
         candidate = (ctx.repo_root / rel) if rel else None
         if candidate is not None and candidate.is_file():
             state_paths[state_id] = candidate
-        elif full_frame_source_override is not None:
-            state_paths[state_id] = Path(full_frame_source_override)
+        elif override_path is not None:
+            state_paths[state_id] = override_path
         else:
             state_paths[state_id] = None
     plus10_rel = input_files.get("plus10_full_frame")
-    plus10_path = (ctx.repo_root / plus10_rel) if plus10_rel else None
-    if full_frame_source_override is not None:
-        plus10_path = Path(full_frame_source_override)
+    plus10_path = override_path or ((ctx.repo_root / plus10_rel) if plus10_rel else None)
     if plus10_path is not None and not plus10_path.is_file():
         plus10_path = None
     return state_paths, plus10_path
@@ -416,9 +430,9 @@ def run_membrane_frame_computation(
         states to compute. If ``None``, all known states are computed
         (``EGFR_160-185``, ``EGFR_170-200``, ``3GT8_raw``).
     full_frame_source
-        optional override path used when a state's own input PDB is missing
-        (acts as the plus10 fallback). Accepts ``Path`` or ``str``; if not a
-        file, treated as missing.
+        optional full-frame override path. When supplied, primary states use it
+        as their frame source instead of raw state PDBs. Accepts ``Path`` or
+        ``str``; if not a file, treated as missing.
     profile
         ``codex_dev`` or ``hpc_strict``.
 

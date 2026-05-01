@@ -21,6 +21,7 @@ CONFIG_FILES = {
     "gates": "fresh/configs/gates.yaml",
     "receptor_states": "fresh/configs/receptor_states.yaml",
     "pocket": "fresh/configs/pocket.yaml",
+    "atp_reference": "fresh/configs/atp_reference.yaml",
     "tool_registry": "fresh/configs/tool_registry.yaml",
 }
 
