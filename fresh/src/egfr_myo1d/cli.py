@@ -485,6 +485,60 @@ def build_parser():
     )
     m2_collect_parser.set_defaults(func=_cmd_collect_m2_ppi_outputs)
 
+    m2_extract_contacts_parser = subparsers.add_parser(
+        "extract-m2-ppi-contacts",
+        help="Extract M2.2b EGFR A/B to MYO1D C contacts from existing posed complex PDB files.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/. M2.2 job manifests should already exist in this run.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--mode",
+        default="production",
+        choices=["smoke_env", "smoke_input", "mini", "production"],
+        help="Mode label recorded in M2.2b manifests.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--profile",
+        default="hpc_strict",
+        choices=["codex_dev", "hpc_strict"],
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--job-manifest",
+        default=None,
+        help="Optional M2.2 job manifest JSONL path under the same run dir.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--pose-root",
+        default=None,
+        help="Optional run-local base directory containing per-job pose folders.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--output-csv",
+        default=None,
+        help="Optional run-local raw contact CSV output path.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--contact-cutoff-angstrom",
+        type=float,
+        default=6.0,
+        help="Heavy-atom distance cutoff for EGFR-MYO1D contacts.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--partner-chain",
+        default="C",
+        help="MYO1D partner chain ID expected in posed complex PDBs.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--min-contacts-for-acceptance",
+        type=int,
+        default=1,
+        help="Minimum EGFR-MYO1D residue-pair contacts needed to mark a pose accepted for M2.4 evidence.",
+    )
+    m2_extract_contacts_parser.set_defaults(func=_cmd_extract_m2_ppi_contacts)
+
     m2_consensus_parser = subparsers.add_parser(
         "build-m2-ppi-consensus-patch",
         help="Build M2.4 chain-resolved EGFR-side PPI consensus patch tables from M2.3 restored contacts.",
@@ -1868,6 +1922,44 @@ def _cmd_collect_m2_ppi_outputs(args):
     print("m2_3_manifest={0}".format(report.manifest_path))
     print("m2_3_raw_pose_table={0}".format(report.raw_pose_table))
     print("m2_3_pose_contacts={0}".format(report.pose_contacts_csv))
+    if report.status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_extract_m2_ppi_contacts(args):
+    from pathlib import Path
+
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.ppi.pose_contacts import extract_m2_pose_contacts
+
+    ctx = RunContext.for_existing(args.run_id)
+    initialize_logs(ctx)
+    report = extract_m2_pose_contacts(
+        ctx,
+        mode=args.mode,
+        profile=args.profile,
+        job_manifest=Path(args.job_manifest) if args.job_manifest else None,
+        pose_root=Path(args.pose_root) if args.pose_root else None,
+        output_csv=Path(args.output_csv) if args.output_csv else None,
+        contact_cutoff_angstrom=args.contact_cutoff_angstrom,
+        partner_chain=args.partner_chain,
+        min_contacts_for_acceptance=args.min_contacts_for_acceptance,
+    )
+    print(
+        "extract-m2-ppi-contacts {0}: poses={1} raw_contacts={2} accepted_poses={3} warnings={4} blockers={5}".format(
+            report.status,
+            report.pose_count,
+            report.raw_contact_count,
+            report.accepted_pose_count,
+            len(report.warnings),
+            len(report.blockers),
+        )
+    )
+    print("m2_2b_manifest={0}".format(report.manifest_path))
+    print("m2_2b_raw_contact_table={0}".format(report.raw_contact_table))
+    print("m2_2b_summary={0}".format(report.summary_report_path))
     if report.status == "FAIL":
         return 1
     return 0
