@@ -12,7 +12,7 @@ from egfr_myo1d.core.logging_utils import initialize_logs
 from egfr_myo1d.core.run_context import RunContext, RunContextError
 from egfr_myo1d.io.residue_mapping import write_residue_mapping
 from egfr_myo1d.pocket.dimer_accessibility import DIMER_ACCESSIBILITY_FIELDS, evaluate_dimer_accessibility
-from egfr_myo1d.pocket.membrane_gate import MEMBRANE_GEOMETRY_FIELDS
+from egfr_myo1d.pocket.membrane_gate import MEMBRANE_GEOMETRY_FIELDS, evaluate_membrane_geometry
 from egfr_myo1d.pocket.pocket_gate_apply import (
     ACCEPTED_FIELDS,
     FORBIDDEN_EXPORT_OUTPUTS,
@@ -458,6 +458,54 @@ def test_m2_7_membrane_frame_and_lateral_score_behavior(tmp_path):
     source = (REPO_ROOT / "fresh" / "src" / "egfr_myo1d" / "pocket" / "membrane_gate.py").read_text(encoding="utf-8")
     assert "[0, 0, 1]" not in source
     assert "[0,0,1]" not in source
+
+
+def test_m2_7_membrane_gate_skips_reference_frame_in_merged_family():
+    membrane_frame = {
+        "coordinate_convention": "Z+ is membrane normal from extracellular to intracellular/cytosolic; X+ is chain A to chain B",
+        "states": {
+            "3GT8_raw": {
+                "role": "crystallographic_reference_control",
+                "status": "reference_control",
+                "n_membrane": [0.0, 0.0, 1.0],
+                "p_jm_anchor": [0.0, 0.0, 0.0],
+                "protomer_a_centroid": [-10.0, 0.0, 0.0],
+                "protomer_b_centroid": [10.0, 0.0, 0.0],
+            },
+            "EGFR_160-185": {
+                "role": "primary_membrane_validated_state",
+                "status": "WARN",
+                "n_membrane": [0.0, 0.0, 1.0],
+                "p_jm_anchor": [0.0, 0.0, 0.0],
+                "protomer_a_centroid": [-10.0, 0.0, 0.0],
+                "protomer_b_centroid": [10.0, 0.0, 0.0],
+            },
+        },
+    }
+    family = {
+        "pocket_family_id": "fam_reference_first",
+        "representative_candidate_pocket_id": "p1",
+        "member_state_ids": "3GT8_raw;EGFR_160-185",
+        "member_state_roles": "primary;reference",
+        "member_protomer_ids": "A;B",
+        "family_center_x": -20.0,
+        "family_center_y": 0.0,
+        "family_center_z": 10.0,
+    }
+
+    row = evaluate_membrane_geometry(
+        family,
+        membrane_frame,
+        {"EGFR_160-185": (0.0, 20.0)},
+        {"lower_z_minimum": -5.0, "lateral_score_pass_threshold": 0.15},
+    )
+
+    assert row["membrane_frame_id"] == "EGFR_160-185"
+    assert row["lower_lateral_pass"] is True
+    assert row["membrane_geometry_reason"] == "lower_lateral_pass"
+    assert "membrane_normal_missing" not in row["warnings"]
+    assert "reference_state_skipped_for_membrane_frame:3GT8_raw" in row["warnings"]
+    assert "multi_protomer_lateral_score_max_of_A_B" in row["warnings"]
 
 
 def test_m2_7_dimer_accessibility_sasa_optional_warning(tmp_path):
