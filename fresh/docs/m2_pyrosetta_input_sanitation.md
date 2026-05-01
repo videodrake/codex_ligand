@@ -172,6 +172,74 @@ python -m egfr_myo1d.ppi.run_ppi_job \
   --max-models 1
 ```
 
+## 32-Core Production Planning
+
+The old workflow used PBS allocation as the local worker limit:
+
+```text
+config/run_ppi_state_seed.pbs
+run_production.py --allocated-cpus "${PBS_NP:-16}"
+egfr_pipeline/pyrosetta_docking/pipeline_manager.py -> multiprocessing.Pool(n_cpus)
+```
+
+That pattern is useful, but it is not copied blindly. In fresh M2.2, the safer production plan is:
+
+- PBS requests the intended node and core count, e.g. `nodes=node04:ppn=32`;
+- the PBS body reads `PBS_NP` and caps local concurrent workers at that value;
+- each worker is an isolated `python -m egfr_myo1d.ppi.run_ppi_job` subprocess with its own `--chunk-id`;
+- every chunk writes its own `chunks/<chunk_id>/real_run_status.json` and `chunks/<chunk_id>/pose_scores.csv`;
+- all successful pose PDBs still land in the job-level `poses/` directory with unique model indices.
+
+This keeps the useful legacy resource contract while avoiding shared PyRosetta objects across a Python multiprocessing pool. The practical advantage is cleaner failure isolation: if one chunk fails, the completed chunk statuses and pose scores remain inspectable and the failed model range can be rerun directly.
+
+For final-scale sampling, regenerate the dry harness with an explicit model count before making the PBS plan. The legacy production shape used 20,000 models per state/seed; use a smaller value only for smoke, mini, or calibration runs:
+
+```bash
+RUN_ID=input_clean_20260501_211242
+
+python -m egfr_myo1d.cli prepare-m2-pyrosetta-harness \
+  --run-id "$RUN_ID" \
+  --mode production \
+  --profile hpc_strict \
+  --states EGFR_160-185,EGFR_170-200 \
+  --models-per-seed 20000
+```
+
+Then generate the 3-node, 32-core plan:
+
+```bash
+RUN_ID=input_clean_20260501_211242
+
+python fresh/scripts/submit_m2_pyrosetta_real_jobs.py \
+  --run-id "$RUN_ID" \
+  --profile production \
+  --nodes node04,node05,node06 \
+  --ppn 32
+```
+
+The script does not call `qsub` by default. It writes:
+
+```text
+fresh/runs/<run_id>/phase1_ppi/pyrosetta_adapter/pyrosetta_real_chunk_manifest.csv
+fresh/runs/<run_id>/phase1_ppi/pyrosetta_adapter/pyrosetta_real_pbs_manifest.csv
+fresh/runs/<run_id>/phase1_ppi/pyrosetta_adapter/qsub/m2_pyrosetta_node04.pbs
+fresh/runs/<run_id>/phase1_ppi/pyrosetta_adapter/qsub/m2_pyrosetta_node05.pbs
+fresh/runs/<run_id>/phase1_ppi/pyrosetta_adapter/qsub/m2_pyrosetta_node06.pbs
+fresh/runs/<run_id>/reports/m2_2_pyrosetta_real_pbs_plan.md
+```
+
+By default, chunk sizing is automatic: each state/seed job is split into roughly one 32-worker wave. With `--models-per-seed 20000 --ppn 32`, that means about 625 models per subprocess chunk. You can override this with `--models-per-chunk N` if a calibration run shows that chunks are too short or too long.
+
+Submit manually only after inspecting the PBS manifest:
+
+```bash
+cat fresh/runs/$RUN_ID/phase1_ppi/pyrosetta_adapter/pyrosetta_real_pbs_manifest.csv
+
+qsub fresh/runs/$RUN_ID/phase1_ppi/pyrosetta_adapter/qsub/m2_pyrosetta_node04.pbs
+qsub fresh/runs/$RUN_ID/phase1_ppi/pyrosetta_adapter/qsub/m2_pyrosetta_node05.pbs
+qsub fresh/runs/$RUN_ID/phase1_ppi/pyrosetta_adapter/qsub/m2_pyrosetta_node06.pbs
+```
+
 If import still fails, inspect:
 
 ```bash
@@ -226,7 +294,10 @@ At least the requested model count completed. This is still not the final scient
 
 ```text
 fresh/src/egfr_myo1d/ppi/run_ppi_job.py
+fresh/src/egfr_myo1d/ppi/pyrosetta_real_jobs.py
+fresh/scripts/submit_m2_pyrosetta_real_jobs.py
 fresh/tests/test_m2_phase2_pyrosetta_adapter.py
+fresh/tests/test_m2_phase2c_pyrosetta_real_pbs.py
 fresh/tests/test_m2_phase2b_pose_contacts.py
 egfr_pipeline/phase1/prepare_inputs.py
 config/phase1/phase1_prod_EGFR_160-185_seed*.ini

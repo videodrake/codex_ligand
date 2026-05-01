@@ -201,6 +201,34 @@ def _raw_pose_rows(ctx: RunContext, jobs: list[dict[str, Any]], state_roles: dic
                 }
             )
             continue
+        score_sources: list[tuple[Path, Path]] = []
+        root_score = output_dir / "pose_scores.csv"
+        if root_score.is_file():
+            score_sources.append((root_score, output_dir / "real_run_status.json"))
+        chunks_dir = output_dir / "chunks"
+        if chunks_dir.is_dir():
+            for score_csv in sorted(chunks_dir.glob("*/pose_scores.csv")):
+                score_sources.append((score_csv, score_csv.parent / "real_run_status.json"))
+        for score_csv, status_json in score_sources:
+            for score_row in _read_csv(score_csv):
+                rows.append(
+                    {
+                        "run_id": str(score_row.get("run_id") or ctx.run_id),
+                        "state_id": state_id,
+                        "state_role": state_roles.get(state_id, ""),
+                        "method": str(job.get("method", "")),
+                        "seed": str(score_row.get("seed") or job.get("seed", "")),
+                        "job_name": str(score_row.get("job_name") or job.get("job_name", "")),
+                        "pose_id": str(score_row.get("pose_id", "")),
+                        "score": str(score_row.get("score", "")),
+                        "pose_path": str(score_row.get("pose_path", "")),
+                        "source_status_path": _repo_path(ctx, status_json) if status_json.is_file() else "",
+                        "status": str(score_row.get("status", "")) or "REAL_RUN_POSE",
+                        "notes": "real_run_pose_score",
+                    }
+                )
+        if score_sources:
+            continue
         dry_run_status = output_dir / "dry_run_status.json"
         if dry_run_status.is_file():
             status = "DRY_RUN_ONLY"

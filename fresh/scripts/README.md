@@ -1,6 +1,6 @@
 # Fresh Scripts
 
-These scripts are safe placeholders for Milestone 1 Task 1. They do not submit jobs or run docking.
+These scripts generate safe workflow helpers. They do not submit jobs or run docking unless an explicit submit flag and confirmation flag are both provided by the user.
 
 Future PBS snippets must include:
 
@@ -24,4 +24,6 @@ source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
 conda activate pyrosetta
 ```
 
-`submit_smoke_env.sh` and `submit_smoke_input.sh` document later smoke behavior but do not call `qsub` in Task 1.
+`submit_smoke_env.sh` and `submit_smoke_input.sh` document smoke behavior but do not call `qsub`.
+
+`submit_m2_pyrosetta_real_jobs.py` writes the M2.2 real PyRosetta PBS plan for node-level chunked execution. The production default is intended for `node04,node05,node06` with `ppn=32`; it keeps the useful `PBS_NP` worker-cap contract but runs each chunk as an isolated PyRosetta subprocess. Chunk size is automatic by default, roughly one worker wave per state/seed. It does not call `qsub` unless both `--submit` and `--i-understand-this-submits-hpc-jobs` are supplied.

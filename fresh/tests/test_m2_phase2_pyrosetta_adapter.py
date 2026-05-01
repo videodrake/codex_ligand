@@ -93,6 +93,18 @@ def test_m2_2_mini_harness_uses_two_states_two_seeds(ctx_with_m2_1):
     assert {job.state_id for job in report.jobs} == {"EGFR_160-185", "EGFR_170-200"}
 
 
+def test_m2_2_harness_allows_explicit_models_per_seed_override(ctx_with_m2_1):
+    report = generate_pyrosetta_harness(
+        ctx_with_m2_1,
+        mode="production",
+        models_per_seed_override=20000,
+    )
+
+    assert report.status in {"PASS", "PASS_WITH_WARNINGS"}
+    assert len(report.jobs) == 20
+    assert {job.models_per_seed for job in report.jobs} == {20000}
+
+
 def test_m2_2_dry_run_job_writes_status_without_pyrosetta_execution(ctx_with_m2_1):
     report = generate_pyrosetta_harness(ctx_with_m2_1, mode="smoke_input")
     job_name = report.jobs[0].job_name

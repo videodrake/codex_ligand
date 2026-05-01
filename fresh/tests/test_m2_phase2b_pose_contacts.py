@@ -191,6 +191,35 @@ def test_m2_2b_raw_contacts_feed_m2_3_mapping_restoration(tmp_path):
     assert by_protomer["B"]["accepted_pose_flag"] == "true"
 
 
+def test_m2_2b_reads_scores_from_chunked_real_run_outputs(tmp_path):
+    ctx, _pose = setup_run_with_pose(tmp_path)
+    score_csv = (
+        ctx.run_dir
+        / "phase1_ppi"
+        / "pyrosetta_adapter"
+        / "outputs"
+        / "job_001"
+        / "chunks"
+        / "chunk_001"
+        / "pose_scores.csv"
+    )
+    score_csv.parent.mkdir(parents=True, exist_ok=True)
+    score_csv.write_text(
+        "run_id,job_name,state_id,seed,model_index,pose_id,score,pose_path,status\n"
+        "{0},job_001,EGFR_160-185,0,1,pose_00001,-12.345,path,PASS\n".format(
+            ctx.run_id
+        ),
+        encoding="utf-8",
+    )
+
+    report = extract_m2_pose_contacts(ctx)
+    rows = read_csv(report.raw_contact_table)
+
+    assert report.status == "PASS"
+    assert rows
+    assert {row["score"] for row in rows} == {"-12.345"}
+
+
 def test_m2_2b_missing_pose_pdbs_warn_without_fabricating_contacts(tmp_path):
     ctx = make_tmp_run_context(tmp_path)
     initialize_logs(ctx)

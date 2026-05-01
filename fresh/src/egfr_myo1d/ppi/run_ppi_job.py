@@ -370,16 +370,15 @@ def _copy_atoms_with_chain(source_path, target_handle, serial_start, chain_id=No
     return serial, atom_count, sorted(chains), _json_sanitize_stats(stats)
 
 
-def build_ab_c_input(ctx, job, output_dir):
+def build_ab_c_input(ctx, job, output_dir, input_label=None):
     """Combine EGFR A/B receptor and MYO1D partner into a run-local AB_C PDB."""
 
     receptor_path = ensure_within(_repo_or_abs(ctx, job["receptor_pdb"]), ctx.run_dir)
     partner_path = ensure_within(_repo_or_abs(ctx, job["partner_pdb"]), ctx.run_dir)
     input_dir = ctx.require_within_run_dir(output_dir / "inputs")
     input_dir.mkdir(parents=True, exist_ok=True)
-    target = ctx.require_within_run_dir(
-        input_dir / "{0}_AB_C_input.pdb".format(job["job_name"])
-    )
+    label = input_label or job["job_name"]
+    target = ctx.require_within_run_dir(input_dir / "{0}_AB_C_input.pdb".format(label))
     serial = 1
     with target.open("w", encoding="utf-8") as handle:
         serial, receptor_atom_count, receptor_chains, receptor_sanitize = _copy_atoms_with_chain(
@@ -481,8 +480,13 @@ def _real_status_payload(
     poses_dir,
     score_csv=None,
     failures=None,
+    chunk_id="",
+    model_start=1,
+    model_end=None,
+    rng_seed=None,
 ):
     failures = failures or []
+    model_end = model_start + model_count - 1 if model_end is None and model_count else model_end
     return {
         "run_id": ctx.run_id,
         "job_name": job_name,
@@ -495,6 +499,10 @@ def _real_status_payload(
         "dock_partners": dock_partners,
         "planned_models": planned_models,
         "executed_models": model_count,
+        "model_start": model_start,
+        "model_end": model_end,
+        "chunk_id": chunk_id,
+        "rng_seed": rng_seed,
         "successful_models": 0,
         "failed_models": len(failures),
         "input_summary": input_summary,
@@ -519,6 +527,8 @@ def real_run_job(
     allow_real=False,
     max_models=None,
     dock_partners="AB_C",
+    model_start=1,
+    chunk_id="",
 ):
     """Execute one explicit PyRosetta AB_C docking job and dump pose PDBs."""
 
@@ -529,17 +539,40 @@ def real_run_job(
     output_dir.mkdir(parents=True, exist_ok=True)
     poses_dir = ctx.require_within_run_dir(output_dir / "poses")
     poses_dir.mkdir(parents=True, exist_ok=True)
-    combined_input, input_summary = build_ab_c_input(ctx, job, output_dir)
+    if model_start <= 0:
+        raise ValueError("model_start must be positive")
+    chunk_label = chunk_id.strip()
+    input_label = "{0}_{1}".format(job_name, chunk_label) if chunk_label else job_name
+    combined_input, input_summary = build_ab_c_input(
+        ctx, job, output_dir, input_label=input_label
+    )
 
     seed = int(job.get("seed", 0))
     planned_models = int(job.get("models_per_seed", 1))
-    model_count = min(planned_models, int(max_models)) if max_models else planned_models
+    remaining_models = planned_models - model_start + 1
+    if remaining_models <= 0:
+        raise ValueError(
+            "model_start {0} exceeds manifest models_per_seed {1}".format(
+                model_start, planned_models
+            )
+        )
+    model_count = min(remaining_models, int(max_models)) if max_models else remaining_models
     if model_count <= 0:
         raise ValueError("model count must be positive")
+    model_end = model_start + model_count - 1
 
-    status_path = output_dir / "real_run_status.json"
+    if chunk_label:
+        chunk_dir = ctx.require_within_run_dir(output_dir / "chunks" / chunk_label)
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        status_path = chunk_dir / "real_run_status.json"
+        score_csv = ctx.require_within_run_dir(chunk_dir / "pose_scores.csv")
+        rng_seed = (seed + 1) * 100000 + model_start
+    else:
+        status_path = output_dir / "real_run_status.json"
+        score_csv = ctx.require_within_run_dir(output_dir / "pose_scores.csv")
+        rng_seed = seed
     pyrosetta = _import_pyrosetta()
-    pyrosetta.init("-mute all -constant_seed -jran {0}".format(seed))
+    pyrosetta.init("-mute all -constant_seed -jran {0}".format(rng_seed))
     rosetta = pyrosetta.rosetta
     movable_jumps = rosetta.utility.vector1_int()
     movable_jumps.append(1)
@@ -559,6 +592,10 @@ def real_run_job(
             input_summary=input_summary,
             poses_dir=poses_dir,
             failures=[failure],
+            chunk_id=chunk_label,
+            model_start=model_start,
+            model_end=model_end,
+            rng_seed=rng_seed,
         )
         payload["docking_executed"] = False
         write_json(status_path, payload, ctx)
@@ -572,13 +609,14 @@ def real_run_job(
                 "real_run_status": _repo_path(ctx, status_path),
                 "combined_input_pdb": input_summary["combined_input_pdb"],
                 "docking_executed": False,
+                "chunk_id": chunk_label,
             },
         )
         raise
 
     rows = []
     failures = []
-    for model_index in range(1, model_count + 1):
+    for model_index in range(model_start, model_end + 1):
         pose_id = "{0}_model_{1:05d}".format(job_name, model_index)
         pose_path = ctx.require_within_run_dir(poses_dir / "{0}.pdb".format(pose_id))
         try:
@@ -612,7 +650,6 @@ def real_run_job(
             }
         )
 
-    score_csv = ctx.require_within_run_dir(output_dir / "pose_scores.csv")
     _write_score_csv(score_csv, rows)
     status = "REAL_RUN_PASS" if not failures else "REAL_RUN_FAIL"
     payload = _real_status_payload(
@@ -627,6 +664,10 @@ def real_run_job(
         poses_dir=poses_dir,
         score_csv=score_csv,
         failures=failures,
+        chunk_id=chunk_label,
+        model_start=model_start,
+        model_end=model_end,
+        rng_seed=rng_seed,
     )
     payload["docking_executed"] = not failures
     payload["successful_models"] = sum(1 for row in rows if row["status"] == "PASS")
@@ -641,6 +682,7 @@ def real_run_job(
             "real_run_status": _repo_path(ctx, status_path),
             "pose_score_csv": _repo_path(ctx, score_csv),
             "docking_executed": not failures,
+            "chunk_id": chunk_label,
         },
     )
     append_phase_status(
@@ -652,6 +694,9 @@ def real_run_job(
             "job_name": job_name,
             "real_run_status": _repo_path(ctx, status_path),
             "dock_partners": dock_partners,
+            "chunk_id": chunk_label,
+            "model_start": model_start,
+            "model_end": model_end,
         },
     )
     if failures:
@@ -686,6 +731,17 @@ def build_parser():
         default="AB_C",
         help="Rosetta docking partners string. Default docks EGFR dimer A/B against MYO1D C.",
     )
+    parser.add_argument(
+        "--model-start",
+        type=int,
+        default=1,
+        help="First 1-based model index to execute for this job. Used for chunked production.",
+    )
+    parser.add_argument(
+        "--chunk-id",
+        default="",
+        help="Optional chunk identifier. When set, status/score files are written under output_dir/chunks/<chunk-id>/.",
+    )
     return parser
 
 
@@ -708,6 +764,8 @@ def main(argv=None):
             allow_real=args.allow_real,
             max_models=args.max_models,
             dock_partners=args.dock_partners,
+            model_start=args.model_start,
+            chunk_id=args.chunk_id,
         )
         print("real_run_status={0}".format(status_path))
     return 0

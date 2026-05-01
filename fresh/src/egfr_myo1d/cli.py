@@ -445,6 +445,12 @@ def build_parser():
         default=None,
         help="Optional M2.1 manifest path under the same run dir.",
     )
+    m2_pyrosetta_parser.add_argument(
+        "--models-per-seed",
+        type=int,
+        default=None,
+        help="Override the mode default model count per state/seed. Use deliberately for production-scale sampling.",
+    )
     m2_pyrosetta_parser.set_defaults(func=_cmd_prepare_m2_pyrosetta_harness)
 
     m2_collect_parser = subparsers.add_parser(
@@ -1875,6 +1881,7 @@ def _cmd_prepare_m2_pyrosetta_harness(args):
         m2_1_manifest_path=Path(args.m2_1_manifest)
         if args.m2_1_manifest
         else None,
+        models_per_seed_override=args.models_per_seed,
     )
     print(
         "prepare-m2-pyrosetta-harness {0}: jobs={1} warnings={2} blockers={3}".format(

@@ -290,12 +290,17 @@ def generate_pyrosetta_harness(
     profile: str = "codex_dev",
     states: Iterable[str] | None = None,
     m2_1_manifest_path: Path | None = None,
+    models_per_seed_override: int | None = None,
 ) -> PyRosettaHarnessReport:
     """Generate dry-run PyRosetta adapter manifests from M2.1 specs."""
     ctx.create_directories()
     harness_dir = ctx.require_within_run_dir(ctx.run_dir / HARNESS_ROOT)
     harness_dir.mkdir(parents=True, exist_ok=True)
     seeds, models_per_seed, max_packs = _mode_settings(mode)
+    if models_per_seed_override is not None:
+        if models_per_seed_override <= 0:
+            raise ValueError("models_per_seed_override must be positive")
+        models_per_seed = int(models_per_seed_override)
     m2_1_manifest, manifest_path = _load_m2_1_manifest(ctx, m2_1_manifest_path)
 
     warnings = []

@@ -117,6 +117,11 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _read_csv(path: Path) -> list[dict[str, Any]]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
 def _write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str], ctx: RunContext) -> None:
     safe = ctx.require_within_run_dir(path)
     safe.parent.mkdir(parents=True, exist_ok=True)
@@ -310,6 +315,28 @@ def _pose_files_for_job(ctx: RunContext, job: dict[str, Any], pose_root: Path | 
     return files
 
 
+def _score_by_pose_id_for_job(ctx: RunContext, job: dict[str, Any]) -> dict[str, str]:
+    output_text = str(job.get("output_dir", ""))
+    if not output_text:
+        return {}
+    output_dir = ensure_within(_resolve_repo_or_abs(ctx, output_text), ctx.run_dir)
+    candidates = [output_dir / "pose_scores.csv"]
+    chunks_dir = output_dir / "chunks"
+    if chunks_dir.is_dir():
+        candidates.extend(sorted(chunks_dir.glob("*/pose_scores.csv")))
+
+    scores: dict[str, str] = {}
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        for row in _read_csv(candidate):
+            pose_id = str(row.get("pose_id", ""))
+            if not pose_id:
+                continue
+            scores[pose_id] = str(row.get("score", ""))
+    return scores
+
+
 def _write_summary(ctx: RunContext, report: PoseContactExtractionReport) -> Path:
     target = ctx.require_within_run_dir(ctx.reports_dir / "m2_2b_ppi_pose_contact_extraction.md")
     lines = [
@@ -370,6 +397,7 @@ def extract_m2_pose_contacts(
         if not pose_files:
             warnings.append("no_pose_pdbs_for_job:{0}".format(job.get("job_name", "")))
             continue
+        score_by_pose_id = _score_by_pose_id_for_job(ctx, job)
         for pose_file in pose_files:
             pose_count += 1
             pose_rows, pose_warnings = extract_pose_contacts(
@@ -379,6 +407,7 @@ def extract_m2_pose_contacts(
                 contact_cutoff_angstrom=contact_cutoff_angstrom,
                 partner_chain=partner_chain,
                 min_contacts_for_acceptance=min_contacts_for_acceptance,
+                score=score_by_pose_id.get(pose_file.stem, ""),
             )
             rows.extend(pose_rows)
             warnings.extend(pose_warnings)
