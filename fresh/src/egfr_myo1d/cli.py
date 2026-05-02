@@ -451,6 +451,18 @@ def build_parser():
         default=None,
         help="Override the mode default model count per state/seed. Use deliberately for production-scale sampling.",
     )
+    m2_pyrosetta_parser.add_argument(
+        "--seed-start",
+        type=int,
+        default=None,
+        help="Override the first PyRosetta seed. Use for independent extended batches, e.g. 10 after the default 0-9 batch.",
+    )
+    m2_pyrosetta_parser.add_argument(
+        "--seed-count",
+        type=int,
+        default=None,
+        help="Override the number of consecutive seeds to emit with --seed-start.",
+    )
     m2_pyrosetta_parser.set_defaults(func=_cmd_prepare_m2_pyrosetta_harness)
 
     m2_collect_parser = subparsers.add_parser(
@@ -1882,6 +1894,8 @@ def _cmd_prepare_m2_pyrosetta_harness(args):
         if args.m2_1_manifest
         else None,
         models_per_seed_override=args.models_per_seed,
+        seed_start_override=args.seed_start,
+        seed_count_override=args.seed_count,
     )
     print(
         "prepare-m2-pyrosetta-harness {0}: jobs={1} warnings={2} blockers={3}".format(
