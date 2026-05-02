@@ -164,6 +164,26 @@ def fake_mk_prepare_tools():
     )
 
 
+def fake_mk_fail_openbabel_tools():
+    return ReceptorToolStatus(
+        prepare_receptor4_available=False,
+        prepare_receptor4_version=None,
+        prepare_receptor4_binary=None,
+        mk_prepare_receptor_available=True,
+        mk_prepare_receptor_version="test mk_prepare_receptor",
+        mk_prepare_receptor_binary="mk_prepare_receptor.py",
+        meeko_available=True,
+        meeko_version="test meeko",
+        openbabel_available=True,
+        openbabel_version="test obabel",
+        rdkit_available=False,
+        rdkit_version=None,
+        vina_available=True,
+        vina_invoked=False,
+        openbabel_binary="obabel",
+    )
+
+
 def patch_fake_receptor_conversion(monkeypatch):
     monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.detect_receptor_tools", fake_tools)
 
@@ -266,6 +286,34 @@ def test_mk_prepare_receptor_outputs_are_normalized_to_expected_pdbqt(tmp_path, 
     mk_calls = [call for call in calls if call and call[0] == "mk_prepare_receptor.py"]
     assert mk_calls[0][1] == "--read_pdb"
     assert mk_calls[1][-1] == "-p"
+
+
+def test_openbabel_fallback_runs_after_mk_prepare_receptor_failure(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.detect_receptor_tools", fake_mk_fail_openbabel_tools)
+    calls = []
+
+    def fake_run(args, stdout=None, stderr=None, text=None, check=None, **kwargs):
+        calls.append(list(args))
+        if args and args[0] == "git":
+            return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+        if args and args[0] == "obabel":
+            output = Path(args[args.index("-O") + 1])
+            output.write_text(PDBQT_TEXT, encoding="utf-8")
+            return subprocess.CompletedProcess(args, 0, stdout="obabel ok\n", stderr="")
+        return subprocess.CompletedProcess(args, 2, stdout="", stderr="mk failed\n")
+
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.subprocess.run", fake_run)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+
+    assert result.status == "PASS"
+    assert rows[0]["preparation_method"] == "openbabel_receptor_pdbqt"
+    assert any(call and call[0] == "mk_prepare_receptor.py" for call in calls)
+    assert any(call and call[0] == "obabel" for call in calls)
 
 
 def test_empty_m3_skeleton_dirs_do_not_block_receptor_boxes(tmp_path, monkeypatch):

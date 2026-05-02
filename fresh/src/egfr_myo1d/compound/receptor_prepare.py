@@ -157,6 +157,7 @@ class ReceptorToolStatus:
     rdkit_version: str | None
     vina_available: bool
     vina_invoked: bool = False
+    openbabel_binary: str | None = None
 
 
 @dataclass
@@ -316,6 +317,7 @@ def detect_receptor_tools() -> ReceptorToolStatus:
         rdkit_available=rdkit_available,
         rdkit_version=rdkit_version,
         vina_available=bool(vina),
+        openbabel_binary=obabel,
     )
 
 
@@ -726,6 +728,52 @@ def _mk_prepare_output_candidates(output: Path) -> list[Path]:
     return unique
 
 
+def _try_openbabel_receptor_pdbqt(
+    source: Path,
+    output: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    tools: ReceptorToolStatus,
+    stdout_chunks: list[str] | None = None,
+    stderr_chunks: list[str] | None = None,
+) -> tuple[bool, str, str, str, Path, Path]:
+    method = "openbabel_receptor_pdbqt"
+    version = tools.openbabel_version or ""
+    stdout_chunks = list(stdout_chunks or [])
+    stderr_chunks = list(stderr_chunks or [])
+    obabel = tools.openbabel_binary or shutil.which("obabel")
+    if not obabel:
+        stdout_path.write_text("\n".join(stdout_chunks), encoding="utf-8")
+        stderr_chunks.append("obabel binary not found despite openbabel_available=true\n")
+        stderr_path.write_text("\n".join(stderr_chunks), encoding="utf-8")
+        return False, method, "obabel", version, stdout_path, stderr_path
+
+    attempts = [
+        [obabel, "-ipdb", str(source), "-opdbqt", "-O", str(output), "-xr"],
+        [obabel, str(source), "-O", str(output), "-xr"],
+    ]
+    for args in attempts:
+        try:
+            proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+        except OSError as exc:
+            stdout_chunks.append("$ " + " ".join(args) + "\n")
+            stderr_chunks.append("$ " + " ".join(args) + "\n")
+            stderr_chunks.append(f"receptor prep invocation failed: {exc.__class__.__name__}\n")
+            continue
+        stdout_chunks.append("$ " + " ".join(args) + "\n")
+        stdout_chunks.append(proc.stdout or "")
+        stderr_chunks.append("$ " + " ".join(args) + "\n")
+        stderr_chunks.append(proc.stderr or "")
+        if proc.returncode == 0 and output.is_file() and output.stat().st_size > 0:
+            stdout_path.write_text("\n".join(stdout_chunks), encoding="utf-8")
+            stderr_path.write_text("\n".join(stderr_chunks), encoding="utf-8")
+            return True, method, "obabel", version, stdout_path, stderr_path
+
+    stdout_path.write_text("\n".join(stdout_chunks), encoding="utf-8")
+    stderr_path.write_text("\n".join(stderr_chunks), encoding="utf-8")
+    return False, method, "obabel", version, stdout_path, stderr_path
+
+
 def _copy_or_prepare_pdbqt(
     source: Path,
     output: Path,
@@ -788,9 +836,13 @@ def _copy_or_prepare_pdbqt(
                     stdout_path.write_text("\n".join(stdout_chunks), encoding="utf-8")
                     stderr_path.write_text("\n".join(stderr_chunks), encoding="utf-8")
                     return True, method, method, version, stdout_path, stderr_path
+        if tools.openbabel_available:
+            return _try_openbabel_receptor_pdbqt(source, output, stdout_path, stderr_path, tools, stdout_chunks, stderr_chunks)
         stdout_path.write_text("\n".join(stdout_chunks), encoding="utf-8")
         stderr_path.write_text("\n".join(stderr_chunks), encoding="utf-8")
         return False, method, method, version, stdout_path, stderr_path
+    elif tools.openbabel_available:
+        return _try_openbabel_receptor_pdbqt(source, output, stdout_path, stderr_path, tools)
     else:
         stdout_path.write_text("", encoding="utf-8")
         stderr_path.write_text("no receptor PDBQT preparation tool available\n", encoding="utf-8")
@@ -891,8 +943,8 @@ def _prepare_states(
                 blockers.append(f"{state_id}: source receptor is old Workflow A/B output")
             notes.append("source receptor validation failed")
 
-        tool_available = tools.prepare_receptor4_available or tools.mk_prepare_receptor_available or (source is not None and source.suffix.lower() == ".pdbqt")
-        _append_receptor_qc(qc_rows, state_id, "receptor_pdbqt_tool_available", "tooling", "PASS" if tool_available else ("WARN" if mode == "dry-run" else "FAIL"), "receptor PDBQT tool availability checked", "Install prepare_receptor4.py or mk_prepare_receptor.py, or supply valid receptor PDBQT.", mode == "prepare" and not tool_available)
+        tool_available = tools.prepare_receptor4_available or tools.mk_prepare_receptor_available or tools.openbabel_available or (source is not None and source.suffix.lower() == ".pdbqt")
+        _append_receptor_qc(qc_rows, state_id, "receptor_pdbqt_tool_available", "tooling", "PASS" if tool_available else ("WARN" if mode == "dry-run" else "FAIL"), "receptor PDBQT tool availability checked", "Install prepare_receptor4.py, mk_prepare_receptor.py, or obabel, or supply valid receptor PDBQT.", mode == "prepare" and not tool_available)
         if source and source.suffix.lower() != ".pdbqt" and not tool_available and mode == "prepare":
             status = "FAIL"
             blockers.append(f"{state_id}: receptor PDBQT tool unavailable")
