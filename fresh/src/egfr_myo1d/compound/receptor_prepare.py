@@ -502,6 +502,7 @@ def _candidate_receptor_files(ctx: RunContext, m2_run_id: str, state_id: str, bo
                 candidates.append(path)
     m2_root = ctx.fresh_root / "runs" / m2_run_id
     roots = [
+        m2_root / "prepared" / "m2_1_ppi_inputs" / state_id / "receptor",
         m2_root / "phase1_receptors" / "normalized",
         m2_root / "phase1_receptors" / "final",
         m2_root / "phase0_inputs" / "receptors",

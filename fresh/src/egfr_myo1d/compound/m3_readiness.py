@@ -170,6 +170,13 @@ def _safe_m2_dir(ctx: RunContext, m2_run_id: str) -> Path:
     return ensure_within(runs_root / final_m2_run_id, runs_root)
 
 
+def _first_existing(paths: list[Path]) -> Path | None:
+    for path in paths:
+        if path.is_file():
+            return path.resolve()
+    return None
+
+
 def _resolve_inside_fresh(ctx: RunContext, base: Path, relatives: list[str]) -> tuple[Path | None, list[str]]:
     preferred = []
     for relative in relatives:
@@ -280,6 +287,67 @@ def _check_m2_review(
 ) -> None:
     review_path = m2_dir / "reviews" / "m2_review_status.json"
     if not review_path.is_file():
+        final_status_path = _first_existing(
+            [
+                m2_dir / "phase2_pockets" / "final" / "m2_final_status.json",
+                m2_dir / "phase2_pockets" / "export_for_m3" / "m2_final_status.json",
+                m2_dir / "manifest" / "m2_final_status.json",
+            ]
+        )
+        if final_status_path is not None:
+            try:
+                payload = _read_json(final_status_path)
+            except (OSError, json.JSONDecodeError) as exc:
+                blocker = f"M2 final status is unreadable: {exc}"
+                blockers.append(blocker)
+                _add_check(
+                    checks,
+                    "M2_REVIEW_STATUS",
+                    "m2_review",
+                    "M2.8 final status must be parseable when dedicated review status is absent",
+                    ctx.relative_to_repo(final_status_path),
+                    ctx.relative_to_repo(final_status_path),
+                    "FAIL",
+                    True,
+                    blocker,
+                    "Regenerate M2.8 export/final status JSON.",
+                )
+                return
+            review_blocks = []
+            if payload.get("m3_docking_allowed") is not True:
+                review_blocks.append("m3_docking_allowed_not_true")
+            if payload.get("blockers"):
+                review_blocks.append("blockers_present")
+            if payload.get("synthetic_fixture") is True:
+                review_blocks.append("synthetic_fixture=true")
+            if review_blocks:
+                blocker = "M2 final status blocks M3 readiness: " + "; ".join(review_blocks)
+                blockers.append(blocker)
+                _add_check(
+                    checks,
+                    "M2_REVIEW_STATUS",
+                    "m2_review",
+                    "M2.8 final status must allow M3 before readiness can pass",
+                    ctx.relative_to_repo(final_status_path),
+                    ctx.relative_to_repo(final_status_path),
+                    "FAIL",
+                    True,
+                    blocker,
+                    "Fix M2 final-status blockers or obtain an explicit documented override.",
+                )
+            else:
+                _add_check(
+                    checks,
+                    "M2_REVIEW_STATUS",
+                    "m2_review",
+                    "M2.8 final status permits M3 start when dedicated review status is absent",
+                    ctx.relative_to_repo(final_status_path),
+                    ctx.relative_to_repo(final_status_path),
+                    "PASS",
+                    False,
+                    "M2.8 final status has m3_docking_allowed=true and no blockers.",
+                )
+            return
         message = "M2 review status file not found"
         status = "FAIL" if mode == "docking" else "WARN"
         blocking = mode == "docking"
@@ -671,6 +739,7 @@ def _check_reference_csv(
 
 def _check_receptor_inputs(
     ctx: RunContext,
+    m2_dir: Path,
     accepted_states: set[str],
     checks: list[dict[str, Any]],
     blockers: list[str],
@@ -678,29 +747,55 @@ def _check_receptor_inputs(
 ) -> dict[str, dict[str, Any]]:
     receptor_inputs: dict[str, dict[str, Any]] = {}
     for state in RECEPTOR_STATES:
-        state_dir = ctx.fresh_root / "data" / "normalized" / "receptors" / state
-        mapping = state_dir / "receptor_mapping.csv"
-        runtime = state_dir / "runtime_offset_receptor_only.pdb"
+        data_state_dir = ctx.fresh_root / "data" / "normalized" / "receptors" / state
+        prepared_receptor_dir = m2_dir / "prepared" / "m2_1_ppi_inputs" / state / "receptor"
+        mapping = _first_existing(
+            [
+                data_state_dir / "receptor_mapping.csv",
+                m2_dir / "qc" / f"{state}_receptor_mapping.csv",
+                m2_dir / "normalized" / "receptors" / f"{state}_receptor_mapping.csv",
+                m2_dir / "normalized" / "receptors" / state / "receptor_mapping.csv",
+            ]
+        )
+        m2_runtime = _first_existing(
+            [
+                prepared_receptor_dir / f"{state}_runtime_offset_receptor_only.pdb",
+                m2_dir / "normalized" / "receptors" / f"{state}_runtime_offset_receptor_only.pdb",
+                m2_dir / "normalized" / "receptors" / state / "runtime_offset_receptor_only.pdb",
+            ]
+        )
+        runtime_candidates = [data_state_dir / "runtime_offset_receptor_only.pdb"]
+        if m2_runtime is not None:
+            runtime_candidates.append(m2_runtime)
+        runtime = _first_existing(runtime_candidates)
         if state == REFERENCE_STATE:
-            dockable = state_dir / "dockable_reference_explicit_AB.pdb"
-            alternate = state_dir / "dockable_669_1014_explicit_AB.pdb"
-            if not dockable.is_file() and alternate.is_file():
-                dockable = alternate
+            dockable_candidates = [
+                data_state_dir / "dockable_reference_explicit_AB.pdb",
+                data_state_dir / "dockable_669_1014_explicit_AB.pdb",
+                prepared_receptor_dir / f"{state}_dockable_reference_explicit_AB.pdb",
+                prepared_receptor_dir / f"{state}_dockable_669_1014_explicit_AB.pdb",
+            ]
         else:
-            dockable = state_dir / "dockable_669_1014_explicit_AB.pdb"
+            dockable_candidates = [
+                data_state_dir / "dockable_669_1014_explicit_AB.pdb",
+                prepared_receptor_dir / f"{state}_dockable_669_1014_explicit_AB.pdb",
+            ]
+        if m2_runtime is not None:
+            dockable_candidates.append(m2_runtime)
+        dockable = _first_existing(dockable_candidates)
         record = {
-            "mapping": {"status": "PASS" if mapping.is_file() else "FAIL", "path": ctx.relative_to_repo(mapping)},
-            "dockable": {"status": "PASS" if dockable.is_file() else "FAIL", "path": ctx.relative_to_repo(dockable)},
-            "runtime": {"status": "PASS" if runtime.is_file() else "FAIL", "path": ctx.relative_to_repo(runtime)},
+            "mapping": {"status": "PASS" if mapping else "FAIL", "path": ctx.relative_to_repo(mapping) if mapping else ""},
+            "dockable": {"status": "PASS" if dockable else "FAIL", "path": ctx.relative_to_repo(dockable) if dockable else ""},
+            "runtime": {"status": "PASS" if runtime else "FAIL", "path": ctx.relative_to_repo(runtime) if runtime else ""},
         }
         receptor_inputs[state] = record
         if state in accepted_states:
             missing_required = []
-            if not mapping.is_file():
+            if not mapping:
                 missing_required.append("receptor mapping")
-            if not dockable.is_file():
+            if not dockable:
                 missing_required.append("dockable receptor PDB")
-            if not runtime.is_file():
+            if not runtime:
                 missing_required.append("runtime-offset receptor PDB")
             if missing_required:
                 blocker = "missing {0} for accepted pocket state {1}".format(", ".join(missing_required), state)
@@ -710,7 +805,13 @@ def _check_receptor_inputs(
                     f"M1_RECEPTOR_INPUTS_{state}",
                     "m1_inputs",
                     "mapping, dockable receptor PDB, and runtime-offset receptor PDB must exist for exported states",
-                    ";".join([ctx.relative_to_repo(mapping), ctx.relative_to_repo(dockable), ctx.relative_to_repo(runtime)]),
+                    ";".join(
+                        [
+                            ctx.relative_to_repo(data_state_dir / "receptor_mapping.csv"),
+                            ctx.relative_to_repo(data_state_dir / ("dockable_reference_explicit_AB.pdb" if state == REFERENCE_STATE else "dockable_669_1014_explicit_AB.pdb")),
+                            ctx.relative_to_repo(data_state_dir / "runtime_offset_receptor_only.pdb"),
+                        ]
+                    ),
                     None,
                     "FAIL",
                     True,
@@ -722,28 +823,44 @@ def _check_receptor_inputs(
                     f"M1_RECEPTOR_INPUTS_{state}",
                     "m1_inputs",
                     "mapping, dockable receptor PDB, and runtime-offset receptor PDB must exist for exported states",
-                    ";".join([ctx.relative_to_repo(mapping), ctx.relative_to_repo(dockable), ctx.relative_to_repo(runtime)]),
-                    ";".join([ctx.relative_to_repo(mapping), ctx.relative_to_repo(dockable), ctx.relative_to_repo(runtime)]),
+                    ";".join([record["mapping"]["path"], record["dockable"]["path"], record["runtime"]["path"]]),
+                    ";".join([record["mapping"]["path"], record["dockable"]["path"], record["runtime"]["path"]]),
                     "PASS",
                     False,
                     "accepted-state receptor inputs present",
                 )
-        elif not mapping.is_file():
-            warnings.append(f"missing receptor mapping for non-exported state {state}")
+        elif not mapping:
+            _add_check(
+                checks,
+                f"M1_MAPPING_{state}",
+                "m1_inputs",
+                "receptor mapping exists for non-exported provenance states when available",
+                ctx.relative_to_repo(data_state_dir / "receptor_mapping.csv"),
+                None,
+                "WARN",
+                False,
+                f"missing receptor mapping for non-exported state {state}",
+            )
         else:
             _add_check(checks, f"M1_MAPPING_{state}", "m1_inputs", "receptor mapping exists", ctx.relative_to_repo(mapping), ctx.relative_to_repo(mapping), "PASS", False, "mapping present")
     geometry_root = ctx.fresh_root / "data" / "normalized" / "geometry"
-    membrane = geometry_root / "membrane_frame.json"
-    if not membrane.is_file():
+    membrane = _first_existing(
+        [
+            geometry_root / "membrane_frame.json",
+            m2_dir / "manifest" / "membrane_frame.json",
+            m2_dir / "qc" / "membrane_frame.json",
+            m2_dir / "phase0_inputs" / "membrane_frame.json",
+        ]
+    )
+    if not membrane:
         blocker = "missing membrane_frame.json"
         blockers.append(blocker)
-        _add_check(checks, "M1_MEMBRANE_FRAME", "m1_inputs", "membrane_frame.json required for M3 readiness", ctx.relative_to_repo(membrane), None, "FAIL", True, blocker)
+        _add_check(checks, "M1_MEMBRANE_FRAME", "m1_inputs", "membrane_frame.json required for M3 readiness", ctx.relative_to_repo(geometry_root / "membrane_frame.json"), None, "FAIL", True, blocker)
     else:
         _add_check(checks, "M1_MEMBRANE_FRAME", "m1_inputs", "membrane_frame.json required for M3 readiness", ctx.relative_to_repo(membrane), ctx.relative_to_repo(membrane), "PASS", False, "membrane frame present")
     for optional_name in ["frame_qc.csv", "dimer_geometry_qc.csv"]:
         optional_path = geometry_root / optional_name
         if not optional_path.is_file():
-            warnings.append(f"missing geometry QC file: {optional_name}")
             _add_check(checks, f"M1_{optional_name}", "m1_inputs", f"{optional_name} should be available for provenance", ctx.relative_to_repo(optional_path), None, "WARN", False, "optional geometry QC missing")
     return receptor_inputs
 
@@ -945,8 +1062,17 @@ def run_m3_readiness(
         "phase2_pockets/export_for_m3/pocket_gate_qc.csv",
     )
 
-    receptor_inputs = _check_receptor_inputs(ctx, accepted_states, checks, blockers, warnings)
-    membrane_path = ctx.fresh_root / "data" / "normalized" / "geometry" / "membrane_frame.json"
+    receptor_inputs = _check_receptor_inputs(ctx, m2_dir, accepted_states, checks, blockers, warnings)
+    membrane_path = _first_existing(
+        [
+            ctx.fresh_root / "data" / "normalized" / "geometry" / "membrane_frame.json",
+            m2_dir / "manifest" / "membrane_frame.json",
+            m2_dir / "qc" / "membrane_frame.json",
+            m2_dir / "phase0_inputs" / "membrane_frame.json",
+        ]
+    )
+    if membrane_path is None:
+        membrane_path = ctx.fresh_root / "data" / "normalized" / "geometry" / "membrane_frame.json"
     ligand_inputs, ligands_found, ligands_missing = _check_ligands(ctx, mode, checks, blockers, warnings)
 
     counts = {

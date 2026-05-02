@@ -178,6 +178,26 @@ def test_valid_synthetic_dimer_receptor_is_prepared_and_boxes_pass(tmp_path, mon
     assert (ctx.run_dir / "phase3_compounds" / "receptor_pdbqt" / "EGFR_160-185" / "receptor.pdbqt").is_file()
 
 
+def test_m2_1_prepared_receptor_source_is_resolved(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    source, _ = write_m2_fixture(ctx)
+    source.unlink()
+    prepared_dir = ctx.fresh_root / "runs" / "m2_run" / "prepared" / "m2_1_ppi_inputs" / "EGFR_160-185" / "receptor"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    prepared_source = prepared_dir / "EGFR_160-185_runtime_offset_receptor_only.pdb"
+    prepared_source.write_text(PDB_TEXT, encoding="utf-8")
+    patch_fake_receptor_conversion(monkeypatch)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+
+    assert result.status == "PASS"
+    assert rows[0]["source_receptor_file"].endswith(
+        "prepared/m2_1_ppi_inputs/EGFR_160-185/receptor/EGFR_160-185_runtime_offset_receptor_only.pdb"
+    )
+
+
 def test_supplied_receptor_pdbqt_is_validated_and_copied(tmp_path, monkeypatch):
     ctx = make_ctx(tmp_path)
     write_m3_t2_pass(ctx)
