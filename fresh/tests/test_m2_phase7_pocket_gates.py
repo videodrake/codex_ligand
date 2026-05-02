@@ -508,6 +508,45 @@ def test_m2_7_membrane_gate_skips_reference_frame_in_merged_family():
     assert "multi_protomer_lateral_score_max_of_A_B" in row["warnings"]
 
 
+def test_m2_7_membrane_gate_infers_lower_direction_from_receptor_centroids():
+    membrane_frame = {
+        "coordinate_convention": "Z+ is membrane normal from extracellular to intracellular/cytosolic; X+ is chain A to chain B",
+        "states": {
+            "EGFR_160-185": {
+                "role": "primary_membrane_validated_state",
+                "status": "PASS",
+                "n_membrane": [0.0, 0.0, 1.0],
+                "p_jm_anchor": [0.0, 0.0, 0.0],
+                "protomer_a_centroid": [-10.0, 0.0, -50.0],
+                "protomer_b_centroid": [10.0, 0.0, -50.0],
+            },
+        },
+    }
+    family = {
+        "pocket_family_id": "fam_negative_z_lower",
+        "representative_candidate_pocket_id": "p1",
+        "member_state_ids": "EGFR_160-185",
+        "member_state_roles": "primary",
+        "member_protomer_ids": "A",
+        "family_center_x": -20.0,
+        "family_center_y": 0.0,
+        "family_center_z": -45.0,
+    }
+
+    row = evaluate_membrane_geometry(
+        family,
+        membrane_frame,
+        {"EGFR_160-185": (-80.0, 20.0)},
+        {"lower_z_minimum": -5.0, "lateral_score_pass_threshold": 0.15},
+    )
+
+    assert row["pocket_membrane_z"] == "-45.000"
+    assert row["lower_gate_pass"] is True
+    assert row["lateral_gate_pass"] is True
+    assert row["lower_lateral_pass"] is True
+    assert "lower_direction_inferred_from_receptor_centroids" in row["warnings"]
+
+
 def test_m2_7_dimer_accessibility_sasa_optional_warning(tmp_path):
     ctx = make_tmp_run_context(tmp_path)
     make_complete_gate_fixture(ctx)

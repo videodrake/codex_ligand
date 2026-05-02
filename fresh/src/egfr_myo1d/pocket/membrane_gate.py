@@ -66,7 +66,8 @@ def evaluate_membrane_geometry(
     z_value = _dot(_sub(center, origin), normal)
     z_min, z_max = receptor_z_ranges.get(state_id, (z_value, z_value))
     z_percentile = 0.5 if z_max == z_min else max(0.0, min(1.0, (z_value - z_min) / (z_max - z_min)))
-    lower_sign = _lower_direction_sign(membrane_frame, state_frame)
+    lower_sign, lower_sign_warnings = _lower_direction_sign(membrane_frame, state_frame, normal, origin)
+    warnings.extend(lower_sign_warnings)
     if lower_sign is None:
         warnings.append("membrane_lower_direction_ambiguous")
         lower_pass = False
@@ -204,15 +205,41 @@ def _project(value: tuple[float, float, float], normal: tuple[float, float, floa
     return (value[0] - scale * normal[0], value[1] - scale * normal[1], value[2] - scale * normal[2])
 
 
-def _lower_direction_sign(membrane_frame: dict[str, Any] | None, state_frame: dict[str, Any]) -> float | None:
+def _lower_direction_sign(
+    membrane_frame: dict[str, Any] | None,
+    state_frame: dict[str, Any],
+    normal: tuple[float, float, float],
+    origin: tuple[float, float, float],
+) -> tuple[float | None, list[str]]:
     for key in ("lower_direction_sign", "cytosolic_direction_sign"):
         value = safe_float(state_frame.get(key))
         if value is not None:
-            return 1.0 if value >= 0 else -1.0
+            return (1.0 if value >= 0 else -1.0), []
+    inferred = _infer_lower_direction_sign_from_frame(state_frame, normal, origin)
+    if inferred is not None:
+        return inferred, ["lower_direction_inferred_from_receptor_centroids"]
     convention = str((membrane_frame or {}).get("coordinate_convention", "")).lower()
     if "cytosolic" in convention or "intracellular" in convention:
-        return 1.0
-    return None
+        return 1.0, []
+    return None, []
+
+
+def _infer_lower_direction_sign_from_frame(
+    state_frame: dict[str, Any],
+    normal: tuple[float, float, float],
+    origin: tuple[float, float, float],
+) -> float | None:
+    projections: list[float] = []
+    for key in ("protomer_a_centroid", "protomer_b_centroid"):
+        centroid = _vector(state_frame.get(key))
+        if centroid is not None:
+            projections.append(_dot(_sub(centroid, origin), normal))
+    if not projections:
+        return None
+    mean_projection = sum(projections) / len(projections)
+    if abs(mean_projection) < 1e-6:
+        return None
+    return 1.0 if mean_projection >= 0.0 else -1.0
 
 
 def _lateral_score(
