@@ -198,6 +198,44 @@ def test_m2_1_prepared_receptor_source_is_resolved(tmp_path, monkeypatch):
     )
 
 
+def test_m2_1_prepared_receptor_wins_over_multiple_candidates(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    prepared_dir = ctx.fresh_root / "runs" / "m2_run" / "prepared" / "m2_1_ppi_inputs" / "EGFR_160-185" / "receptor"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    prepared_source = prepared_dir / "EGFR_160-185_runtime_offset_receptor_only.pdb"
+    prepared_source.write_text(PDB_TEXT, encoding="utf-8")
+    patch_fake_receptor_conversion(monkeypatch)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+
+    assert result.status == "PASS"
+    assert rows[0]["source_receptor_file"].endswith(
+        "prepared/m2_1_ppi_inputs/EGFR_160-185/receptor/EGFR_160-185_runtime_offset_receptor_only.pdb"
+    )
+
+
+def test_empty_m3_skeleton_dirs_do_not_block_receptor_boxes(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    for rel in [
+        "docking_inputs",
+        "docking_inputs/focused_pocket_first",
+        "docking_outputs",
+        "docking_outputs/focused_pocket_first",
+    ]:
+        (ctx.run_dir / "phase3_compounds" / rel).mkdir(parents=True, exist_ok=True)
+    patch_fake_receptor_conversion(monkeypatch)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+
+    assert result.status == "PASS"
+    assert not any("docking/Vina/scoring/candidate outputs" in blocker for blocker in result.blockers)
+
+
 def test_supplied_receptor_pdbqt_is_validated_and_copied(tmp_path, monkeypatch):
     ctx = make_ctx(tmp_path)
     write_m3_t2_pass(ctx)

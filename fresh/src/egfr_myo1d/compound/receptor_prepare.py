@@ -577,13 +577,39 @@ def _resolve_membrane_frame(ctx: RunContext, m2_run_id: str) -> Path | None:
 
 
 def _select_one(paths: list[Path]) -> tuple[Path | None, str | None]:
-    existing = [path for path in paths if path.is_file()]
+    existing: list[Path] = []
+    for path in paths:
+        if path.is_file() and path not in existing:
+            existing.append(path)
     if not existing:
         return None, "not found"
     if len(existing) == 1:
         return existing[0], None
-    explicit = [path for path in existing if "dockable" in path.name.lower() or path.suffix.lower() == ".pdbqt"]
-    if len(explicit) == 1:
+
+    def priority(path: Path) -> int:
+        text = path.as_posix().lower()
+        name = path.name.lower()
+        if "prepared/m2_1_ppi_inputs" in text and "runtime_offset_receptor_only" in name:
+            return 0
+        if "prepared/m2_1_ppi_inputs" in text and "dockable" in name:
+            return 1
+        if "phase1_receptors/normalized" in text and "dockable" in name:
+            return 2
+        if "fresh/data/normalized/receptors" in text and "dockable" in name:
+            return 3
+        if "runtime_offset_receptor_only" in name:
+            return 4
+        if path.suffix.lower() == ".pdbqt":
+            return 5
+        if "dockable" in name:
+            return 6
+        return 10
+
+    ranked = sorted(existing, key=lambda path: (priority(path), path.as_posix()))
+    if len(ranked) > 1 and priority(ranked[0]) < priority(ranked[1]):
+        return ranked[0], None
+    explicit = [path for path in ranked if "dockable" in path.name.lower() or path.suffix.lower() == ".pdbqt"]
+    if len(explicit) == 1 and priority(explicit[0]) <= priority(ranked[0]):
         return explicit[0], None
     return None, "multiple candidates found"
 
@@ -656,6 +682,7 @@ def _source_origin(ctx: RunContext, m2_run_id: str, path: Path | None) -> str:
         return ""
     m2_root = ctx.fresh_root / "runs" / m2_run_id
     for label, root in [
+        ("m2_prepared_m2_1_ppi_receptor", m2_root / "prepared" / "m2_1_ppi_inputs"),
         ("m2_phase1_receptors_normalized", m2_root / "phase1_receptors" / "normalized"),
         ("m2_phase1_receptors_final", m2_root / "phase1_receptors" / "final"),
         ("m2_phase0_inputs_receptors", m2_root / "phase0_inputs" / "receptors"),
@@ -1001,7 +1028,9 @@ def _forbidden_outputs_created(ctx: RunContext) -> list[str]:
     created: list[str] = []
     for rel in FORBIDDEN_OUTPUT_DIRS:
         path = phase3 / rel
-        if path.exists():
+        if path.is_file():
+            created.append(ctx.relative_to_repo(path))
+        elif path.is_dir() and any(child.is_file() for child in path.rglob("*")):
             created.append(ctx.relative_to_repo(path))
     for rel in [
         "tables/final_m3_candidate_hypotheses.csv",
