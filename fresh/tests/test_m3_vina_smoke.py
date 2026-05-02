@@ -147,12 +147,11 @@ def patch_vina_success(monkeypatch, ctx):
 
     def fake_run(argv, stdout_file, stderr_file, timeout_seconds, now_iso):
         assert (ctx.run_dir / "phase3_compounds" / "manifests" / "vina_smoke_manifest.csv").is_file()
+        assert "--log" not in argv
         out = Path(argv[argv.index("--out") + 1])
-        log = Path(argv[argv.index("--log") + 1])
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(POSE_PDBQT, encoding="utf-8")
-        log.write_text("mode | affinity | dist\n1 -7.0 0.0\n", encoding="utf-8")
-        stdout_file.write_text("Vina completed\n", encoding="utf-8")
+        stdout_file.write_text("mode | affinity | dist\n1 -7.0 0.0\n", encoding="utf-8")
         stderr_file.write_text("", encoding="utf-8")
         return VinaRunResult(True, 0, False, now_iso(), now_iso(), 0.01)
 
@@ -362,7 +361,7 @@ def test_invalid_vina_outputs_block_pass(tmp_path, monkeypatch):
     assert result.status == "FAIL"
     assert result.m3_t5_allowed is False
     assert any("minimal pose" in blocker for blocker in result.blockers)
-    assert any("Vina log missing" in blocker for blocker in result.blockers)
+    assert not any("Vina log missing" in blocker for blocker in result.blockers)
 
 
 def test_no_forbidden_outputs_or_public_coordinate_leaks(tmp_path, monkeypatch):
