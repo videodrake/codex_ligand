@@ -1125,11 +1125,15 @@ def _scan_output_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[i
 def _forbidden_outputs_created(ctx: RunContext) -> list[str]:
     phase3 = ctx.run_dir / "phase3_compounds"
     created: list[str] = []
+
+    def is_real_output(path: Path) -> bool:
+        return path.is_file() and path.name != ".gitkeep" and path.stat().st_size >= 0
+
     for rel in FORBIDDEN_OUTPUT_DIRS:
         path = phase3 / rel
         if path.is_file():
             created.append(ctx.relative_to_repo(path))
-        elif path.is_dir() and any(child.is_file() for child in path.rglob("*")):
+        elif path.is_dir() and any(is_real_output(child) for child in path.rglob("*")):
             created.append(ctx.relative_to_repo(path))
     for rel in [
         "tables/final_m3_candidate_hypotheses.csv",

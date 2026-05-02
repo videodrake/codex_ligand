@@ -326,7 +326,9 @@ def test_empty_m3_skeleton_dirs_do_not_block_receptor_boxes(tmp_path, monkeypatc
         "docking_outputs",
         "docking_outputs/focused_pocket_first",
     ]:
-        (ctx.run_dir / "phase3_compounds" / rel).mkdir(parents=True, exist_ok=True)
+        directory = ctx.run_dir / "phase3_compounds" / rel
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / ".gitkeep").write_text("", encoding="utf-8")
     patch_fake_receptor_conversion(monkeypatch)
 
     result = run_m3_receptor_boxes(ctx, "m2_run")
