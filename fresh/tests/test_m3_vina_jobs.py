@@ -346,6 +346,33 @@ def test_pbs_scripts_are_concrete_and_hpc_safe(tmp_path, monkeypatch):
     assert max(result.hpc["worker_count_by_chunk"].values()) <= 16
 
 
+def test_single_node_plan_marks_only_chunk_pbs_submit_ready(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx, states=("EGFR_160-185", "EGFR_170-200"), boxes_per_state=1)
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(
+        ctx,
+        m2_run_id="m2_run",
+        profile="mini",
+        mode="generate",
+        nodes=["node04"],
+        ppn=32,
+        cpu_per_vina=4,
+    )
+    pbs = read_csv(result.pbs_manifest_csv)
+    ready = [row for row in pbs if row["pbs_generation_status"] == "PASS"]
+    wrapper = [row for row in pbs if row["pbs_job_name"] == "m3_vina_node04"]
+
+    assert result.status == "PASS"
+    assert {row["node"] for row in pbs} == {"node04"}
+    assert len(ready) == result.counts["planned_chunks"]
+    assert all("chunk" in row["pbs_job_name"] and row["qsub_command"] for row in ready)
+    assert wrapper and wrapper[0]["pbs_generation_status"] == "EMPTY_COMPATIBILITY"
+    assert wrapper[0]["assigned_job_count"] == "0"
+    assert wrapper[0]["qsub_command"] == ""
+
+
 def test_no_confidential_tokens_or_coordinates_in_public_outputs(tmp_path, monkeypatch):
     ctx = make_ctx(tmp_path)
     write_inputs(ctx)

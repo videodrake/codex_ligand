@@ -1007,18 +1007,12 @@ def run_m3_vina_jobs(
     for row in jobs:
         chunks.setdefault(row["chunk_id"], []).append(row)
 
-    node_chunks: dict[str, str] = {}
-    for node in hpc_values["nodes"]:
-        node_jobs = [row for row in jobs if row["node"] == node]
-        node_chunks[node] = node_jobs[0]["chunk_id"] if node_jobs else "empty_{0}_{1}".format(profile, node)
-
     pbs_targets: list[tuple[str, str, str, list[dict[str, Any]]]] = []
     for chunk_id, rows in sorted(chunks.items()):
         node = rows[0]["node"]
         pbs_targets.append(("m3_vina_{0}_{1}".format(profile, chunk_id), chunk_id, node, rows))
-    for node in ALL_NODES:
-        rows = [row for row in jobs if row["node"] == node]
-        pbs_targets.append(("m3_vina_{0}".format(node), node_chunks.get(node, "empty_{0}_{1}".format(profile, node)), node, rows))
+    for node in hpc_values["nodes"]:
+        pbs_targets.append(("m3_vina_{0}".format(node), "empty_{0}_{1}".format(profile, node), node, []))
 
     for pbs_job_name, chunk_id, node, assigned_rows in pbs_targets:
         worker_count = worker_by_chunk.get(chunk_id, max(1, min(max_workers, len(assigned_rows) or 1)))
