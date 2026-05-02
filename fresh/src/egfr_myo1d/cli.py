@@ -555,6 +555,12 @@ def build_parser():
         default=1,
         help="Minimum EGFR-MYO1D residue-pair contacts needed to mark a pose accepted for M2.4 evidence.",
     )
+    m2_extract_contacts_parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of local worker processes for parsing posed PDB files.",
+    )
     m2_extract_contacts_parser.set_defaults(func=_cmd_extract_m2_ppi_contacts)
 
     m2_consensus_parser = subparsers.add_parser(
@@ -1967,6 +1973,7 @@ def _cmd_extract_m2_ppi_contacts(args):
         contact_cutoff_angstrom=args.contact_cutoff_angstrom,
         partner_chain=args.partner_chain,
         min_contacts_for_acceptance=args.min_contacts_for_acceptance,
+        workers=args.workers,
     )
     print(
         "extract-m2-ppi-contacts {0}: poses={1} raw_contacts={2} accepted_poses={3} warnings={4} blockers={5}".format(

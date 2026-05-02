@@ -200,6 +200,23 @@ def test_m2_2b_raw_contacts_feed_m2_3_mapping_restoration(tmp_path):
     assert by_protomer["B"]["accepted_pose_flag"] == "true"
 
 
+def test_m2_2b_parallel_workers_preserve_contact_output(tmp_path):
+    ctx, _pose = setup_run_with_pose(tmp_path)
+    output_dir = ctx.run_dir / "phase1_ppi" / "pyrosetta_adapter" / "outputs" / "job_001"
+    make_pose_pdb(output_dir / "poses" / "pose_00002.pdb")
+
+    report = extract_m2_pose_contacts(ctx, workers=2)
+    rows = read_csv(report.raw_contact_table)
+
+    assert report.status == "PASS"
+    assert report.pose_count == 2
+    assert report.worker_count == 2
+    assert report.raw_contact_count == 4
+    assert {row["pose_id"] for row in rows} == {"pose_00001", "pose_00002"}
+    payload = read_json(report.manifest_path)
+    assert payload["worker_count"] == 2
+
+
 def test_m2_2b_reads_scores_from_chunked_real_run_outputs(tmp_path):
     ctx, _pose = setup_run_with_pose(tmp_path)
     score_csv = (
