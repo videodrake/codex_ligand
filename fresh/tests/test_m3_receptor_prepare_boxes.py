@@ -1,5 +1,6 @@
 import csv
 import json
+import subprocess
 from pathlib import Path
 
 from egfr_myo1d.compound.receptor_prepare import ReceptorToolStatus, run_m3_receptor_boxes
@@ -144,6 +145,25 @@ def fake_tools():
     )
 
 
+def fake_mk_prepare_tools():
+    return ReceptorToolStatus(
+        prepare_receptor4_available=False,
+        prepare_receptor4_version=None,
+        prepare_receptor4_binary=None,
+        mk_prepare_receptor_available=True,
+        mk_prepare_receptor_version="test mk_prepare_receptor",
+        mk_prepare_receptor_binary="mk_prepare_receptor.py",
+        meeko_available=True,
+        meeko_version="test meeko",
+        openbabel_available=False,
+        openbabel_version=None,
+        rdkit_available=False,
+        rdkit_version=None,
+        vina_available=True,
+        vina_invoked=False,
+    )
+
+
 def patch_fake_receptor_conversion(monkeypatch):
     monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.detect_receptor_tools", fake_tools)
 
@@ -215,6 +235,37 @@ def test_m2_1_prepared_receptor_wins_over_multiple_candidates(tmp_path, monkeypa
     assert rows[0]["source_receptor_file"].endswith(
         "prepared/m2_1_ppi_inputs/EGFR_160-185/receptor/EGFR_160-185_runtime_offset_receptor_only.pdb"
     )
+
+
+def test_mk_prepare_receptor_outputs_are_normalized_to_expected_pdbqt(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.detect_receptor_tools", fake_mk_prepare_tools)
+    calls = []
+
+    def fake_run(args, stdout=None, stderr=None, text=None, check=None, **kwargs):
+        calls.append(list(args))
+        if args and args[0] == "git":
+            return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+        if "--read_pdb" in args and args[-1] == "-p":
+            base = Path(args[args.index("-o") + 1])
+            base.with_suffix(".pdbqt").write_text(PDBQT_TEXT, encoding="utf-8")
+            return subprocess.CompletedProcess(args, 0, stdout="mk ok\n", stderr="")
+        return subprocess.CompletedProcess(args, 2, stdout="", stderr="usage error\n")
+
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.subprocess.run", fake_run)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+    output = ctx.run_dir / "phase3_compounds" / "receptor_pdbqt" / "EGFR_160-185" / "receptor.pdbqt"
+
+    assert result.status == "PASS"
+    assert rows[0]["preparation_method"] == "mk_prepare_receptor"
+    assert output.read_text(encoding="utf-8") == PDBQT_TEXT
+    mk_calls = [call for call in calls if call and call[0] == "mk_prepare_receptor.py"]
+    assert mk_calls[0][1] == "--read_pdb"
+    assert mk_calls[1][-1] == "-p"
 
 
 def test_empty_m3_skeleton_dirs_do_not_block_receptor_boxes(tmp_path, monkeypatch):

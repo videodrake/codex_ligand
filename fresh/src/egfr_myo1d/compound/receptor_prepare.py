@@ -711,6 +711,21 @@ def _validate_pdbqt(path: Path) -> tuple[bool, str]:
     return True, "PDBQT receptor atom records present"
 
 
+def _mk_prepare_output_candidates(output: Path) -> list[Path]:
+    base = output.with_suffix("")
+    candidates = [
+        output,
+        base.with_suffix(".pdbqt"),
+        output.with_name(f"{base.name}_rigid.pdbqt"),
+        output.with_name(f"{base.name}_flex.pdbqt"),
+    ]
+    unique: list[Path] = []
+    for candidate in candidates:
+        if candidate not in unique:
+            unique.append(candidate)
+    return unique
+
+
 def _copy_or_prepare_pdbqt(
     source: Path,
     output: Path,
@@ -731,23 +746,55 @@ def _copy_or_prepare_pdbqt(
         args = [tools.prepare_receptor4_binary, "-r", str(source), "-o", str(output)]
         method = "prepare_receptor4"
         version = tools.prepare_receptor4_version or ""
+        try:
+            proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+        except OSError as exc:
+            stdout_path.write_text("", encoding="utf-8")
+            stderr_path.write_text(f"receptor prep invocation failed: {exc.__class__.__name__}\n", encoding="utf-8")
+            return False, method, method, version, stdout_path, stderr_path
+        stdout_path.write_text(proc.stdout or "", encoding="utf-8")
+        stderr_path.write_text(proc.stderr or "", encoding="utf-8")
+        return proc.returncode == 0 and output.is_file(), method, method, version, stdout_path, stderr_path
     elif tools.mk_prepare_receptor_available and tools.mk_prepare_receptor_binary:
-        args = [tools.mk_prepare_receptor_binary, "-i", str(source), "-o", str(output)]
         method = "mk_prepare_receptor"
         version = tools.mk_prepare_receptor_version or ""
+        basename = output.with_suffix("")
+        attempts = [
+            [tools.mk_prepare_receptor_binary, "--read_pdb", str(source), "-o", str(basename), "-p", str(output)],
+            [tools.mk_prepare_receptor_binary, "--read_pdb", str(source), "-o", str(basename), "-p"],
+            [tools.mk_prepare_receptor_binary, "-i", str(source), "-o", str(basename), "-p", str(output)],
+            [tools.mk_prepare_receptor_binary, "-i", str(source), "-o", str(basename), "-p"],
+        ]
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+        for args in attempts:
+            try:
+                proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+            except OSError as exc:
+                stdout_chunks.append("$ " + " ".join(args) + "\n")
+                stderr_chunks.append("$ " + " ".join(args) + "\n")
+                stderr_chunks.append(f"receptor prep invocation failed: {exc.__class__.__name__}\n")
+                continue
+            stdout_chunks.append("$ " + " ".join(args) + "\n")
+            stdout_chunks.append(proc.stdout or "")
+            stderr_chunks.append("$ " + " ".join(args) + "\n")
+            stderr_chunks.append(proc.stderr or "")
+            if proc.returncode != 0:
+                continue
+            for candidate in _mk_prepare_output_candidates(output):
+                if candidate.is_file() and candidate.stat().st_size > 0:
+                    if candidate != output:
+                        shutil.copyfile(candidate, output)
+                    stdout_path.write_text("\n".join(stdout_chunks), encoding="utf-8")
+                    stderr_path.write_text("\n".join(stderr_chunks), encoding="utf-8")
+                    return True, method, method, version, stdout_path, stderr_path
+        stdout_path.write_text("\n".join(stdout_chunks), encoding="utf-8")
+        stderr_path.write_text("\n".join(stderr_chunks), encoding="utf-8")
+        return False, method, method, version, stdout_path, stderr_path
     else:
         stdout_path.write_text("", encoding="utf-8")
         stderr_path.write_text("no receptor PDBQT preparation tool available\n", encoding="utf-8")
         return False, "no_receptor_pdbqt_tool_available", "", "", stdout_path, stderr_path
-    try:
-        proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
-    except OSError as exc:
-        stdout_path.write_text("", encoding="utf-8")
-        stderr_path.write_text(f"receptor prep invocation failed: {exc.__class__.__name__}\n", encoding="utf-8")
-        return False, method, method, version, stdout_path, stderr_path
-    stdout_path.write_text(proc.stdout or "", encoding="utf-8")
-    stderr_path.write_text(proc.stderr or "", encoding="utf-8")
-    return proc.returncode == 0 and output.is_file(), method, method, version, stdout_path, stderr_path
 
 
 def _prepare_states(
