@@ -416,6 +416,44 @@ def test_skeleton_gitkeep_outputs_do_not_block_mini_job_plan(tmp_path, monkeypat
     assert not any("production output" in blocker or "broad docking" in blocker for blocker in result.blockers)
 
 
+def test_previous_smiles_word_blocker_does_not_poison_rerun(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    qc = ctx.run_dir / "phase3_compounds" / "qc"
+    reports = ctx.run_dir / "phase3_compounds" / "reports"
+    qc.mkdir(parents=True, exist_ok=True)
+    reports.mkdir(parents=True, exist_ok=True)
+    (qc / "vina_job_plan_qc.json").write_text(
+        json.dumps({"overall_status": "FAIL", "blockers": ["ligand SMILES printed in public outputs/logs/manifests/PBS"]}),
+        encoding="utf-8",
+    )
+    (reports / "m3_task5_vina_job_plan.md").write_text("- ligand SMILES printed in public outputs/logs/manifests/PBS\n", encoding="utf-8")
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(ctx, m2_run_id="m2_run", profile="mini", mode="generate", force=True)
+    qc_summary = json.loads(result.qc_json.read_text(encoding="utf-8"))
+
+    assert result.status == "PASS"
+    assert qc_summary["confidentiality"]["smiles_logged"] is False
+    assert not any("SMILES" in blocker for blocker in result.blockers)
+
+
+def test_actual_smiles_value_in_public_output_blocks_job_plan(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    leak = ctx.run_dir / "phase3_compounds" / "reports" / "leaked_structure.txt"
+    leak.parent.mkdir(parents=True, exist_ok=True)
+    leak.write_text("SMILES: CCO\n", encoding="utf-8")
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(ctx, m2_run_id="m2_run", profile="mini", mode="generate")
+    qc_summary = json.loads(result.qc_json.read_text(encoding="utf-8"))
+
+    assert result.status == "FAIL"
+    assert qc_summary["confidentiality"]["smiles_logged"] is True
+    assert any("SMILES" in blocker for blocker in result.blockers)
+
+
 def test_runner_dry_run_executes_only_requested_chunk_contract(tmp_path, monkeypatch):
     ctx = make_ctx(tmp_path)
     write_inputs(ctx, states=("EGFR_160-185", "EGFR_170-200"), boxes_per_state=1)
