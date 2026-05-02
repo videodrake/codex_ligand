@@ -554,9 +554,15 @@ def _affinity_detected(vina_log: Path | None, stdout_file: Path | None) -> str:
 
 def _forbidden_outputs(ctx: RunContext) -> list[str]:
     hits: list[str] = []
+
+    def is_real_output(path: Path) -> bool:
+        return path.is_file() and path.name != ".gitkeep"
+
     for rel in FORBIDDEN_OUTPUTS:
         path = ctx.run_dir / rel
-        if path.exists():
+        if path.is_file():
+            hits.append(ctx.relative_to_repo(path))
+        elif path.is_dir() and any(is_real_output(child) for child in path.rglob("*")):
             hits.append(ctx.relative_to_repo(path))
     return hits
 

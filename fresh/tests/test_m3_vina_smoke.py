@@ -191,6 +191,26 @@ def test_run_mode_invokes_exactly_one_mocked_vina_and_validates_outputs(tmp_path
     assert Path(ctx.repo_root / rows[0]["stderr_file"]).is_file()
 
 
+def test_readiness_skeleton_gitkeep_does_not_count_as_forbidden_output(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    for rel in [
+        "docking_inputs/production",
+        "docking_outputs/focused_pocket_first/production",
+        "docking_outputs/broad_anchor_scan_optional",
+        "vina_raw/production",
+    ]:
+        directory = ctx.run_dir / "phase3_compounds" / rel
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / ".gitkeep").write_text("", encoding="utf-8")
+    patch_vina_success(monkeypatch, ctx)
+
+    result = run_m3_vina_smoke(ctx, "m2_run")
+
+    assert result.status == "PASS"
+    assert "production/broad/pose/candidate outputs created" not in result.blockers
+
+
 def test_deterministic_and_explicit_selection(tmp_path, monkeypatch):
     ctx = make_ctx(tmp_path)
     write_inputs(ctx)
