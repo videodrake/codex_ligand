@@ -366,6 +366,29 @@ def test_no_confidential_tokens_or_coordinates_in_public_outputs(tmp_path, monke
         assert not (ctx.run_dir / "phase3_compounds" / "tables" / forbidden).exists()
 
 
+def test_skeleton_gitkeep_outputs_do_not_block_mini_job_plan(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    for rel in [
+        "phase3_compounds/docking_inputs/production",
+        "phase3_compounds/docking_outputs/focused_pocket_first/production",
+        "phase3_compounds/docking_outputs/broad_anchor_scan_optional",
+        "phase3_compounds/vina_raw/production",
+    ]:
+        path = ctx.run_dir / rel
+        path.mkdir(parents=True, exist_ok=True)
+        (path / ".gitkeep").write_text("", encoding="utf-8")
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(ctx, m2_run_id="m2_run", profile="mini", mode="generate")
+
+    assert result.status == "PASS"
+    assert result.qsub_submission_allowed is True
+    assert result.counts["production_outputs_created"] == 0
+    assert result.counts["broad_outputs_created"] == 0
+    assert not any("production output" in blocker or "broad docking" in blocker for blocker in result.blockers)
+
+
 def test_runner_dry_run_executes_only_requested_chunk_contract(tmp_path, monkeypatch):
     ctx = make_ctx(tmp_path)
     write_inputs(ctx, states=("EGFR_160-185", "EGFR_170-200"), boxes_per_state=1)
