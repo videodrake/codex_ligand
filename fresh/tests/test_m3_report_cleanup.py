@@ -208,6 +208,23 @@ def test_complete_t10_outputs_generate_all_reports_and_handoff(tmp_path):
     assert handoff["required_artifacts_present"] is True
 
 
+def test_prior_smiles_diagnostics_and_neutral_candidate_terms_do_not_block_report(tmp_path):
+    ctx = make_ctx(tmp_path)
+    write_complete_t10(ctx)
+    (ctx.errors_dir / "error_summary.txt").write_text("previous blocker: SMILES printed in public outputs/logs\n", encoding="utf-8")
+    old_report = ctx.run_dir / "phase3_compounds" / "reports" / "old_report.md"
+    old_report.parent.mkdir(parents=True, exist_ok=True)
+    old_report.write_text("final candidate hypotheses table was generated for computational review only\n", encoding="utf-8")
+
+    result = run_m3_report(ctx, m2_run_id="m2_run", profile="mini", cleanup_mode="execute", cleanup_scope="test", confirm_run_id=ctx.run_id)
+
+    assert result.status == "PASS"
+    assert not result.safety.smiles_logged
+    assert not result.safety.candidate_overclaims_detected
+    assert not any("private structure string" in item for item in result.blockers)
+    assert not any("candidate overclaim" in item for item in result.blockers)
+
+
 def test_t10_not_ready_fails_unless_partial_or_no_require(tmp_path):
     ctx = make_ctx(tmp_path)
     write_complete_t10(ctx)
