@@ -430,6 +430,7 @@ def _path_inputs(ctx: RunContext, m2_dir: Path) -> tuple[dict[str, Path | None],
             "phase2_pockets/tables/accepted_pockets_for_m3.csv",
         ],
         "accepted_pocket_boxes": [
+            "phase2_pockets/export_for_m3/zone_composite_boxes.csv",
             "phase2_pockets/export_for_m3/accepted_pocket_boxes.csv",
             "phase2_pockets/tables/accepted_pocket_boxes.csv",
         ],

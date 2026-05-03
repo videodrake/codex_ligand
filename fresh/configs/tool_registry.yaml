@@ -2,13 +2,11 @@
 #
 # HPC tool discovery and smoke-check registry consumed by `cli tool-preflight`.
 #
-# This registry is the minimum set required for the file to satisfy
-# core/manifest.py CONFIG_FILES (load_configs opens every entry on init-run).
-# It mirrors the schema in fresh/tests/test_tool_preflight.py:20-46 with the
-# same four tools so that adopting this file does not introduce any new
-# discovery policy. Production deployments that want to surface additional
-# tools (fpocket, obabel, prepare_receptor4.py, pyrosetta, ...) should extend
-# this list in a follow-up PR with reviewer approval.
+# This registry surfaces the PPI-surface tool ladder from
+# fresh/docs/ppi_surface_tool_installation_and_integration_handoff_v1_0.md.
+# The preflight command records availability and smoke-test status only; it
+# does not install packages, clone external repositories, submit jobs, or make
+# optional AI tools required for the core workflow.
 #
 # Schema reference (read sites in code):
 #   fresh/src/egfr_myo1d/tools/tool_preflight.py:47-219
@@ -18,6 +16,7 @@
 #   env                Free-form env label, recorded in the report.
 #   python_import      Module name to importlib.import_module against.
 #   commands           List of CLI commands to probe via shutil.which.
+#   binary             Absolute or relative executable path to probe first.
 #   smoke_args         Args appended to the resolved command for smoke mode.
 #   status_override    If set, skip probing and force this status verbatim.
 #   external_path      Optional filesystem path checked for presence/dir.
@@ -34,16 +33,84 @@ tools:
     required_level: core
     env: pyrosetta
     python_import: numpy
+  pandas:
+    required_level: core_addition
+    env: pyrosetta
+    python_import: pandas
+  rdkit:
+    required_level: core_addition
+    env: pyrosetta
+    python_import: rdkit
+    install_candidate: conda install -c conda-forge rdkit
+  pyrosetta:
+    required_level: core_addition
+    env: pyrosetta
+    python_import: pyrosetta
+    license_note: Requires academic/commercial PyRosetta license; do not vendor.
   vina:
     required_level: core
     env: pyrosetta
     commands: [vina]
     smoke_args: ['--version']
-  pyKVFinder:
+  obabel:
+    required_level: core_addition
+    env: pyrosetta
+    commands: [obabel]
+    smoke_args: ['-V']
+  fpocket:
+    required_level: core
+    env: pyrosetta
+    commands: [fpocket]
+    smoke_args: ['--help']
+  mdpocket:
+    required_level: core_if_available
+    env: pyrosetta
+    commands: [mdpocket]
+    smoke_args: ['--help']
+    install_candidate: Build or expose mdpocket from the fpocket suite in an external tools directory.
+  gromacs:
     required_level: optional
+    env: msmd_or_pyrosetta
+    commands: [gmx, gmx_mpi]
+    smoke_args: ['--version']
+  pyKVFinder:
+    required_level: core_addition
     env: ppi_surface_or_pyrosetta
     python_import: pyKVFinder
+    install_candidate: pip install pyKVFinder
+  mini_ftmap:
+    required_level: core_custom
+    env: pyrosetta
+    status_override: available
+    install_candidate: no external package; implemented from Vina/RDKit/OpenBabel adapters.
+  indeep:
+    required_level: optional_ai
+    env: indeep
+    external_path: /work4/eunae/external_tools/InDeep
+    install_candidate: Clone https://gitlab.pasteur.fr/InDeep/InDeep.git outside the repo and follow its README.
+    license_note: GNU AGPLv3; do not vendor into the public repo.
+  pesto:
+    required_level: optional_ai
+    env: pesto
+    external_path: /work4/eunae/external_tools/PeSTo
+    install_candidate: Clone/install PeSTo in an isolated pesto env and run the repository example first.
+  masif:
+    required_level: optional_heavy
+    env: masif_or_container
+    external_path: /work4/eunae/external_tools/masif
+    install_candidate: Prefer container execution if available; otherwise follow MaSIF README in an isolated env.
+  msmd:
+    required_level: optional_heavy
+    env: msmd
+    external_path: /work4/eunae/external_tools/exprorer_msmd
+    install_candidate: Heavy validation only after M2 zone freeze; confirm gromacs/gmx path first.
+  pocketminer:
+    required_level: optional_heavy
+    env: pocketminer
+    external_path: /work4/eunae/external_tools/HOTPocket_or_PocketMiner
+    install_candidate: Treat as optional cryptic-pocket support only after confirming an installable implementation.
   passer:
     required_level: external_server_only
     env: external_server
     status_override: external_server_only
+    install_candidate: Use PASSer as external-server evidence unless a reviewed local installation exists.

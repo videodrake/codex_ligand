@@ -98,9 +98,12 @@ def _inside(child: Path, parent: Path) -> bool:
 
 def _rel(ctx: RunContext, path: Path) -> str:
     try:
-        return path.resolve().relative_to(ctx.run_dir.resolve()).as_posix()
+        return path.relative_to(ctx.run_dir).as_posix()
     except ValueError:
-        return ctx.relative_to_repo(path)
+        try:
+            return path.resolve().relative_to(ctx.run_dir.resolve()).as_posix()
+        except ValueError:
+            return ctx.relative_to_repo(path)
 
 
 def _matches_any(rel: str, patterns: list[str]) -> bool:
@@ -206,20 +209,20 @@ def plan_m3_cleanup(
     blocked: list[dict[str, Any]] = []
     for path in sorted(set(candidates)):
         rel = _rel(ctx, path)
+        if path.is_symlink():
+            try:
+                target = path.resolve(strict=True)
+            except OSError:
+                target = path.resolve()
+            if not _inside(target, ctx.run_dir):
+                blocked.append({"relative_path": rel, "reason": "symlink_escape"})
+                blockers.append("cleanup plan includes symlink escaping run_dir")
+                continue
         resolved = path.resolve()
         if not _inside(resolved, ctx.run_dir):
             blocked.append({"relative_path": rel, "reason": "outside_run_dir"})
             blockers.append("cleanup plan includes path outside run_dir")
             continue
-        if path.is_symlink():
-            try:
-                target = path.resolve(strict=True)
-            except OSError:
-                target = resolved
-            if not _inside(target, ctx.run_dir):
-                blocked.append({"relative_path": rel, "reason": "symlink_escape"})
-                blockers.append("cleanup plan includes symlink escaping run_dir")
-                continue
         if _matches_any(rel, never) or rel.endswith("compound_id_map.csv"):
             blocked.append({"relative_path": rel, "reason": "never_delete"})
             blockers.append("cleanup plan includes preserved artifact")

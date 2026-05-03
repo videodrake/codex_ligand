@@ -111,6 +111,13 @@ def _run_command_smoke(command_path: str, args: list[str], timeout: int) -> tupl
     return output, smoke, proc.returncode, _command_version_line(output)
 
 
+def _resolve_command(command: str) -> str | None:
+    if "/" in command:
+        path = Path(command)
+        return str(path) if path.exists() else None
+    return shutil.which(command)
+
+
 def _command_tool(
     name: str,
     commands: list[str],
@@ -121,7 +128,7 @@ def _command_tool(
     timeout: int,
 ) -> ToolCheck:
     for command in commands:
-        found = shutil.which(command)
+        found = _resolve_command(command)
         if not found:
             continue
         if mode == "discover":
@@ -178,40 +185,65 @@ def _check_external_path(path_value: str | None) -> dict[str, Any]:
 
 def _check_one_tool(name: str, spec: dict[str, Any], mode: str, profile: str, timeout: int) -> ToolCheck:
     required_level = str(spec.get("required_level", "optional"))
+    external_path = _check_external_path(spec.get("external_path"))
     if spec.get("status_override"):
-        return ToolCheck(
+        result = ToolCheck(
             name=name,
             required_level=required_level,
             env=str(spec.get("env", "")),
             status=str(spec["status_override"]),
             smoke_test="not_run",
-            details={"reason": "status_override"},
+            details={"reason": "status_override", "external_path": external_path},
         )
+        if "install_candidate" in spec:
+            result.details["install_candidate"] = spec["install_candidate"]
+        if "license_note" in spec:
+            result.details["license_note"] = spec["license_note"]
+        return result
 
-    if spec.get("python_import") and not spec.get("commands"):
+    command_probes: list[str] = []
+    if spec.get("binary"):
+        command_probes.append(str(spec["binary"]))
+    command_probes.extend(str(item) for item in spec.get("commands", []))
+
+    if spec.get("python_import") and not command_probes:
         result = _import_tool(name, str(spec["python_import"]), required_level, profile)
-    elif spec.get("commands"):
+    elif command_probes:
         result = _command_tool(
             name=name,
-            commands=[str(item) for item in spec.get("commands", [])],
+            commands=command_probes,
             required_level=required_level,
             profile=profile,
             smoke_args=[str(item) for item in spec.get("smoke_args", [])],
             mode=mode,
             timeout=timeout,
         )
-    else:
+    elif external_path["present"]:
         result = ToolCheck(
             name=name,
             required_level=required_level,
             env=str(spec.get("env", "")),
-            status="optional_disabled",
+            status="available",
+            path=str(external_path["path"]),
             smoke_test="not_run",
-            details={"reason": "no import or command probe configured"},
+            details={"reason": "external_path_present"},
+        )
+    else:
+        status = "optional_disabled" if not _is_required(required_level) else "not_installed"
+        warning = "no import, command, binary, or present external_path configured"
+        result = ToolCheck(
+            name=name,
+            required_level=required_level,
+            env=str(spec.get("env", "")),
+            status=status,
+            smoke_test="not_run",
+            details={"reason": warning},
+            warnings=[warning],
+            blockers=[warning] if _is_required(required_level) and profile == "hpc_strict" else [],
         )
 
     result.env = str(spec.get("env", ""))
-    result.details["external_path"] = _check_external_path(spec.get("external_path"))
+    result.details["external_path"] = external_path
     if "install_candidate" in spec:
         result.details["install_candidate"] = spec["install_candidate"]
     if "license_note" in spec:

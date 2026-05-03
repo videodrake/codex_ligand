@@ -286,6 +286,58 @@ def test_m3_readiness_valid_minimal_inputs_pass_in_docking_mode(tmp_path):
     assert not list((ctx.run_dir / "phase3_compounds").rglob("*.pdbqt"))
 
 
+def test_m3_readiness_accepts_zone_composite_boxes_for_surface_zone_handoff(tmp_path):
+    ctx = make_ctx(tmp_path)
+    write_m1_inputs(ctx.fresh_root)
+    write_ligands(ctx.fresh_root)
+    m2_dir = write_m2_package(ctx.fresh_root)
+    export = m2_dir / "phase2_pockets" / "export_for_m3"
+    box_rows = read_csv(export / "accepted_pocket_boxes.csv")
+    write_csv(
+        export / "zone_composite_boxes.csv",
+        [
+            "zone_id",
+            "pocket_family_id",
+            "box_id",
+            "state_id",
+            "protomer_id",
+            "box_center_x",
+            "box_center_y",
+            "box_center_z",
+            "box_size_x",
+            "box_size_y",
+            "box_size_z",
+            "box_source",
+            "source_box_id",
+        ],
+        [
+            {
+                "zone_id": "zone_fam_primary",
+                "pocket_family_id": row["pocket_family_id"],
+                "box_id": row["box_id"],
+                "state_id": row["state_id"],
+                "protomer_id": row["protomer_id"],
+                "box_center_x": row["box_center_x"],
+                "box_center_y": row["box_center_y"],
+                "box_center_z": row["box_center_z"],
+                "box_size_x": row["box_size_x"],
+                "box_size_y": row["box_size_y"],
+                "box_size_z": row["box_size_z"],
+                "box_source": "zone_composite_boxes",
+                "source_box_id": row["box_id"],
+            }
+            for row in box_rows
+        ],
+    )
+    (export / "accepted_pocket_boxes.csv").unlink()
+
+    result = run_m3_readiness(ctx, "m2_run", mode="docking")
+
+    assert result.status == "PASS"
+    path_rows = {row["input_id"]: row for row in read_csv(result.path_resolution_csv)}
+    assert path_rows["accepted_pocket_boxes"]["observed_path"].endswith("zone_composite_boxes.csv")
+
+
 def test_m3_readiness_missing_accepted_pockets_fails(tmp_path):
     ctx = make_ctx(tmp_path)
     write_m1_inputs(ctx.fresh_root)
