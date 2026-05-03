@@ -2,6 +2,8 @@
 
 이 문서는 완료된 M3 mini focused docking run 결과를 온라인/GitHub에서 확인하거나, HPC에서 직접 열어볼 때 쓰는 안내서입니다.
 
+논문 Methods/Results/Discussion에 넣을 전체 해석은 [`m3_ext20k_clean3_publication_interpretation.md`](m3_ext20k_clean3_publication_interpretation.md)를 참고하세요.
+
 ## Run IDs
 
 ```bash
