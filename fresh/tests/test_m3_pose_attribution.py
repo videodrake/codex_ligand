@@ -207,6 +207,11 @@ def test_actual_m2_export_paths_and_centroid_columns_resolve(tmp_path):
     )
     write_csv(
         m2 / "phase2_pockets" / "atp_reference" / "atp_site_reference.csv",
+        ["uniprot_residue_number", "residue_name"],
+        [{"uniprot_residue_number": "900", "residue_name": "ATP_SITE"}],
+    )
+    write_csv(
+        m2 / "phase2_pockets" / "atp_reference" / "atp_site_centroid_by_state.csv",
         ["atp_id", "state_id", "egfr_protomer_id", "atp_centroid_x", "atp_centroid_y", "atp_centroid_z"],
         [
             {"atp_id": "ATP_160", "state_id": "EGFR_160-185", "egfr_protomer_id": "A", "atp_centroid_x": 40, "atp_centroid_y": 40, "atp_centroid_z": 40},
@@ -226,6 +231,10 @@ def test_actual_m2_export_paths_and_centroid_columns_resolve(tmp_path):
     membrane.write_text(json.dumps({"origin": [0, 0, 0], "normal": [0, 0, 1], "core_z_min": -2, "core_z_max": 2}), encoding="utf-8")
     write_csv(m2 / "qc" / "EGFR_160-185_receptor_mapping.csv", ["state_id", "protomer_id", "role", "x", "y", "z"], [{"state_id": "EGFR_160-185", "protomer_id": "A", "role": "central_interface", "x": 50, "y": 50, "z": 50}])
     write_csv(m2 / "qc" / "EGFR_170-200_receptor_mapping.csv", ["state_id", "protomer_id", "role", "x", "y", "z"], [{"state_id": "EGFR_170-200", "protomer_id": "A", "role": "central_interface", "x": 50, "y": 50, "z": 50}])
+    write_csv(ctx.run_dir / "phase3_compounds" / "tables" / "compound_pose_clusters.csv", ["cluster_id"], [])
+    broad = ctx.run_dir / "phase3_compounds" / "docking_outputs" / "broad_anchor_scan_optional"
+    broad.mkdir(parents=True, exist_ok=True)
+    (broad / ".gitkeep").write_text("", encoding="utf-8")
     (ctx.errors_dir / "error_summary.txt").write_text("previous blocker: SMILES-like fields printed in public outputs\n", encoding="utf-8")
     pose = write_pose(ctx)
     raw = write_raw(ctx, [raw_row(ctx, pose, job_id="job_160"), raw_row(ctx, pose, job_id="job_170", state="EGFR_170-200")])

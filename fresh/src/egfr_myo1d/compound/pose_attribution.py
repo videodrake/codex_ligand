@@ -316,6 +316,22 @@ def _load_points_many(paths: list[Path], prefix: str) -> list[ReferencePoint]:
     return points
 
 
+def _has_real_output(path: Path) -> bool:
+    if path.is_dir():
+        return any(_has_real_output(child) for child in path.rglob("*"))
+    if not path.is_file():
+        return False
+    if path.name == ".gitkeep":
+        return False
+    if path.suffix.lower() == ".csv":
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                return sum(1 for _ in csv.reader(handle)) > 1
+        except OSError:
+            return True
+    return path.stat().st_size > 0
+
+
 def _points_for_pose(row: dict[str, str], points: list[ReferencePoint]) -> list[ReferencePoint]:
     state_id = row.get("state_id", "")
     protomer_id = row.get("protomer_id", "")
@@ -535,7 +551,12 @@ def run_m3_pose_attribution(
         m2_root / "phase2_pockets" / "final" / "accepted_pocket_boxes.csv",
         m2_root / "phase2_pockets" / "export_for_m3" / "accepted_pocket_boxes.csv",
     ])
-    atp_reference_path = _first_existing([Path(atp_reference)] if atp_reference else [m2_root / "phase2_pockets" / "atp_reference" / "atp_site_reference.csv"])
+    atp_reference_path = _first_existing([Path(atp_reference)] if atp_reference else [
+        m2_root / "phase2_pockets" / "atp_reference" / "atp_site_centroid_by_state.csv",
+        m2_root / "phase2_pockets" / "export_for_m3" / "atp_site_centroid_by_state.csv",
+        m2_root / "phase2_pockets" / "atp_reference" / "atp_site_reference.csv",
+        m2_root / "phase2_pockets" / "export_for_m3" / "atp_site_reference.csv",
+    ])
     ppi_path = _first_existing([Path(ppi_consensus_patch)] if ppi_consensus_patch else [
         m2_root / "phase2_pockets" / "export_for_m3" / "ppi_consensus_patch.csv",
         m2_root / "phase1_ppi" / "consensus" / "ppi_consensus_patch_merged.csv",
@@ -847,7 +868,7 @@ def run_m3_pose_attribution(
     private_entries_map, private_warnings = load_private_map(_safe_private_map_path(ctx, private_map))
     warnings.extend(private_warnings)
     leak_count, coord_hits, smiles_logged, ligand_coords, receptor_coords, pose_coords, scanned = _scan_hygiene(ctx, list(private_entries_map.values()))
-    forbidden_created = [item for item in FORBIDDEN_OUTPUTS if (ctx.run_dir / item).exists()]
+    forbidden_created = [item for item in FORBIDDEN_OUTPUTS if _has_real_output(ctx.run_dir / item)]
     if leak_count:
         blockers.append("internal compound ID leakage detected")
     if coord_hits:
