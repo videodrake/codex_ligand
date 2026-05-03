@@ -1053,7 +1053,7 @@ def run_m3_vina_jobs(
             row["pbs_job_name"] = pbs_job_name
             row["submission_status"] = "SUBMIT_READY" if mode == "generate" and not allow_independent else "NOT_SUBMITTED"
             row["allowed_for_execution"] = _bool_text(mode == "generate" and not allow_independent)
-            row["allowed_for_collection"] = "false"
+            row["allowed_for_collection"] = _bool_text(mode == "generate" and not allow_independent)
         pbs_rows.append(
             {
                 "pbs_job_name": pbs_job_name,

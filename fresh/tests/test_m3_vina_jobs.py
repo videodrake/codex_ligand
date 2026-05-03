@@ -179,6 +179,7 @@ def test_generate_writes_job_and_pbs_manifests_without_invoking_vina_or_qsub(tmp
     assert result.qsub_submission_allowed is True
     assert result.production_submission_allowed is False
     assert len(jobs) == 3 * 4 * 2
+    assert {row["allowed_for_collection"] for row in jobs} == {"true"}
     assert {row["pbs_job_name"] for row in pbs} >= {"m3_vina_node04", "m3_vina_node05", "m3_vina_node06"}
     for row in pbs:
         if int(row["assigned_job_count"]) == 0:

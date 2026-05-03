@@ -247,6 +247,20 @@ def _first_existing(paths: list[Path]) -> Path | None:
     return None
 
 
+def _existing_unique(paths: list[Path]) -> list[Path]:
+    existing: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        existing.append(resolved)
+    return existing
+
+
 def _load_json(path: Path) -> dict[str, Any] | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -293,6 +307,13 @@ def _load_points(path: Path | None, prefix: str) -> list[ReferencePoint]:
         return []
     rows, _ = _read_csv(path)
     return [point for index, row in enumerate(rows, start=1) if (point := reference_point_from_row(row, prefix, index)) is not None]
+
+
+def _load_points_many(paths: list[Path], prefix: str) -> list[ReferencePoint]:
+    points: list[ReferencePoint] = []
+    for path in paths:
+        points.extend(_load_points(path, prefix))
+    return points
 
 
 def _points_for_pose(row: dict[str, str], points: list[ReferencePoint]) -> list[ReferencePoint]:
@@ -347,7 +368,8 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
         except OSError:
             continue
         scanned.append(ctx.relative_to_repo(path))
-        if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles", text, re.IGNORECASE):
+        upper = text.upper()
+        if ("SMILES=" in upper or "SMILES:" in upper) and re.search(r"(^|\s)(C|N|O|S|P|Cl|Br|F|I)[A-Za-z0-9@+\-\[\]\(\)=#$\\/]+(\s|$)", text):
             smiles_logged = True
         if re.search(r"^(ATOM|HETATM)\s+\d+", text, re.MULTILINE):
             coord_hits.append(ctx.relative_to_repo(path))
@@ -505,6 +527,7 @@ def run_m3_pose_attribution(
 
     m2_root = ctx.fresh_root / "runs" / m2_run_id
     accepted_pockets_path = _first_existing([Path(accepted_pockets)] if accepted_pockets else [
+        m2_root / "phase2_pockets" / "export_for_m3" / "accepted_pockets_for_m3.csv",
         m2_root / "phase2_pockets" / "final" / "accepted_pockets_for_m3.csv",
         m2_root / "phase2_pockets" / "final" / "accepted_pocket_families_for_compound_docking.csv",
     ])
@@ -514,10 +537,12 @@ def run_m3_pose_attribution(
     ])
     atp_reference_path = _first_existing([Path(atp_reference)] if atp_reference else [m2_root / "phase2_pockets" / "atp_reference" / "atp_site_reference.csv"])
     ppi_path = _first_existing([Path(ppi_consensus_patch)] if ppi_consensus_patch else [
+        m2_root / "phase2_pockets" / "export_for_m3" / "ppi_consensus_patch.csv",
         m2_root / "phase1_ppi" / "consensus" / "ppi_consensus_patch_merged.csv",
         m2_root / "phase1_ppi" / "tables" / "ppi_consensus_patch.csv",
     ])
     membrane_path = _first_existing([Path(membrane_frame)] if membrane_frame else [
+        m2_root / "manifest" / "membrane_frame.json",
         m2_root / "membrane" / "membrane_frame.json",
         m2_root / "phase1_receptor" / "membrane_frame.json",
     ])
@@ -525,9 +550,12 @@ def run_m3_pose_attribution(
         mapping_candidates = [Path(receptor_mapping)]
     else:
         mapping_candidates = [m2_root / "phase1_receptor" / "receptor_mapping.csv"]
+        if (m2_root / "qc").is_dir():
+            mapping_candidates.extend(sorted((m2_root / "qc").glob("*_receptor_mapping.csv")))
         if (m2_root / "phase1_receptor").is_dir():
             mapping_candidates.extend(sorted((m2_root / "phase1_receptor").glob("*mapping*.csv")))
-    mapping_path = _first_existing(mapping_candidates)
+    mapping_paths = _existing_unique(mapping_candidates)
+    mapping_path = mapping_paths[0] if mapping_paths else None
     completion_qc_path = job_completion_table if job_completion_table else (qc_dir / "docking_completion_qc.json")
     if not completion_qc_path.is_absolute():
         completion_qc_path = ctx.repo_root / completion_qc_path
@@ -546,7 +574,7 @@ def run_m3_pose_attribution(
         "atp_reference_found": atp_reference_path is not None,
         "ppi_consensus_patch_found": ppi_path is not None,
         "membrane_frame_found": membrane_path is not None,
-        "receptor_mapping_found": mapping_path is not None,
+        "receptor_mapping_found": bool(mapping_paths),
     }
     for label, found in inputs.items():
         if label == "compound_pose_raw_found":
@@ -560,7 +588,7 @@ def run_m3_pose_attribution(
     boxes = _load_boxes(accepted_boxes_path)
     atp_points = _load_points(atp_reference_path, "atp")
     ppi_points = _load_points(ppi_path, "ppi")
-    mapping_points = _load_points(mapping_path, "receptor")
+    mapping_points = _load_points_many(mapping_paths, "receptor")
     membrane = membrane_frame_from_json(_load_json(membrane_path) or {}) if membrane_path else None
     if accepted_boxes_path and not boxes:
         blockers.append("accepted boxes present but no usable box proxies parsed")
@@ -617,7 +645,7 @@ def run_m3_pose_attribution(
             "atp_reference_source": ctx.relative_to_repo(atp_reference_path) if atp_reference_path else "",
             "ppi_consensus_source": ctx.relative_to_repo(ppi_path) if ppi_path else "",
             "membrane_frame_source": ctx.relative_to_repo(membrane_path) if membrane_path else "",
-            "receptor_mapping_source": ctx.relative_to_repo(mapping_path) if mapping_path else "",
+            "receptor_mapping_source": ";".join(ctx.relative_to_repo(path) for path in mapping_paths),
             "attributed_at": timestamp,
         })
         if not pose_inside:
@@ -680,7 +708,7 @@ def run_m3_pose_attribution(
                     penetration = z_min <= membrane.core_z_max + pad and z_max >= membrane.core_z_min - pad
                 nearest_receptor = nearest_atom_distance(h_atoms, pose_mapping_points)
                 dimer_clash = bool(nearest_receptor is not None and nearest_receptor <= float(resolved_config["dimer"].get("central_interface_clash_cutoff_A", 3.0)))
-                required_mapping = bool(mapping_path and membrane and pose_atp_points and pose_ppi_points and pose_mapping_points and boxes)
+                required_mapping = bool(mapping_paths and membrane and pose_atp_points and pose_ppi_points and pose_mapping_points and boxes)
                 hard_pass = bool(retention and not atp_flag and not penetration and not dimer_clash and required_mapping)
                 if hard_pass:
                     reason = "none"

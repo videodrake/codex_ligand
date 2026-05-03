@@ -189,6 +189,57 @@ def test_attribute_synthetic_pose_writes_all_qc_tables(tmp_path):
     assert len(read_csv(result.membrane_qc_csv)) == 1
 
 
+def test_actual_m2_export_paths_and_centroid_columns_resolve(tmp_path):
+    ctx = make_ctx(tmp_path)
+    m2 = ctx.fresh_root / "runs" / "m2_run"
+    write_csv(
+        m2 / "phase2_pockets" / "export_for_m3" / "accepted_pockets_for_m3.csv",
+        ["pocket_family_id", "state_id"],
+        [{"pocket_family_id": "fam_1", "state_id": "EGFR_160-185"}, {"pocket_family_id": "fam_1", "state_id": "EGFR_170-200"}],
+    )
+    write_csv(
+        m2 / "phase2_pockets" / "export_for_m3" / "accepted_pocket_boxes.csv",
+        ["pocket_family_id", "state_id", "protomer_id", "box_id", "box_center_x", "box_center_y", "box_center_z", "box_size_x", "box_size_y", "box_size_z"],
+        [
+            {"pocket_family_id": "fam_1", "state_id": "EGFR_160-185", "protomer_id": "A", "box_id": "box_1", "box_center_x": 0, "box_center_y": 0, "box_center_z": 8, "box_size_x": 8, "box_size_y": 8, "box_size_z": 8},
+            {"pocket_family_id": "fam_1", "state_id": "EGFR_170-200", "protomer_id": "A", "box_id": "box_1", "box_center_x": 0, "box_center_y": 0, "box_center_z": 8, "box_size_x": 8, "box_size_y": 8, "box_size_z": 8},
+        ],
+    )
+    write_csv(
+        m2 / "phase2_pockets" / "atp_reference" / "atp_site_reference.csv",
+        ["atp_id", "state_id", "egfr_protomer_id", "atp_centroid_x", "atp_centroid_y", "atp_centroid_z"],
+        [
+            {"atp_id": "ATP_160", "state_id": "EGFR_160-185", "egfr_protomer_id": "A", "atp_centroid_x": 40, "atp_centroid_y": 40, "atp_centroid_z": 40},
+            {"atp_id": "ATP_170", "state_id": "EGFR_170-200", "egfr_protomer_id": "A", "atp_centroid_x": 40, "atp_centroid_y": 40, "atp_centroid_z": 40},
+        ],
+    )
+    write_csv(
+        m2 / "phase2_pockets" / "export_for_m3" / "ppi_consensus_patch.csv",
+        ["ppi_patch_id", "state_id", "egfr_protomer_id", "egfr_residue_number", "egfr_contact_centroid_x", "egfr_contact_centroid_y", "egfr_contact_centroid_z"],
+        [
+            {"ppi_patch_id": "ppi_160", "state_id": "EGFR_160-185", "egfr_protomer_id": "A", "egfr_residue_number": "900", "egfr_contact_centroid_x": 3, "egfr_contact_centroid_y": 0, "egfr_contact_centroid_z": 8},
+            {"ppi_patch_id": "ppi_170", "state_id": "EGFR_170-200", "egfr_protomer_id": "A", "egfr_residue_number": "900", "egfr_contact_centroid_x": 3, "egfr_contact_centroid_y": 0, "egfr_contact_centroid_z": 8},
+        ],
+    )
+    membrane = m2 / "manifest" / "membrane_frame.json"
+    membrane.parent.mkdir(parents=True, exist_ok=True)
+    membrane.write_text(json.dumps({"origin": [0, 0, 0], "normal": [0, 0, 1], "core_z_min": -2, "core_z_max": 2}), encoding="utf-8")
+    write_csv(m2 / "qc" / "EGFR_160-185_receptor_mapping.csv", ["state_id", "protomer_id", "role", "x", "y", "z"], [{"state_id": "EGFR_160-185", "protomer_id": "A", "role": "central_interface", "x": 50, "y": 50, "z": 50}])
+    write_csv(m2 / "qc" / "EGFR_170-200_receptor_mapping.csv", ["state_id", "protomer_id", "role", "x", "y", "z"], [{"state_id": "EGFR_170-200", "protomer_id": "A", "role": "central_interface", "x": 50, "y": 50, "z": 50}])
+    (ctx.errors_dir / "error_summary.txt").write_text("previous blocker: SMILES-like fields printed in public outputs\n", encoding="utf-8")
+    pose = write_pose(ctx)
+    raw = write_raw(ctx, [raw_row(ctx, pose, job_id="job_160"), raw_row(ctx, pose, job_id="job_170", state="EGFR_170-200")])
+
+    result = run_m3_pose_attribution(ctx, m2_run_id="m2_run", pose_raw_table=raw, profile="mini")
+    attribution = read_csv(result.attribution_csv)
+
+    assert result.status == "PASS"
+    assert result.m3_t8_clustering_ready is True
+    assert {row["state_id"] for row in attribution} == {"EGFR_160-185", "EGFR_170-200"}
+    assert {row["pose_hard_gate_pass"] for row in attribution} == {"true"}
+    assert not any("SMILES" in item for item in result.blockers)
+
+
 def test_schema_duplicate_public_id_and_pose_path_gates(tmp_path):
     ctx = make_ctx(tmp_path / "schema")
     pose = write_pose(ctx)
