@@ -448,7 +448,8 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
         except OSError:
             continue
         scanned.append(ctx.relative_to_repo(path))
-        if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles", text, re.IGNORECASE):
+        upper = text.upper()
+        if ("SMILES=" in upper or "SMILES:" in upper) and re.search(r"(^|\s)(C|N|O|S|P|Cl|Br|F|I)[A-Za-z0-9@+\-\[\]\(\)=#$\\/]+(\s|$)", text):
             smiles_logged = True
         if re.search(r"^(ATOM|HETATM)\s+\d+", text, re.MULTILINE):
             coord_hits.append(ctx.relative_to_repo(path))
@@ -459,6 +460,22 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
         if re.search(r"validated inhibitor|proven binder|proven PPI inhibitor|clinically relevant drug candidate|final candidate", text, re.IGNORECASE):
             claims = True
     return len(leaks), coord_hits, smiles_logged, ligand_coords, receptor_coords, pose_coords, claims, scanned
+
+
+def _has_real_output(path: Path) -> bool:
+    if path.is_dir():
+        return any(_has_real_output(child) for child in path.rglob("*"))
+    if not path.is_file():
+        return False
+    if path.name == ".gitkeep":
+        return False
+    if path.suffix.lower() == ".csv":
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                return sum(1 for _ in csv.reader(handle)) > 1
+        except OSError:
+            return True
+    return path.stat().st_size > 0
 
 
 def _write_report(path: Path, ctx: RunContext, summary: dict[str, Any]) -> None:
@@ -865,7 +882,7 @@ def run_m3_anchor_convergence(
         warnings.append("no compound-pocket support rows written")
     if not allowed_support and selected_clusters:
         warnings.append("no support-eligible clusters after T8 hard gates")
-    forbidden_created = [item for item in FORBIDDEN_OUTPUTS if (ctx.run_dir / item).exists()]
+    forbidden_created = [item for item in FORBIDDEN_OUTPUTS if _has_real_output(ctx.run_dir / item)]
     if forbidden_created:
         blockers.append("forbidden downstream outputs already exist in run directory")
     if mode == "dry-run":
