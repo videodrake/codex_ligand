@@ -457,7 +457,17 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
             ligand_coords = ligand_coords or "ligand" in lower
             receptor_coords = receptor_coords or "receptor" in lower
             pose_coords = pose_coords or "pose" in lower or "anchor" in lower or "support" in lower or "qc" in lower
-        if re.search(r"validated inhibitor|proven binder|proven PPI inhibitor|clinically relevant drug candidate|final candidate", text, re.IGNORECASE):
+        claim_patterns = [
+            r"\bvalidated inhibitor\b",
+            r"\bproven binder\b",
+            r"\bproven PPI inhibitor\b",
+            r"\bclinically relevant drug candidate\b",
+            r"\bclinically validated\b",
+            r"\brecommended final candidate\b",
+            r"\bfinal candidate recommendation\b",
+            r"\bfinal candidate selected\b",
+        ]
+        if any(re.search(pattern, text, re.IGNORECASE) for pattern in claim_patterns):
             claims = True
     return len(leaks), coord_hits, smiles_logged, ligand_coords, receptor_coords, pose_coords, claims, scanned
 
