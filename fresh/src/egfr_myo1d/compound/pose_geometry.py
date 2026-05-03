@@ -150,7 +150,7 @@ def reference_point_from_row(row: dict[str, Any], prefix: str, index: int) -> Re
         point_id=point_id,
         xyz=(x, y, z),
         residue_public=residue_public or point_id,
-        state_id=_field(row, ["state_id"]),
+        state_id=_field(row, ["state_id", "state"]),
         protomer_id=_field(row, ["protomer_id", "egfr_protomer_id", "protomer", "chain_id"]),
         radius=_float(_field(row, ["radius", f"{prefix}_radius"])),
     )

@@ -63,6 +63,23 @@ def write_csv(path, fields, rows):
         writer.writerows(rows)
 
 
+def write_receptor_pdb(path, state_residue=900, xyz=(50, 50, 50), chain="A", resname="GLY"):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "ATOM  {serial:5d}  CA  {resname:>3s} {chain:1s}{resseq:4d}    "
+        "{x:8.3f}{y:8.3f}{z:8.3f}  1.00 20.00           C\nEND\n".format(
+            serial=1,
+            resname=resname,
+            chain=chain,
+            resseq=state_residue,
+            x=xyz[0],
+            y=xyz[1],
+            z=xyz[2],
+        ),
+        encoding="utf-8",
+    )
+
+
 def read_csv(path):
     with Path(path).open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
@@ -197,12 +214,16 @@ def test_actual_m2_export_paths_and_centroid_columns_resolve(tmp_path):
         ["pocket_family_id", "state_id"],
         [{"pocket_family_id": "fam_1", "state_id": "EGFR_160-185"}, {"pocket_family_id": "fam_1", "state_id": "EGFR_170-200"}],
     )
+    receptor_160 = m2 / "normalized" / "receptors" / "EGFR_160-185_dockable_669_1014_explicit_AB.pdb"
+    receptor_170 = m2 / "normalized" / "receptors" / "EGFR_170-200_dockable_669_1014_explicit_AB.pdb"
+    write_receptor_pdb(receptor_160)
+    write_receptor_pdb(receptor_170)
     write_csv(
         m2 / "phase2_pockets" / "export_for_m3" / "accepted_pocket_boxes.csv",
-        ["pocket_family_id", "state_id", "protomer_id", "box_id", "box_center_x", "box_center_y", "box_center_z", "box_size_x", "box_size_y", "box_size_z"],
+        ["pocket_family_id", "state_id", "protomer_id", "box_id", "box_center_x", "box_center_y", "box_center_z", "box_size_x", "box_size_y", "box_size_z", "receptor_pdb", "receptor_mapping_csv"],
         [
-            {"pocket_family_id": "fam_1", "state_id": "EGFR_160-185", "protomer_id": "A", "box_id": "box_1", "box_center_x": 0, "box_center_y": 0, "box_center_z": 8, "box_size_x": 8, "box_size_y": 8, "box_size_z": 8},
-            {"pocket_family_id": "fam_1", "state_id": "EGFR_170-200", "protomer_id": "A", "box_id": "box_1", "box_center_x": 0, "box_center_y": 0, "box_center_z": 8, "box_size_x": 8, "box_size_y": 8, "box_size_z": 8},
+            {"pocket_family_id": "fam_1", "state_id": "EGFR_160-185", "protomer_id": "A", "box_id": "box_1", "box_center_x": 0, "box_center_y": 0, "box_center_z": 8, "box_size_x": 8, "box_size_y": 8, "box_size_z": 8, "receptor_pdb": ctx.relative_to_repo(receptor_160), "receptor_mapping_csv": "fresh/runs/m2_run/qc/EGFR_160-185_receptor_mapping.csv"},
+            {"pocket_family_id": "fam_1", "state_id": "EGFR_170-200", "protomer_id": "A", "box_id": "box_1", "box_center_x": 0, "box_center_y": 0, "box_center_z": 8, "box_size_x": 8, "box_size_y": 8, "box_size_z": 8, "receptor_pdb": ctx.relative_to_repo(receptor_170), "receptor_mapping_csv": "fresh/runs/m2_run/qc/EGFR_170-200_receptor_mapping.csv"},
         ],
     )
     write_csv(
@@ -229,8 +250,9 @@ def test_actual_m2_export_paths_and_centroid_columns_resolve(tmp_path):
     membrane = m2 / "manifest" / "membrane_frame.json"
     membrane.parent.mkdir(parents=True, exist_ok=True)
     membrane.write_text(json.dumps({"origin": [0, 0, 0], "normal": [0, 0, 1], "core_z_min": -2, "core_z_max": 2}), encoding="utf-8")
-    write_csv(m2 / "qc" / "EGFR_160-185_receptor_mapping.csv", ["state_id", "egfr_protomer_id", "uniprot_residue_number", "role", "ca_x", "ca_y", "ca_z"], [{"state_id": "EGFR_160-185", "egfr_protomer_id": "A", "uniprot_residue_number": "900", "role": "central_interface", "ca_x": 50, "ca_y": 50, "ca_z": 50}])
-    write_csv(m2 / "qc" / "EGFR_170-200_receptor_mapping.csv", ["state_id", "egfr_protomer_id", "uniprot_residue_number", "role", "ca_x", "ca_y", "ca_z"], [{"state_id": "EGFR_170-200", "egfr_protomer_id": "A", "uniprot_residue_number": "900", "role": "central_interface", "ca_x": 50, "ca_y": 50, "ca_z": 50}])
+    mapping_fields = ["state", "source_file", "protomer_id", "source_chain", "source_resseq", "source_icode", "source_resname", "runtime_chain", "runtime_resseq", "atom_count", "role"]
+    write_csv(m2 / "qc" / "EGFR_160-185_receptor_mapping.csv", mapping_fields, [{"state": "EGFR_160-185", "source_file": "src.pdb", "protomer_id": "A", "source_chain": "A", "source_resseq": "900", "source_icode": "_", "source_resname": "GLY", "runtime_chain": "A", "runtime_resseq": "900", "atom_count": "1", "role": "primary"}])
+    write_csv(m2 / "qc" / "EGFR_170-200_receptor_mapping.csv", mapping_fields, [{"state": "EGFR_170-200", "source_file": "src.pdb", "protomer_id": "A", "source_chain": "A", "source_resseq": "900", "source_icode": "_", "source_resname": "GLY", "runtime_chain": "A", "runtime_resseq": "900", "atom_count": "1", "role": "primary"}])
     write_csv(ctx.run_dir / "phase3_compounds" / "tables" / "compound_pose_clusters.csv", ["cluster_id"], [])
     broad = ctx.run_dir / "phase3_compounds" / "docking_outputs" / "broad_anchor_scan_optional"
     broad.mkdir(parents=True, exist_ok=True)
