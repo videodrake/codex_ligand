@@ -340,6 +340,22 @@ def test_collection_requires_collection_allow_flag(tmp_path):
     assert result.collection["parsed_pose_rows"] == 0
 
 
+def test_collect_ignores_header_only_downstream_and_prior_smiles_warning_text(tmp_path):
+    ctx = make_ctx(tmp_path)
+    row, output, log, stdout, stderr = job_row(ctx)
+    write_output(output, log, stdout, stderr)
+    manifest = write_manifest(ctx, [row])
+    write_csv(ctx.run_dir / "phase3_compounds" / "tables" / "compound_pose_attribution.csv", ["job_id", "pose_rank"], [])
+    (ctx.errors_dir / "error_summary.txt").write_text("previous blocker: SMILES printed in public outputs/logs\n", encoding="utf-8")
+
+    result = run_m3_vina_collect(ctx, m2_run_id="m2_run", job_manifest=manifest, profile="mini")
+
+    assert result.status == "PASS"
+    assert result.collection["expected_jobs"] == 1
+    assert result.collection["parsed_pose_rows"] == 2
+    assert "forbidden downstream output created" not in result.blockers
+
+
 def test_collect_requires_passed_m3_t5_plan(tmp_path):
     ctx = make_ctx(tmp_path)
     row, output, log, stdout, stderr = job_row(ctx)

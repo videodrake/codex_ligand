@@ -163,6 +163,24 @@ def test_two_compounds_same_primary_pocket_passes_without_affinity_ranking(tmp_p
     assert len(support) == 2
 
 
+def test_empty_downstream_tables_and_prior_smiles_diagnostics_do_not_block(tmp_path):
+    ctx = make_ctx(tmp_path)
+    write_refs(ctx, states=("EGFR_160-185",))
+    write_inputs(ctx, [cluster_row("Cpd-A", cluster_id="c1"), cluster_row("Cpd-B", cluster_id="c2")])
+    write_csv(ctx.run_dir / "phase3_compounds" / "tables" / "pocket_compound_evidence_table.csv", ["evidence_id"], [])
+    (ctx.errors_dir / "error_summary.txt").write_text("previous blocker: SMILES-like fields printed in public outputs\n", encoding="utf-8")
+    report = ctx.run_dir / "phase3_compounds" / "reports" / "old_report.md"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("final candidate tables were not created\n", encoding="utf-8")
+
+    result = run_m3_anchor_convergence(ctx, m2_run_id="m2_run", profile="mini")
+
+    assert result.status == "PASS"
+    assert not any("forbidden downstream" in item for item in result.blockers)
+    assert not any("SMILES-like fields" in item for item in result.blockers)
+    assert not any("candidate or validation claim" in item for item in result.blockers)
+
+
 def test_schema_duplicate_nonpublic_and_affinity_ranking_fail(tmp_path):
     ctx = make_ctx(tmp_path / "schema")
     bad = ctx.run_dir / "phase3_compounds" / "tables" / "compound_pose_clusters.csv"

@@ -291,6 +291,8 @@ def generate_pyrosetta_harness(
     states: Iterable[str] | None = None,
     m2_1_manifest_path: Path | None = None,
     models_per_seed_override: int | None = None,
+    seed_start_override: int | None = None,
+    seed_count_override: int | None = None,
 ) -> PyRosettaHarnessReport:
     """Generate dry-run PyRosetta adapter manifests from M2.1 specs."""
     ctx.create_directories()
@@ -301,6 +303,14 @@ def generate_pyrosetta_harness(
         if models_per_seed_override <= 0:
             raise ValueError("models_per_seed_override must be positive")
         models_per_seed = int(models_per_seed_override)
+    if seed_start_override is not None or seed_count_override is not None:
+        seed_count = int(seed_count_override) if seed_count_override is not None else len(seeds)
+        seed_start = int(seed_start_override) if seed_start_override is not None else 0
+        if seed_start < 0:
+            raise ValueError("seed_start_override must be non-negative")
+        if seed_count <= 0:
+            raise ValueError("seed_count_override must be positive")
+        seeds = list(range(seed_start, seed_start + seed_count))
     m2_1_manifest, manifest_path = _load_m2_1_manifest(ctx, m2_1_manifest_path)
 
     warnings = []
@@ -379,6 +389,9 @@ def generate_pyrosetta_harness(
         "mode": mode,
         "profile": profile,
         "status": status,
+        "seed_start": min(seeds) if seeds else None,
+        "seed_count": len(seeds),
+        "seeds": seeds,
         "source_m2_1_manifest": _repo_path(ctx, manifest_path),
         "pyrosetta_available": _pyrosetta_available(),
         "execution_allowed": False,

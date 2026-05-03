@@ -179,6 +179,7 @@ def test_generate_writes_job_and_pbs_manifests_without_invoking_vina_or_qsub(tmp
     assert result.qsub_submission_allowed is True
     assert result.production_submission_allowed is False
     assert len(jobs) == 3 * 4 * 2
+    assert {row["allowed_for_collection"] for row in jobs} == {"true"}
     assert {row["pbs_job_name"] for row in pbs} >= {"m3_vina_node04", "m3_vina_node05", "m3_vina_node06"}
     for row in pbs:
         if int(row["assigned_job_count"]) == 0:
@@ -340,10 +341,42 @@ def test_pbs_scripts_are_concrete_and_hpc_safe(tmp_path, monkeypatch):
     assert result.status == "PASS"
     assert "#PBS -o " in text and "$PBS_JOBID" not in text and "$RUN_ID" not in text
     assert 'PYTHONPATH="$REPO_ROOT/fresh/src:${PYTHONPATH:-}"' in text
+    assert "~/.conda" not in text
+    assert "set +u\nsource " in text
+    assert "conda activate pyrosetta\nset -u" in text
     for key in ["OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
         assert f"export {key}=1" in text
     assert "conda activate pyrosetta" in text
+    pbs = read_csv(result.pbs_manifest_csv)
+    assert all(not row["python_executable"].startswith("~") for row in pbs)
     assert max(result.hpc["worker_count_by_chunk"].values()) <= 16
+
+
+def test_single_node_plan_marks_only_chunk_pbs_submit_ready(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx, states=("EGFR_160-185", "EGFR_170-200"), boxes_per_state=1)
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(
+        ctx,
+        m2_run_id="m2_run",
+        profile="mini",
+        mode="generate",
+        nodes=["node04"],
+        ppn=32,
+        cpu_per_vina=4,
+    )
+    pbs = read_csv(result.pbs_manifest_csv)
+    ready = [row for row in pbs if row["pbs_generation_status"] == "PASS"]
+    wrapper = [row for row in pbs if row["pbs_job_name"] == "m3_vina_node04"]
+
+    assert result.status == "PASS"
+    assert {row["node"] for row in pbs} == {"node04"}
+    assert len(ready) == result.counts["planned_chunks"]
+    assert all("chunk" in row["pbs_job_name"] and row["qsub_command"] for row in ready)
+    assert wrapper and wrapper[0]["pbs_generation_status"] == "EMPTY_COMPATIBILITY"
+    assert wrapper[0]["assigned_job_count"] == "0"
+    assert wrapper[0]["qsub_command"] == ""
 
 
 def test_no_confidential_tokens_or_coordinates_in_public_outputs(tmp_path, monkeypatch):
@@ -364,6 +397,67 @@ def test_no_confidential_tokens_or_coordinates_in_public_outputs(tmp_path, monke
     assert not (ctx.run_dir / "phase3_compounds" / "docking_outputs" / "broad_anchor_scan_optional").exists()
     for forbidden in ["compound_pose_raw.csv", "final_m3_candidate_hypotheses.csv"]:
         assert not (ctx.run_dir / "phase3_compounds" / "tables" / forbidden).exists()
+
+
+def test_skeleton_gitkeep_outputs_do_not_block_mini_job_plan(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    for rel in [
+        "phase3_compounds/docking_inputs/production",
+        "phase3_compounds/docking_outputs/focused_pocket_first/production",
+        "phase3_compounds/docking_outputs/broad_anchor_scan_optional",
+        "phase3_compounds/vina_raw/production",
+    ]:
+        path = ctx.run_dir / rel
+        path.mkdir(parents=True, exist_ok=True)
+        (path / ".gitkeep").write_text("", encoding="utf-8")
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(ctx, m2_run_id="m2_run", profile="mini", mode="generate")
+
+    assert result.status == "PASS"
+    assert result.qsub_submission_allowed is True
+    assert result.counts["production_outputs_created"] == 0
+    assert result.counts["broad_outputs_created"] == 0
+    assert not any("production output" in blocker or "broad docking" in blocker for blocker in result.blockers)
+
+
+def test_previous_smiles_word_blocker_does_not_poison_rerun(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    qc = ctx.run_dir / "phase3_compounds" / "qc"
+    reports = ctx.run_dir / "phase3_compounds" / "reports"
+    qc.mkdir(parents=True, exist_ok=True)
+    reports.mkdir(parents=True, exist_ok=True)
+    (qc / "vina_job_plan_qc.json").write_text(
+        json.dumps({"overall_status": "FAIL", "blockers": ["ligand SMILES printed in public outputs/logs/manifests/PBS"]}),
+        encoding="utf-8",
+    )
+    (reports / "m3_task5_vina_job_plan.md").write_text("- ligand SMILES printed in public outputs/logs/manifests/PBS\n", encoding="utf-8")
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(ctx, m2_run_id="m2_run", profile="mini", mode="generate", force=True)
+    qc_summary = json.loads(result.qc_json.read_text(encoding="utf-8"))
+
+    assert result.status == "PASS"
+    assert qc_summary["confidentiality"]["smiles_logged"] is False
+    assert not any("SMILES" in blocker for blocker in result.blockers)
+
+
+def test_actual_smiles_value_in_public_output_blocks_job_plan(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    leak = ctx.run_dir / "phase3_compounds" / "reports" / "leaked_structure.txt"
+    leak.parent.mkdir(parents=True, exist_ok=True)
+    leak.write_text("SMILES: CCO\n", encoding="utf-8")
+    patch_vina(monkeypatch)
+
+    result = run_m3_vina_jobs(ctx, m2_run_id="m2_run", profile="mini", mode="generate")
+    qc_summary = json.loads(result.qc_json.read_text(encoding="utf-8"))
+
+    assert result.status == "FAIL"
+    assert qc_summary["confidentiality"]["smiles_logged"] is True
+    assert any("SMILES" in blocker for blocker in result.blockers)
 
 
 def test_runner_dry_run_executes_only_requested_chunk_contract(tmp_path, monkeypatch):

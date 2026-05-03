@@ -451,6 +451,18 @@ def build_parser():
         default=None,
         help="Override the mode default model count per state/seed. Use deliberately for production-scale sampling.",
     )
+    m2_pyrosetta_parser.add_argument(
+        "--seed-start",
+        type=int,
+        default=None,
+        help="Override the first PyRosetta seed. Use for independent extended batches, e.g. 10 after the default 0-9 batch.",
+    )
+    m2_pyrosetta_parser.add_argument(
+        "--seed-count",
+        type=int,
+        default=None,
+        help="Override the number of consecutive seeds to emit with --seed-start.",
+    )
     m2_pyrosetta_parser.set_defaults(func=_cmd_prepare_m2_pyrosetta_harness)
 
     m2_collect_parser = subparsers.add_parser(
@@ -542,6 +554,12 @@ def build_parser():
         type=int,
         default=1,
         help="Minimum EGFR-MYO1D residue-pair contacts needed to mark a pose accepted for M2.4 evidence.",
+    )
+    m2_extract_contacts_parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Number of local worker processes for parsing posed PDB files.",
     )
     m2_extract_contacts_parser.set_defaults(func=_cmd_extract_m2_ppi_contacts)
 
@@ -1882,6 +1900,8 @@ def _cmd_prepare_m2_pyrosetta_harness(args):
         if args.m2_1_manifest
         else None,
         models_per_seed_override=args.models_per_seed,
+        seed_start_override=args.seed_start,
+        seed_count_override=args.seed_count,
     )
     print(
         "prepare-m2-pyrosetta-harness {0}: jobs={1} warnings={2} blockers={3}".format(
@@ -1953,6 +1973,7 @@ def _cmd_extract_m2_ppi_contacts(args):
         contact_cutoff_angstrom=args.contact_cutoff_angstrom,
         partner_chain=args.partner_chain,
         min_contacts_for_acceptance=args.min_contacts_for_acceptance,
+        workers=args.workers,
     )
     print(
         "extract-m2-ppi-contacts {0}: poses={1} raw_contacts={2} accepted_poses={3} warnings={4} blockers={5}".format(

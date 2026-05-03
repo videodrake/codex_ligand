@@ -552,11 +552,24 @@ def _affinity_detected(vina_log: Path | None, stdout_file: Path | None) -> str:
     return "true" if "affinity" in text or "mode" in text and "kcal" in text else "false"
 
 
+def _mirror_stdout_log(stdout_file: Path, vina_log: Path) -> None:
+    if vina_log.exists() or not stdout_file.is_file():
+        return
+    vina_log.parent.mkdir(parents=True, exist_ok=True)
+    vina_log.write_text(stdout_file.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
+
+
 def _forbidden_outputs(ctx: RunContext) -> list[str]:
     hits: list[str] = []
+
+    def is_real_output(path: Path) -> bool:
+        return path.is_file() and path.name != ".gitkeep"
+
     for rel in FORBIDDEN_OUTPUTS:
         path = ctx.run_dir / rel
-        if path.exists():
+        if path.is_file():
+            hits.append(ctx.relative_to_repo(path))
+        elif path.is_dir() and any(is_real_output(child) for child in path.rglob("*")):
             hits.append(ctx.relative_to_repo(path))
     return hits
 
@@ -910,6 +923,8 @@ def run_m3_vina_smoke(
             blockers.append("Vina timed out in run mode")
         elif exit_code != 0:
             blockers.append("Vina exited non-zero in run mode")
+        else:
+            _mirror_stdout_log(stdout_file, vina_log)
     _append_qc(qc_rows, smoke_id, "exactly_one_vina_command_invoked", "command", "PASS" if (mode == "run" and invocation_count == 1) or mode == "dry-run" else "FAIL", "Vina invocation count checked", "Invoke exactly one command in run mode.", mode == "run" and invocation_count != 1)
     _append_qc(qc_rows, smoke_id, "stdout_captured", "logging", "PASS" if stdout_file.is_file() or mode == "dry-run" else "FAIL", "stdout captured under logs/jobs", "Capture stdout.", mode == "run" and not stdout_file.is_file())
     _append_qc(qc_rows, smoke_id, "stderr_captured", "logging", "PASS" if stderr_file.is_file() or mode == "dry-run" else "FAIL", "stderr captured under logs/jobs", "Capture stderr.", mode == "run" and not stderr_file.is_file())

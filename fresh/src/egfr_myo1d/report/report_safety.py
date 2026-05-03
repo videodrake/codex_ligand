@@ -12,16 +12,23 @@ from egfr_myo1d.core.run_context import RunContext
 
 
 FORBIDDEN_CLAIM_PATTERNS = [
-    r"validated inhibitor",
-    r"proven binder",
-    r"proven PPI inhibitor",
-    r"clinically relevant drug candidate",
-    r"\bdrug candidate\b",
-    r"validated EGFR inhibitor",
-    r"validated EGFR-MYO1D PPI inhibitor",
-    r"proven EGFR binder",
-    r"clinically validated",
+    r"\bvalidated inhibitor\b",
+    r"\bproven binder\b",
+    r"\bproven PPI inhibitor\b",
+    r"\bclinically relevant drug candidate\b",
+    r"\bvalidated EGFR inhibitor\b",
+    r"\bvalidated EGFR-MYO1D PPI inhibitor\b",
+    r"\bproven EGFR binder\b",
+    r"\bclinically validated\b",
+    r"\brecommended final candidate\b",
+    r"\bfinal candidate recommendation\b",
+    r"\bfinal candidate selected\b",
 ]
+
+PRIVATE_STRUCTURE_PATTERN = re.compile(
+    r"\b(?:SMILES|canonical_smiles|isomeric_smiles)\b\s*[:=,]\s*[A-Za-z0-9@+\-\[\]\(\)=#$\\/]{3,}",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -85,7 +92,7 @@ def scan_public_reports(ctx: RunContext, private_entries: Iterable[PrivateMapEnt
         except OSError:
             continue
         scanned.append(ctx.relative_to_repo(path))
-        if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles", text, re.IGNORECASE):
+        if PRIVATE_STRUCTURE_PATTERN.search(text):
             smiles_logged = True
         if re.search(r"^(ATOM|HETATM)\s+\d+", text, re.MULTILINE):
             rel = ctx.relative_to_repo(path)

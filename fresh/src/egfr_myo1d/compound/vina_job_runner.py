@@ -106,7 +106,6 @@ def _validate_row_paths(ctx: RunContext, row: dict[str, str]) -> tuple[bool, str
         ("--ligand", ligand_path),
         ("--receptor", receptor_path),
         ("--out", output_path),
-        ("--log", log_path),
     ]:
         value = _argv_value(argv, flag)
         if value is None:
@@ -136,6 +135,8 @@ def _run_one(ctx: RunContext, row: dict[str, str]) -> tuple[str, int | None, str
         proc = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False, timeout=timeout)
         stdout_path.write_text(proc.stdout or "", encoding="utf-8")
         stderr_path.write_text(proc.stderr or "", encoding="utf-8")
+        if proc.returncode == 0 and not vina_log.exists() and stdout_path.is_file():
+            vina_log.write_text(stdout_path.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
         status = "PASS" if proc.returncode == 0 else "FAIL"
         append_job_status(
             ctx,

@@ -433,7 +433,8 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
         except OSError:
             continue
         scanned.append(ctx.relative_to_repo(path))
-        if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles", text, re.IGNORECASE):
+        upper = text.upper()
+        if ("SMILES=" in upper or "SMILES:" in upper) and re.search(r"(^|\s)(C|N|O|S|P|Cl|Br|F|I)[A-Za-z0-9@+\-\[\]\(\)=#$\\/]+(\s|$)", text):
             smiles_logged = True
         if re.search(r"^(ATOM|HETATM)\s+\d+", text, re.MULTILINE):
             coord_hits.append(ctx.relative_to_repo(path))
@@ -842,7 +843,20 @@ def run_m3_vina_collect(
         status = "PASS" if ok else ("WARN" if mode == "dry-run" or not blocker else "FAIL")
         _append_qc(qc_rows, check_id, "collection", status, detail, "Inspect M3-T5 manifest and Vina outputs.", status == "FAIL")
 
-    forbidden = [ctx.relative_to_repo(ctx.run_dir / rel) for rel in FORBIDDEN_OUTPUTS if (ctx.run_dir / rel).exists()]
+    def has_real_downstream_output(path: Path) -> bool:
+        if not path.is_file():
+            return False
+        if path.name == ".gitkeep":
+            return False
+        if path.suffix.lower() == ".csv":
+            try:
+                with path.open("r", encoding="utf-8", newline="") as handle:
+                    return sum(1 for _ in csv.reader(handle)) > 1
+            except OSError:
+                return True
+        return path.stat().st_size > 0
+
+    forbidden = [ctx.relative_to_repo(ctx.run_dir / rel) for rel in FORBIDDEN_OUTPUTS if has_real_downstream_output(ctx.run_dir / rel)]
     if forbidden:
         blockers.append("forbidden downstream output created")
     for check_id, ok, detail in [

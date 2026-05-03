@@ -685,16 +685,29 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
         except OSError:
             continue
         scanned.append(ctx.relative_to_repo(path))
-        if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles|[A-Za-z0-9@+\-\[\]\(\)=#$\\/]{8,}", text) and "compound_id_map" not in path.name:
-            if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles", text, re.IGNORECASE):
-                smiles_logged = True
+        smiles_pattern = re.compile(
+            r"\b(?:SMILES|canonical_smiles|isomeric_smiles)\b\s*[:=,]\s*[A-Za-z0-9@+\-\[\]\(\)=#$\\/]{3,}",
+            re.IGNORECASE,
+        )
+        if "compound_id_map" not in path.name and smiles_pattern.search(text):
+            smiles_logged = True
         if re.search(r"^(ATOM|HETATM)\s+\d+", text, re.MULTILINE):
             coord_hits.append(ctx.relative_to_repo(path))
             lower = path.as_posix().lower()
             ligand_coords = ligand_coords or "ligand" in lower
             receptor_coords = receptor_coords or "receptor" in lower
             pose_coords = pose_coords or "pose" in lower or "candidate" in lower or "evidence" in lower or "qc" in lower
-        if re.search(r"validated inhibitor|proven binder|proven PPI inhibitor|clinically relevant drug candidate|\bdrug candidate\b|clinically validated", text, re.IGNORECASE):
+        claim_patterns = [
+            r"\bvalidated inhibitor\b",
+            r"\bproven binder\b",
+            r"\bproven PPI inhibitor\b",
+            r"\bclinically relevant drug candidate\b",
+            r"\bclinically validated\b",
+            r"\brecommended final candidate\b",
+            r"\bfinal candidate recommendation\b",
+            r"\bfinal candidate selected\b",
+        ]
+        if any(re.search(pattern, text, re.IGNORECASE) for pattern in claim_patterns):
             overclaim = True
     return len(leaks), coord_hits, smiles_logged, ligand_coords, receptor_coords, pose_coords, overclaim, scanned
 

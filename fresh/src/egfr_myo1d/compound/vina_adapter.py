@@ -60,6 +60,8 @@ def build_vina_argv(
     cpu: int,
     seed: int,
 ) -> list[str]:
+    # This cluster's AutoDock Vina build does not support --log; stdout is captured
+    # separately and mirrored to the manifest vina_log_file by smoke/runner code.
     return [
         vina_executable,
         "--receptor",
@@ -80,8 +82,6 @@ def build_vina_argv(
         str(size[2]),
         "--out",
         str(output_pdbqt),
-        "--log",
-        str(vina_log),
         "--exhaustiveness",
         str(exhaustiveness),
         "--num_modes",

@@ -1,5 +1,6 @@
 import csv
 import json
+import subprocess
 from pathlib import Path
 
 from egfr_myo1d.compound.receptor_prepare import ReceptorToolStatus, run_m3_receptor_boxes
@@ -144,6 +145,45 @@ def fake_tools():
     )
 
 
+def fake_mk_prepare_tools():
+    return ReceptorToolStatus(
+        prepare_receptor4_available=False,
+        prepare_receptor4_version=None,
+        prepare_receptor4_binary=None,
+        mk_prepare_receptor_available=True,
+        mk_prepare_receptor_version="test mk_prepare_receptor",
+        mk_prepare_receptor_binary="mk_prepare_receptor.py",
+        meeko_available=True,
+        meeko_version="test meeko",
+        openbabel_available=False,
+        openbabel_version=None,
+        rdkit_available=False,
+        rdkit_version=None,
+        vina_available=True,
+        vina_invoked=False,
+    )
+
+
+def fake_mk_fail_openbabel_tools():
+    return ReceptorToolStatus(
+        prepare_receptor4_available=False,
+        prepare_receptor4_version=None,
+        prepare_receptor4_binary=None,
+        mk_prepare_receptor_available=True,
+        mk_prepare_receptor_version="test mk_prepare_receptor",
+        mk_prepare_receptor_binary="mk_prepare_receptor.py",
+        meeko_available=True,
+        meeko_version="test meeko",
+        openbabel_available=True,
+        openbabel_version="test obabel",
+        rdkit_available=False,
+        rdkit_version=None,
+        vina_available=True,
+        vina_invoked=False,
+        openbabel_binary="obabel",
+    )
+
+
 def patch_fake_receptor_conversion(monkeypatch):
     monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.detect_receptor_tools", fake_tools)
 
@@ -176,6 +216,125 @@ def test_valid_synthetic_dimer_receptor_is_prepared_and_boxes_pass(tmp_path, mon
     assert rows[0]["box_size_x"] == "13"
     assert source.read_text(encoding="utf-8") == before
     assert (ctx.run_dir / "phase3_compounds" / "receptor_pdbqt" / "EGFR_160-185" / "receptor.pdbqt").is_file()
+
+
+def test_m2_1_prepared_receptor_source_is_resolved(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    source, _ = write_m2_fixture(ctx)
+    source.unlink()
+    prepared_dir = ctx.fresh_root / "runs" / "m2_run" / "prepared" / "m2_1_ppi_inputs" / "EGFR_160-185" / "receptor"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    prepared_source = prepared_dir / "EGFR_160-185_runtime_offset_receptor_only.pdb"
+    prepared_source.write_text(PDB_TEXT, encoding="utf-8")
+    patch_fake_receptor_conversion(monkeypatch)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+
+    assert result.status == "PASS"
+    assert rows[0]["source_receptor_file"].endswith(
+        "prepared/m2_1_ppi_inputs/EGFR_160-185/receptor/EGFR_160-185_runtime_offset_receptor_only.pdb"
+    )
+
+
+def test_m2_1_prepared_receptor_wins_over_multiple_candidates(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    prepared_dir = ctx.fresh_root / "runs" / "m2_run" / "prepared" / "m2_1_ppi_inputs" / "EGFR_160-185" / "receptor"
+    prepared_dir.mkdir(parents=True, exist_ok=True)
+    prepared_source = prepared_dir / "EGFR_160-185_runtime_offset_receptor_only.pdb"
+    prepared_source.write_text(PDB_TEXT, encoding="utf-8")
+    patch_fake_receptor_conversion(monkeypatch)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+
+    assert result.status == "PASS"
+    assert rows[0]["source_receptor_file"].endswith(
+        "prepared/m2_1_ppi_inputs/EGFR_160-185/receptor/EGFR_160-185_runtime_offset_receptor_only.pdb"
+    )
+
+
+def test_mk_prepare_receptor_outputs_are_normalized_to_expected_pdbqt(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.detect_receptor_tools", fake_mk_prepare_tools)
+    calls = []
+
+    def fake_run(args, stdout=None, stderr=None, text=None, check=None, **kwargs):
+        calls.append(list(args))
+        if args and args[0] == "git":
+            return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+        if "--read_pdb" in args and args[-1] == "-p":
+            base = Path(args[args.index("-o") + 1])
+            base.with_suffix(".pdbqt").write_text(PDBQT_TEXT, encoding="utf-8")
+            return subprocess.CompletedProcess(args, 0, stdout="mk ok\n", stderr="")
+        return subprocess.CompletedProcess(args, 2, stdout="", stderr="usage error\n")
+
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.subprocess.run", fake_run)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+    output = ctx.run_dir / "phase3_compounds" / "receptor_pdbqt" / "EGFR_160-185" / "receptor.pdbqt"
+
+    assert result.status == "PASS"
+    assert rows[0]["preparation_method"] == "mk_prepare_receptor"
+    assert output.read_text(encoding="utf-8") == PDBQT_TEXT
+    mk_calls = [call for call in calls if call and call[0] == "mk_prepare_receptor.py"]
+    assert mk_calls[0][1] == "--read_pdb"
+    assert mk_calls[1][-1] == "-p"
+
+
+def test_openbabel_fallback_runs_after_mk_prepare_receptor_failure(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.detect_receptor_tools", fake_mk_fail_openbabel_tools)
+    calls = []
+
+    def fake_run(args, stdout=None, stderr=None, text=None, check=None, **kwargs):
+        calls.append(list(args))
+        if args and args[0] == "git":
+            return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+        if args and args[0] == "obabel":
+            output = Path(args[args.index("-O") + 1])
+            output.write_text(PDBQT_TEXT, encoding="utf-8")
+            return subprocess.CompletedProcess(args, 0, stdout="obabel ok\n", stderr="")
+        return subprocess.CompletedProcess(args, 2, stdout="", stderr="mk failed\n")
+
+    monkeypatch.setattr("egfr_myo1d.compound.receptor_prepare.subprocess.run", fake_run)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+    rows = read_csv(result.receptor_preparation_manifest_csv)
+
+    assert result.status == "PASS"
+    assert rows[0]["preparation_method"] == "openbabel_receptor_pdbqt"
+    assert any(call and call[0] == "mk_prepare_receptor.py" for call in calls)
+    assert any(call and call[0] == "obabel" for call in calls)
+
+
+def test_empty_m3_skeleton_dirs_do_not_block_receptor_boxes(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_m3_t2_pass(ctx)
+    write_m2_fixture(ctx)
+    for rel in [
+        "docking_inputs",
+        "docking_inputs/focused_pocket_first",
+        "docking_outputs",
+        "docking_outputs/focused_pocket_first",
+    ]:
+        directory = ctx.run_dir / "phase3_compounds" / rel
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / ".gitkeep").write_text("", encoding="utf-8")
+    patch_fake_receptor_conversion(monkeypatch)
+
+    result = run_m3_receptor_boxes(ctx, "m2_run")
+
+    assert result.status == "PASS"
+    assert not any("docking/Vina/scoring/candidate outputs" in blocker for blocker in result.blockers)
 
 
 def test_supplied_receptor_pdbqt_is_validated_and_copied(tmp_path, monkeypatch):

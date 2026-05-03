@@ -42,10 +42,14 @@ def evaluate_membrane_geometry(
     warnings: list[str] = []
     center = point(family, "family_center_x", "family_center_y", "family_center_z")
     states = split_values(family.get("member_state_ids", ""))
+    roles = split_values(family.get("member_state_roles", ""))
     protomers = split_values(family.get("member_protomer_ids", ""))
-    state_id = states[0] if states else ""
-    protomer_id = protomers[0] if protomers else ""
-    state_frame = _state_frame(membrane_frame, state_id)
+    state_id, state_frame, selection_warnings = _select_membrane_state_frame(
+        membrane_frame,
+        states,
+        roles,
+    )
+    warnings.extend(selection_warnings)
     if center is None:
         return _row(family, "missing", "missing", center, None, None, None, "not_evaluable", False, None, False, "pocket_centroid_missing", ["missing_pocket_center"])
     if state_frame is None:
@@ -62,7 +66,8 @@ def evaluate_membrane_geometry(
     z_value = _dot(_sub(center, origin), normal)
     z_min, z_max = receptor_z_ranges.get(state_id, (z_value, z_value))
     z_percentile = 0.5 if z_max == z_min else max(0.0, min(1.0, (z_value - z_min) / (z_max - z_min)))
-    lower_sign = _lower_direction_sign(membrane_frame, state_frame)
+    lower_sign, lower_sign_warnings = _lower_direction_sign(membrane_frame, state_frame, normal, origin)
+    warnings.extend(lower_sign_warnings)
     if lower_sign is None:
         warnings.append("membrane_lower_direction_ambiguous")
         lower_pass = False
@@ -70,7 +75,7 @@ def evaluate_membrane_geometry(
     else:
         lower_pass = (z_value * lower_sign) >= thresholds["lower_z_minimum"]
         lower_class = "lower_or_membrane_proximal" if lower_pass else "upper_or_core"
-    lateral_score = _lateral_score(center, state_frame, protomer_id, normal)
+    lateral_score = _best_lateral_score(center, state_frame, protomers, normal, warnings)
     if lateral_score is None:
         warnings.append("lateral_score_unavailable")
     lateral_pass = lateral_score is not None and lateral_score >= thresholds["lateral_score_pass_threshold"]
@@ -102,6 +107,75 @@ def _state_frame(membrane_frame: dict[str, Any] | None, state_id: str) -> dict[s
     return membrane_frame
 
 
+def _select_membrane_state_frame(
+    membrane_frame: dict[str, Any] | None,
+    state_ids: list[str],
+    state_roles: list[str],
+) -> tuple[str, dict[str, Any] | None, list[str]]:
+    if not state_ids:
+        return "", _state_frame(membrane_frame, ""), []
+
+    candidates: list[tuple[int, str, str, dict[str, Any] | None]] = []
+    for index, state_id in enumerate(state_ids):
+        role = state_roles[index] if index < len(state_roles) else ""
+        candidates.append((index, state_id, role, _state_frame(membrane_frame, state_id)))
+
+    selected: tuple[int, str, str, dict[str, Any] | None] | None = None
+    for candidate in candidates:
+        _index, state_id, role, frame = candidate
+        if _frame_has_membrane_normal(frame) and _is_primary_membrane_frame(state_id, role, frame):
+            selected = candidate
+            break
+    if selected is None:
+        for candidate in candidates:
+            if _frame_has_membrane_normal(candidate[3]):
+                selected = candidate
+                break
+    if selected is None:
+        for candidate in candidates:
+            if candidate[3] is not None:
+                selected = candidate
+                break
+    if selected is None:
+        return state_ids[0], None, []
+
+    first = candidates[0]
+    warnings: list[str] = []
+    if selected[0] != first[0]:
+        if _is_reference_frame(first[1], first[2], first[3]):
+            warnings.append("reference_state_skipped_for_membrane_frame:{0}".format(first[1]))
+        else:
+            warnings.append("non_membrane_state_skipped_for_membrane_frame:{0}".format(first[1]))
+    return selected[1], selected[3], warnings
+
+
+def _frame_has_membrane_normal(frame: dict[str, Any] | None) -> bool:
+    return frame is not None and _vector(frame.get("n_membrane")) is not None
+
+
+def _is_primary_membrane_frame(state_id: str, role: str, frame: dict[str, Any] | None) -> bool:
+    frame_role = str((frame or {}).get("role", "")).lower()
+    frame_status = str((frame or {}).get("status", "")).lower()
+    role_text = str(role).lower()
+    state_text = str(state_id).lower()
+    if state_text == "3gt8_raw" or "reference" in frame_role or "reference" in frame_status:
+        return False
+    return "primary" in role_text or "primary" in frame_role or state_text.startswith("egfr_")
+
+
+def _is_reference_frame(state_id: str, role: str, frame: dict[str, Any] | None) -> bool:
+    frame_role = str((frame or {}).get("role", "")).lower()
+    frame_status = str((frame or {}).get("status", "")).lower()
+    role_text = str(role).lower()
+    state_text = str(state_id).lower()
+    return (
+        "reference" in frame_role
+        or "reference" in frame_status
+        or state_text == "3gt8_raw"
+        or (not frame_role and "reference" in role_text)
+    )
+
+
 def _vector(value: Any) -> tuple[float, float, float] | None:
     if not isinstance(value, list) or len(value) != 3:
         return None
@@ -131,15 +205,41 @@ def _project(value: tuple[float, float, float], normal: tuple[float, float, floa
     return (value[0] - scale * normal[0], value[1] - scale * normal[1], value[2] - scale * normal[2])
 
 
-def _lower_direction_sign(membrane_frame: dict[str, Any] | None, state_frame: dict[str, Any]) -> float | None:
+def _lower_direction_sign(
+    membrane_frame: dict[str, Any] | None,
+    state_frame: dict[str, Any],
+    normal: tuple[float, float, float],
+    origin: tuple[float, float, float],
+) -> tuple[float | None, list[str]]:
     for key in ("lower_direction_sign", "cytosolic_direction_sign"):
         value = safe_float(state_frame.get(key))
         if value is not None:
-            return 1.0 if value >= 0 else -1.0
+            return (1.0 if value >= 0 else -1.0), []
+    inferred = _infer_lower_direction_sign_from_frame(state_frame, normal, origin)
+    if inferred is not None:
+        return inferred, ["lower_direction_inferred_from_receptor_centroids"]
     convention = str((membrane_frame or {}).get("coordinate_convention", "")).lower()
     if "cytosolic" in convention or "intracellular" in convention:
-        return 1.0
-    return None
+        return 1.0, []
+    return None, []
+
+
+def _infer_lower_direction_sign_from_frame(
+    state_frame: dict[str, Any],
+    normal: tuple[float, float, float],
+    origin: tuple[float, float, float],
+) -> float | None:
+    projections: list[float] = []
+    for key in ("protomer_a_centroid", "protomer_b_centroid"):
+        centroid = _vector(state_frame.get(key))
+        if centroid is not None:
+            projections.append(_dot(_sub(centroid, origin), normal))
+    if not projections:
+        return None
+    mean_projection = sum(projections) / len(projections)
+    if abs(mean_projection) < 1e-6:
+        return None
+    return 1.0 if mean_projection >= 0.0 else -1.0
 
 
 def _lateral_score(
@@ -164,6 +264,31 @@ def _lateral_score(
     except ValueError:
         return None
     return _dot(outward_n, pocket_n)
+
+
+def _best_lateral_score(
+    center: tuple[float, float, float],
+    state_frame: dict[str, Any],
+    protomer_ids: list[str],
+    normal: tuple[float, float, float],
+    warnings: list[str],
+) -> float | None:
+    candidates = [protomer for protomer in protomer_ids if protomer in {"A", "B"}]
+    if not candidates and any(protomer.lower() in {"multi_protomer", "multi"} for protomer in protomer_ids):
+        candidates = ["A", "B"]
+        warnings.append("multi_protomer_lateral_score_evaluated_against_A_B")
+    if not candidates:
+        return None
+    scores = [
+        score
+        for score in (_lateral_score(center, state_frame, protomer, normal) for protomer in candidates)
+        if score is not None
+    ]
+    if not scores:
+        return None
+    if len(candidates) > 1:
+        warnings.append("multi_protomer_lateral_score_max_of_A_B")
+    return max(scores)
 
 
 def _row(

@@ -231,6 +231,45 @@ def write_m2_package(
     return m2_dir
 
 
+def write_m2_run_local_receptor_inputs(m2_dir, state="EGFR_160-185"):
+    receptor_dir = m2_dir / "prepared" / "m2_1_ppi_inputs" / state / "receptor"
+    receptor_dir.mkdir(parents=True, exist_ok=True)
+    (receptor_dir / f"{state}_runtime_offset_receptor_only.pdb").write_text(
+        "ATOM      1  CA  GLY A 900       1.000   2.000   3.000  1.00 20.00           C\n"
+        "ATOM      2  CA  GLY B 900       4.000   5.000   6.000  1.00 20.00           C\n",
+        encoding="utf-8",
+    )
+    write_csv(
+        m2_dir / "qc" / f"{state}_receptor_mapping.csv",
+        ["state_id", "egfr_chain_id", "egfr_protomer_id", "receptor_residue_number", "uniprot_residue_number"],
+        [
+            {
+                "state_id": state,
+                "egfr_chain_id": "A",
+                "egfr_protomer_id": "A",
+                "receptor_residue_number": "900",
+                "uniprot_residue_number": "900",
+            }
+        ],
+    )
+
+
+def write_m2_final_status_allows_m3(m2_dir):
+    final = m2_dir / "phase2_pockets" / "final"
+    final.mkdir(parents=True, exist_ok=True)
+    (final / "m2_final_status.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "m2_8_final_status_v1",
+                "m3_docking_allowed": True,
+                "synthetic_fixture": False,
+                "blockers": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_m3_readiness_valid_minimal_inputs_pass_in_docking_mode(tmp_path):
     ctx = make_ctx(tmp_path)
     write_m1_inputs(ctx.fresh_root)
@@ -351,6 +390,30 @@ def test_m3_readiness_missing_m2_review_blocks_docking_mode(tmp_path):
 
     assert result.status == "FAIL"
     assert any("M2 review status file not found" in item for item in result.blockers)
+
+
+def test_m3_readiness_uses_m2_final_status_and_run_local_receptor_inputs(tmp_path):
+    ctx = make_ctx(tmp_path)
+    write_ligands(ctx.fresh_root)
+    m2_dir = write_m2_package(ctx.fresh_root)
+    (m2_dir / "reviews" / "m2_review_status.json").unlink()
+    write_m2_final_status_allows_m3(m2_dir)
+    write_m2_run_local_receptor_inputs(m2_dir)
+    manifest = m2_dir / "manifest"
+    manifest.mkdir(parents=True, exist_ok=True)
+    (manifest / "membrane_frame.json").write_text('{"frame_id":"run-local","normal":[0,0,1]}\n', encoding="utf-8")
+
+    result = run_m3_readiness(ctx, "m2_run", mode="docking")
+    summary = read_json(result.summary_json)
+
+    assert result.status == "PASS"
+    assert result.m3_docking_allowed is True
+    assert not summary["blockers"]
+    checks = read_csv(result.report_csv)
+    assert any(row["check_id"] == "M2_REVIEW_STATUS" and row["status"] == "PASS" for row in checks)
+    assert summary["inputs"]["receptor_mappings"]["EGFR_160-185"]["runtime"]["path"].endswith(
+        "prepared/m2_1_ppi_inputs/EGFR_160-185/receptor/EGFR_160-185_runtime_offset_receptor_only.pdb"
+    )
 
 
 def test_m3_readiness_honors_m3_primary_allow_flag(tmp_path):

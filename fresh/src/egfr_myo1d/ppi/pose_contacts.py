@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -85,6 +86,7 @@ class PoseContactExtractionReport:
     pose_count: int = 0
     raw_contact_count: int = 0
     accepted_pose_count: int = 0
+    worker_count: int = 1
     warnings: list[str] = field(default_factory=list)
     blockers: list[str] = field(default_factory=list)
     raw_contact_table: Path | None = None
@@ -369,6 +371,31 @@ def extract_pose_contacts(
     return rows, warnings
 
 
+def _extract_pose_contacts_task(args: tuple[Any, ...]) -> tuple[list[dict[str, Any]], list[str], bool]:
+    (
+        ctx,
+        pose_file,
+        job,
+        contact_cutoff_angstrom,
+        partner_chain,
+        min_contacts_for_acceptance,
+        score,
+        egfr_contact_filter,
+    ) = args
+    pose_rows, pose_warnings = extract_pose_contacts(
+        ctx=ctx,
+        pose_pdb=pose_file,
+        job=job,
+        contact_cutoff_angstrom=contact_cutoff_angstrom,
+        partner_chain=partner_chain,
+        min_contacts_for_acceptance=min_contacts_for_acceptance,
+        score=score,
+        egfr_contact_filter=egfr_contact_filter,
+    )
+    accepted = any(row.get("accepted_pose_flag") == "true" for row in pose_rows)
+    return pose_rows, pose_warnings, accepted
+
+
 def _load_jobs(ctx: RunContext, job_manifest: Path | None) -> tuple[list[dict[str, Any]], Path, list[str]]:
     path = _resolve_run_path(ctx, job_manifest, DEFAULT_JOB_MANIFEST)
     if not path.is_file():
@@ -435,6 +462,7 @@ def _write_summary(ctx: RunContext, report: PoseContactExtractionReport) -> Path
         "Pose PDBs parsed: {0}".format(report.pose_count),
         "Raw contact rows: {0}".format(report.raw_contact_count),
         "Accepted pose count: {0}".format(report.accepted_pose_count),
+        "Worker count: {0}".format(report.worker_count),
         "",
         "This phase parses existing posed complex PDB files only. It does not run docking, relaxation, or scoring.",
         "",
@@ -465,6 +493,7 @@ def extract_m2_pose_contacts(
     contact_cutoff_angstrom: float = 6.0,
     partner_chain: str = "C",
     min_contacts_for_acceptance: int = 1,
+    workers: int = 1,
 ) -> PoseContactExtractionReport:
     """Build an M2.3-compatible raw contact table from run-local pose PDBs."""
 
@@ -477,11 +506,12 @@ def extract_m2_pose_contacts(
     )
     output_path = _resolve_run_path(ctx, output_csv, DEFAULT_RAW_CONTACT_TABLE)
     egfr_contact_filter = _load_egfr_contact_filter(ctx)
+    worker_count = max(1, int(workers))
 
     rows: list[dict[str, Any]] = []
     warnings: list[str] = list(egfr_contact_filter.warnings)
-    pose_count = 0
-    accepted_pose_ids: set[tuple[str, str]] = set()
+    tasks: list[tuple[Any, ...]] = []
+    task_ids: list[tuple[str, str]] = []
     for job in jobs:
         pose_files = _pose_files_for_job(ctx, job, resolved_pose_root)
         if not pose_files:
@@ -489,21 +519,33 @@ def extract_m2_pose_contacts(
             continue
         score_by_pose_id = _score_by_pose_id_for_job(ctx, job)
         for pose_file in pose_files:
-            pose_count += 1
-            pose_rows, pose_warnings = extract_pose_contacts(
-                ctx=ctx,
-                pose_pdb=pose_file,
-                job=job,
-                contact_cutoff_angstrom=contact_cutoff_angstrom,
-                partner_chain=partner_chain,
-                min_contacts_for_acceptance=min_contacts_for_acceptance,
-                score=score_by_pose_id.get(pose_file.stem, ""),
-                egfr_contact_filter=egfr_contact_filter,
+            tasks.append(
+                (
+                    ctx,
+                    pose_file,
+                    job,
+                    contact_cutoff_angstrom,
+                    partner_chain,
+                    min_contacts_for_acceptance,
+                    score_by_pose_id.get(pose_file.stem, ""),
+                    egfr_contact_filter,
+                )
             )
-            rows.extend(pose_rows)
-            warnings.extend(pose_warnings)
-            if any(row.get("accepted_pose_flag") == "true" for row in pose_rows):
-                accepted_pose_ids.add((str(job.get("job_name", "")), pose_file.stem))
+            task_ids.append((str(job.get("job_name", "")), pose_file.stem))
+
+    accepted_pose_ids: set[tuple[str, str]] = set()
+    if worker_count == 1 or len(tasks) <= 1:
+        results = [_extract_pose_contacts_task(task) for task in tasks]
+    else:
+        chunk_size = max(1, len(tasks) // (worker_count * 4))
+        with ProcessPoolExecutor(max_workers=worker_count) as pool:
+            results = list(pool.map(_extract_pose_contacts_task, tasks, chunksize=chunk_size))
+    for task_id, (pose_rows, pose_warnings, accepted) in zip(task_ids, results):
+        rows.extend(pose_rows)
+        warnings.extend(pose_warnings)
+        if accepted:
+            accepted_pose_ids.add(task_id)
+    pose_count = len(tasks)
 
     for required in RAW_CONTACT_REQUIRED_FIELDS:
         if required not in RAW_CONTACT_FIELDS:
@@ -552,6 +594,7 @@ def extract_m2_pose_contacts(
         pose_count=pose_count,
         raw_contact_count=len(rows),
         accepted_pose_count=len(accepted_pose_ids),
+        worker_count=worker_count,
         warnings=sorted(set(warnings)),
         blockers=blockers,
         raw_contact_table=output_path,
@@ -583,6 +626,7 @@ def extract_m2_pose_contacts(
         "pose_count": pose_count,
         "raw_contact_count": len(rows),
         "accepted_pose_count": len(accepted_pose_ids),
+        "worker_count": worker_count,
         "outputs": {
             "raw_contact_table": _repo_path(ctx, output_path),
             "qc_csv": _repo_path(ctx, qc_path),

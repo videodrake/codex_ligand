@@ -105,6 +105,24 @@ def test_m2_2_harness_allows_explicit_models_per_seed_override(ctx_with_m2_1):
     assert {job.models_per_seed for job in report.jobs} == {20000}
 
 
+def test_m2_2_harness_allows_independent_seed_window_override(ctx_with_m2_1):
+    report = generate_pyrosetta_harness(
+        ctx_with_m2_1,
+        mode="production",
+        models_per_seed_override=1000,
+        seed_start_override=10,
+        seed_count_override=10,
+    )
+
+    assert report.status in {"PASS", "PASS_WITH_WARNINGS"}
+    assert len(report.jobs) == 20
+    assert {job.seed for job in report.jobs} == set(range(10, 20))
+    payload = read_json(report.manifest_path)
+    assert payload["seed_start"] == 10
+    assert payload["seed_count"] == 10
+    assert payload["seeds"] == list(range(10, 20))
+
+
 def test_m2_2_dry_run_job_writes_status_without_pyrosetta_execution(ctx_with_m2_1):
     report = generate_pyrosetta_harness(ctx_with_m2_1, mode="smoke_input")
     job_name = report.jobs[0].job_name

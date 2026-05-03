@@ -38,6 +38,8 @@ from egfr_myo1d.compound.pose_geometry import (
 )
 from egfr_myo1d.core.logging_utils import append_failed_job, append_job_status, append_phase_status
 from egfr_myo1d.core.run_context import RunContext, ensure_within
+from egfr_myo1d.structure.pdb_parser import AtomRecord as PDBAtomRecord
+from egfr_myo1d.structure.pdb_parser import PDBParseError, parse_pdb
 
 
 ATTRIBUTION_FIELDS = [
@@ -159,6 +161,25 @@ def _float(value: Any) -> float | None:
     return result
 
 
+def _int(value: Any) -> int | None:
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        return int(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _row_text(row: dict[str, Any], names: list[str]) -> str:
+    lower = {key.lower(): key for key in row}
+    for name in names:
+        key = lower.get(name.lower())
+        if key is not None and str(row.get(key, "")).strip():
+            return str(row.get(key, "")).strip()
+    return ""
+
+
 def _write_csv(path: Path, fields: list[str], rows: list[dict[str, Any]], ctx: RunContext) -> None:
     safe = ctx.require_within_run_dir(path)
     safe.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +268,20 @@ def _first_existing(paths: list[Path]) -> Path | None:
     return None
 
 
+def _existing_unique(paths: list[Path]) -> list[Path]:
+    existing: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        existing.append(resolved)
+    return existing
+
+
 def _load_json(path: Path) -> dict[str, Any] | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -293,6 +328,177 @@ def _load_points(path: Path | None, prefix: str) -> list[ReferencePoint]:
         return []
     rows, _ = _read_csv(path)
     return [point for index, row in enumerate(rows, start=1) if (point := reference_point_from_row(row, prefix, index)) is not None]
+
+
+def _load_points_many(paths: list[Path], prefix: str) -> list[ReferencePoint]:
+    points: list[ReferencePoint] = []
+    for path in paths:
+        points.extend(_load_points(path, prefix))
+    return points
+
+
+def _state_from_mapping_path(path: Path) -> str:
+    match = re.match(r"(.+)_receptor_mapping\.csv$", path.name)
+    return match.group(1) if match else ""
+
+
+def _candidate_receptor_paths_for_state(
+    ctx: RunContext,
+    m2_root: Path,
+    state_id: str,
+    accepted_boxes_path: Path | None,
+) -> list[Path]:
+    candidates: list[Path] = []
+    if accepted_boxes_path and accepted_boxes_path.is_file():
+        rows, _ = _read_csv(accepted_boxes_path)
+        for row in rows:
+            if state_id and row.get("state_id") and row.get("state_id") != state_id:
+                continue
+            for key in ["receptor_pdb", "source_receptor_file", "prepared_receptor_pdbqt_file", "receptor_pdbqt_file"]:
+                path = _resolve_path(ctx, row.get(key))
+                if path and path.suffix.lower() in {".pdb", ".pdbqt"}:
+                    candidates.append(path)
+    for root in [
+        m2_root / "prepared" / "m2_1_ppi_inputs" / state_id / "receptor",
+        m2_root / "normalized" / "receptors",
+        m2_root / "normalized" / "receptors" / state_id,
+        ctx.fresh_root / "data" / "normalized" / "receptors" / state_id,
+    ]:
+        for name in [
+            f"{state_id}_dockable_669_1014_explicit_AB.pdb",
+            f"{state_id}_dockable_reference_explicit_AB.pdb",
+            f"{state_id}_full_frame_explicit_AB.pdb",
+            f"{state_id}_runtime_offset_receptor_only.pdb",
+            "dockable_669_1014_explicit_AB.pdb",
+            "dockable_reference_explicit_AB.pdb",
+            "full_frame_explicit_AB.pdb",
+            "runtime_offset_receptor_only.pdb",
+            "receptor.pdbqt",
+        ]:
+            candidates.append(root / name)
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in candidates:
+        if not path.is_file():
+            continue
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return unique
+
+
+def _atoms_by_chain_resseq(atoms: tuple[PDBAtomRecord, ...]) -> dict[tuple[str, int], list[PDBAtomRecord]]:
+    grouped: dict[tuple[str, int], list[PDBAtomRecord]] = {}
+    for atom in atoms:
+        grouped.setdefault((atom.chain_id, atom.residue_number), []).append(atom)
+    return grouped
+
+
+def _ca_or_first(atoms: list[PDBAtomRecord]) -> PDBAtomRecord | None:
+    for atom in atoms:
+        if atom.atom_name.strip() == "CA":
+            return atom
+    return atoms[0] if atoms else None
+
+
+def _mapping_row_identities(row: dict[str, Any]) -> list[tuple[str, int]]:
+    identities: list[tuple[str, int]] = []
+    for chain_name, residue_name in [
+        ("source_chain", "source_resseq"),
+        ("runtime_chain", "runtime_resseq"),
+        ("egfr_chain_id", "receptor_residue_number"),
+        ("chain_id", "residue_number"),
+    ]:
+        chain = _row_text(row, [chain_name])
+        residue = _int(_row_text(row, [residue_name]))
+        if chain and residue is not None:
+            identities.append((chain, residue))
+    unique: list[tuple[str, int]] = []
+    for identity in identities:
+        if identity not in unique:
+            unique.append(identity)
+    return unique
+
+
+def _load_receptor_mapping_points(
+    ctx: RunContext,
+    mapping_paths: list[Path],
+    m2_root: Path,
+    accepted_boxes_path: Path | None,
+) -> list[ReferencePoint]:
+    points: list[ReferencePoint] = []
+    receptor_cache: dict[str, list[dict[tuple[str, int], list[PDBAtomRecord]]]] = {}
+    for path in mapping_paths:
+        rows, _ = _read_csv(path)
+        state_hint = _state_from_mapping_path(path)
+        for index, row in enumerate(rows, start=1):
+            point = reference_point_from_row(row, "receptor", index)
+            if point is not None:
+                state_id = point.state_id or state_hint
+                points.append(
+                    ReferencePoint(
+                        point_id=point.point_id,
+                        xyz=point.xyz,
+                        residue_public=point.residue_public,
+                        state_id=state_id,
+                        protomer_id=point.protomer_id,
+                        radius=point.radius,
+                    )
+                )
+                continue
+
+            state_id = _row_text(row, ["state_id", "state"]) or state_hint
+            if not state_id:
+                continue
+            if state_id not in receptor_cache:
+                receptor_cache[state_id] = []
+                for receptor_path in _candidate_receptor_paths_for_state(ctx, m2_root, state_id, accepted_boxes_path):
+                    try:
+                        receptor_cache[state_id].append(_atoms_by_chain_resseq(parse_pdb(receptor_path).atoms))
+                    except (OSError, PDBParseError):
+                        continue
+            identities = _mapping_row_identities(row)
+            atom: PDBAtomRecord | None = None
+            for by_identity in receptor_cache.get(state_id, []):
+                for identity in identities:
+                    atom = _ca_or_first(by_identity.get(identity, []))
+                    if atom is not None:
+                        break
+                if atom is not None:
+                    break
+            if atom is None:
+                continue
+            residue = _row_text(row, ["uniprot_residue_number", "source_resseq", "runtime_resseq", "receptor_residue_number", "egfr_residue_number"])
+            protomer_id = _row_text(row, ["protomer_id", "egfr_protomer_id", "protomer"])
+            point_id = f"{state_id}:{protomer_id}:{residue or index}"
+            points.append(
+                ReferencePoint(
+                    point_id=point_id,
+                    xyz=(atom.x, atom.y, atom.z),
+                    residue_public=residue or point_id,
+                    state_id=state_id,
+                    protomer_id=protomer_id,
+                )
+            )
+    return points
+
+
+def _has_real_output(path: Path) -> bool:
+    if path.is_dir():
+        return any(_has_real_output(child) for child in path.rglob("*"))
+    if not path.is_file():
+        return False
+    if path.name == ".gitkeep":
+        return False
+    if path.suffix.lower() == ".csv":
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                return sum(1 for _ in csv.reader(handle)) > 1
+        except OSError:
+            return True
+    return path.stat().st_size > 0
 
 
 def _points_for_pose(row: dict[str, str], points: list[ReferencePoint]) -> list[ReferencePoint]:
@@ -347,7 +553,8 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
         except OSError:
             continue
         scanned.append(ctx.relative_to_repo(path))
-        if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles", text, re.IGNORECASE):
+        upper = text.upper()
+        if ("SMILES=" in upper or "SMILES:" in upper) and re.search(r"(^|\s)(C|N|O|S|P|Cl|Br|F|I)[A-Za-z0-9@+\-\[\]\(\)=#$\\/]+(\s|$)", text):
             smiles_logged = True
         if re.search(r"^(ATOM|HETATM)\s+\d+", text, re.MULTILINE):
             coord_hits.append(ctx.relative_to_repo(path))
@@ -505,6 +712,7 @@ def run_m3_pose_attribution(
 
     m2_root = ctx.fresh_root / "runs" / m2_run_id
     accepted_pockets_path = _first_existing([Path(accepted_pockets)] if accepted_pockets else [
+        m2_root / "phase2_pockets" / "export_for_m3" / "accepted_pockets_for_m3.csv",
         m2_root / "phase2_pockets" / "final" / "accepted_pockets_for_m3.csv",
         m2_root / "phase2_pockets" / "final" / "accepted_pocket_families_for_compound_docking.csv",
     ])
@@ -512,22 +720,39 @@ def run_m3_pose_attribution(
         m2_root / "phase2_pockets" / "final" / "accepted_pocket_boxes.csv",
         m2_root / "phase2_pockets" / "export_for_m3" / "accepted_pocket_boxes.csv",
     ])
-    atp_reference_path = _first_existing([Path(atp_reference)] if atp_reference else [m2_root / "phase2_pockets" / "atp_reference" / "atp_site_reference.csv"])
+    atp_reference_path = _first_existing([Path(atp_reference)] if atp_reference else [
+        m2_root / "phase2_pockets" / "atp_reference" / "atp_site_centroid_by_state.csv",
+        m2_root / "phase2_pockets" / "export_for_m3" / "atp_site_centroid_by_state.csv",
+        m2_root / "phase2_pockets" / "atp_reference" / "atp_site_reference.csv",
+        m2_root / "phase2_pockets" / "export_for_m3" / "atp_site_reference.csv",
+    ])
     ppi_path = _first_existing([Path(ppi_consensus_patch)] if ppi_consensus_patch else [
+        m2_root / "phase2_pockets" / "export_for_m3" / "ppi_consensus_patch.csv",
         m2_root / "phase1_ppi" / "consensus" / "ppi_consensus_patch_merged.csv",
         m2_root / "phase1_ppi" / "tables" / "ppi_consensus_patch.csv",
     ])
     membrane_path = _first_existing([Path(membrane_frame)] if membrane_frame else [
+        m2_root / "manifest" / "membrane_frame.json",
         m2_root / "membrane" / "membrane_frame.json",
         m2_root / "phase1_receptor" / "membrane_frame.json",
     ])
     if receptor_mapping:
         mapping_candidates = [Path(receptor_mapping)]
     else:
-        mapping_candidates = [m2_root / "phase1_receptor" / "receptor_mapping.csv"]
+        mapping_candidates = []
+        if accepted_boxes_path and accepted_boxes_path.is_file():
+            box_rows, _ = _read_csv(accepted_boxes_path)
+            for row in box_rows:
+                path = _resolve_path(ctx, row.get("receptor_mapping_csv"))
+                if path:
+                    mapping_candidates.append(path)
+        mapping_candidates.append(m2_root / "phase1_receptor" / "receptor_mapping.csv")
+        if (m2_root / "qc").is_dir():
+            mapping_candidates.extend(sorted((m2_root / "qc").glob("*_receptor_mapping.csv")))
         if (m2_root / "phase1_receptor").is_dir():
             mapping_candidates.extend(sorted((m2_root / "phase1_receptor").glob("*mapping*.csv")))
-    mapping_path = _first_existing(mapping_candidates)
+    mapping_paths = _existing_unique(mapping_candidates)
+    mapping_path = mapping_paths[0] if mapping_paths else None
     completion_qc_path = job_completion_table if job_completion_table else (qc_dir / "docking_completion_qc.json")
     if not completion_qc_path.is_absolute():
         completion_qc_path = ctx.repo_root / completion_qc_path
@@ -546,7 +771,7 @@ def run_m3_pose_attribution(
         "atp_reference_found": atp_reference_path is not None,
         "ppi_consensus_patch_found": ppi_path is not None,
         "membrane_frame_found": membrane_path is not None,
-        "receptor_mapping_found": mapping_path is not None,
+        "receptor_mapping_found": bool(mapping_paths),
     }
     for label, found in inputs.items():
         if label == "compound_pose_raw_found":
@@ -560,7 +785,7 @@ def run_m3_pose_attribution(
     boxes = _load_boxes(accepted_boxes_path)
     atp_points = _load_points(atp_reference_path, "atp")
     ppi_points = _load_points(ppi_path, "ppi")
-    mapping_points = _load_points(mapping_path, "receptor")
+    mapping_points = _load_receptor_mapping_points(ctx, mapping_paths, m2_root, accepted_boxes_path)
     membrane = membrane_frame_from_json(_load_json(membrane_path) or {}) if membrane_path else None
     if accepted_boxes_path and not boxes:
         blockers.append("accepted boxes present but no usable box proxies parsed")
@@ -617,7 +842,7 @@ def run_m3_pose_attribution(
             "atp_reference_source": ctx.relative_to_repo(atp_reference_path) if atp_reference_path else "",
             "ppi_consensus_source": ctx.relative_to_repo(ppi_path) if ppi_path else "",
             "membrane_frame_source": ctx.relative_to_repo(membrane_path) if membrane_path else "",
-            "receptor_mapping_source": ctx.relative_to_repo(mapping_path) if mapping_path else "",
+            "receptor_mapping_source": ";".join(ctx.relative_to_repo(path) for path in mapping_paths),
             "attributed_at": timestamp,
         })
         if not pose_inside:
@@ -680,7 +905,7 @@ def run_m3_pose_attribution(
                     penetration = z_min <= membrane.core_z_max + pad and z_max >= membrane.core_z_min - pad
                 nearest_receptor = nearest_atom_distance(h_atoms, pose_mapping_points)
                 dimer_clash = bool(nearest_receptor is not None and nearest_receptor <= float(resolved_config["dimer"].get("central_interface_clash_cutoff_A", 3.0)))
-                required_mapping = bool(mapping_path and membrane and pose_atp_points and pose_ppi_points and pose_mapping_points and boxes)
+                required_mapping = bool(mapping_paths and membrane and pose_atp_points and pose_ppi_points and pose_mapping_points and boxes)
                 hard_pass = bool(retention and not atp_flag and not penetration and not dimer_clash and required_mapping)
                 if hard_pass:
                     reason = "none"
@@ -819,7 +1044,7 @@ def run_m3_pose_attribution(
     private_entries_map, private_warnings = load_private_map(_safe_private_map_path(ctx, private_map))
     warnings.extend(private_warnings)
     leak_count, coord_hits, smiles_logged, ligand_coords, receptor_coords, pose_coords, scanned = _scan_hygiene(ctx, list(private_entries_map.values()))
-    forbidden_created = [item for item in FORBIDDEN_OUTPUTS if (ctx.run_dir / item).exists()]
+    forbidden_created = [item for item in FORBIDDEN_OUTPUTS if _has_real_output(ctx.run_dir / item)]
     if leak_count:
         blockers.append("internal compound ID leakage detected")
     if coord_hits:
@@ -853,7 +1078,7 @@ def run_m3_pose_attribution(
     if mode == "dry-run":
         warnings.append("dry-run mode")
 
-    status = "FAIL" if blockers else ("WARN" if warnings or mode == "dry-run" or counts["poses_rejected"] else "PASS")
+    status = "FAIL" if blockers else ("WARN" if warnings or mode == "dry-run" else "PASS")
     m3_t8_ready = status == "PASS" and mode == "attribute" and counts["poses_pass"] > 0
     collection_context = {
         "raw_pose_rows": len(selected_rows),

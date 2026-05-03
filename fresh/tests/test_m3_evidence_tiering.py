@@ -206,6 +206,22 @@ def test_synthetic_multi_compound_primary_support_becomes_tier1_without_affinity
     assert len(evidence) >= 2
 
 
+def test_prior_smiles_diagnostics_and_neutral_candidate_terms_do_not_block(tmp_path):
+    ctx = make_ctx(tmp_path)
+    write_m2(ctx)
+    write_m3(ctx, [support_row("Cpd-A", support_id="support_1"), support_row("Cpd-B", support_id="support_2")], [anchor_row()])
+    (ctx.errors_dir / "error_summary.txt").write_text("previous blocker: SMILES printed in public outputs/logs\n", encoding="utf-8")
+    report = ctx.run_dir / "phase3_compounds" / "reports" / "old_report.md"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("final candidate hypotheses table was generated for computational review only\n", encoding="utf-8")
+
+    result = run_m3_evidence_tiering(ctx, m2_run_id="m2_run", profile="mini")
+
+    assert result.status == "PASS"
+    assert not any("SMILES printed" in item for item in result.blockers)
+    assert not any("candidate overclaim" in item for item in result.blockers)
+
+
 def test_missing_anchor_qc_and_not_ready_fail_unless_partial(tmp_path):
     ctx = make_ctx(tmp_path / "missing_qc")
     write_m2(ctx)

@@ -147,12 +147,11 @@ def patch_vina_success(monkeypatch, ctx):
 
     def fake_run(argv, stdout_file, stderr_file, timeout_seconds, now_iso):
         assert (ctx.run_dir / "phase3_compounds" / "manifests" / "vina_smoke_manifest.csv").is_file()
+        assert "--log" not in argv
         out = Path(argv[argv.index("--out") + 1])
-        log = Path(argv[argv.index("--log") + 1])
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(POSE_PDBQT, encoding="utf-8")
-        log.write_text("mode | affinity | dist\n1 -7.0 0.0\n", encoding="utf-8")
-        stdout_file.write_text("Vina completed\n", encoding="utf-8")
+        stdout_file.write_text("mode | affinity | dist\n1 -7.0 0.0\n", encoding="utf-8")
         stderr_file.write_text("", encoding="utf-8")
         return VinaRunResult(True, 0, False, now_iso(), now_iso(), 0.01)
 
@@ -189,6 +188,26 @@ def test_run_mode_invokes_exactly_one_mocked_vina_and_validates_outputs(tmp_path
     assert rows[0]["affinity_table_detected"] == "true"
     assert Path(ctx.repo_root / rows[0]["stdout_file"]).is_file()
     assert Path(ctx.repo_root / rows[0]["stderr_file"]).is_file()
+
+
+def test_readiness_skeleton_gitkeep_does_not_count_as_forbidden_output(tmp_path, monkeypatch):
+    ctx = make_ctx(tmp_path)
+    write_inputs(ctx)
+    for rel in [
+        "docking_inputs/production",
+        "docking_outputs/focused_pocket_first/production",
+        "docking_outputs/broad_anchor_scan_optional",
+        "vina_raw/production",
+    ]:
+        directory = ctx.run_dir / "phase3_compounds" / rel
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / ".gitkeep").write_text("", encoding="utf-8")
+    patch_vina_success(monkeypatch, ctx)
+
+    result = run_m3_vina_smoke(ctx, "m2_run")
+
+    assert result.status == "PASS"
+    assert "production/broad/pose/candidate outputs created" not in result.blockers
 
 
 def test_deterministic_and_explicit_selection(tmp_path, monkeypatch):
@@ -342,7 +361,7 @@ def test_invalid_vina_outputs_block_pass(tmp_path, monkeypatch):
     assert result.status == "FAIL"
     assert result.m3_t5_allowed is False
     assert any("minimal pose" in blocker for blocker in result.blockers)
-    assert any("Vina log missing" in blocker for blocker in result.blockers)
+    assert not any("Vina log missing" in blocker for blocker in result.blockers)
 
 
 def test_no_forbidden_outputs_or_public_coordinate_leaks(tmp_path, monkeypatch):

@@ -397,6 +397,13 @@ def _load_hpc_defaults(ctx: RunContext) -> dict[str, Any]:
     }
 
 
+def _expand_shell_path(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith("~"):
+        return str(Path(text).expanduser())
+    return text
+
+
 def _default_profile_values(ctx: RunContext, profile: str, args: dict[str, Any]) -> dict[str, Any]:
     hpc = _load_hpc_defaults(ctx)
     defaults = {
@@ -421,6 +428,8 @@ def _default_profile_values(ctx: RunContext, profile: str, args: dict[str, Any])
     values["cpu_per_vina"] = int(args.get("cpu_per_vina") or 1)
     values["base_seed"] = int(args.get("base_seed") or 20260427)
     values["thread_limits"] = {key: 1 for key in THREAD_ENV_KEYS}
+    values["conda_sh"] = _expand_shell_path(values["conda_sh"])
+    values["python_executable"] = _expand_shell_path(values["python_executable"]) or "python"
     return values
 
 
@@ -603,9 +612,15 @@ def _chunk_id(profile: str, state_id: str, family: str) -> str:
 
 def _planned_forbidden_outputs(ctx: RunContext) -> list[str]:
     hits: list[str] = []
+
+    def is_real_output(path: Path) -> bool:
+        return path.is_file() and path.name != ".gitkeep"
+
     for rel in FORBIDDEN_OUTPUTS:
         path = ctx.run_dir / rel
-        if path.exists():
+        if path.is_file():
+            hits.append(ctx.relative_to_repo(path))
+        elif path.is_dir() and any(is_real_output(child) for child in path.rglob("*")):
             hits.append(ctx.relative_to_repo(path))
     return hits
 
@@ -627,7 +642,8 @@ def _scan_hygiene(ctx: RunContext, private_entries: list[Any]) -> tuple[int, lis
         except OSError:
             continue
         scanned.append(ctx.relative_to_repo(path))
-        if re.search(r"\bSMILES\b|canonical_smiles|isomeric_smiles", text, re.IGNORECASE):
+        upper = text.upper()
+        if ("SMILES=" in upper or "SMILES:" in upper) and re.search(r"(^|\s)(C|N|O|S|P|Cl|Br|F|I)[A-Za-z0-9@+\-\[\]\(\)=#$\\/]+(\s|$)", text):
             smiles_logged = True
         if re.search(r"^(ATOM|HETATM)\s+\d+", text, re.MULTILINE):
             coord_hits.append(ctx.relative_to_repo(path))
@@ -1001,18 +1017,12 @@ def run_m3_vina_jobs(
     for row in jobs:
         chunks.setdefault(row["chunk_id"], []).append(row)
 
-    node_chunks: dict[str, str] = {}
-    for node in hpc_values["nodes"]:
-        node_jobs = [row for row in jobs if row["node"] == node]
-        node_chunks[node] = node_jobs[0]["chunk_id"] if node_jobs else "empty_{0}_{1}".format(profile, node)
-
     pbs_targets: list[tuple[str, str, str, list[dict[str, Any]]]] = []
     for chunk_id, rows in sorted(chunks.items()):
         node = rows[0]["node"]
         pbs_targets.append(("m3_vina_{0}_{1}".format(profile, chunk_id), chunk_id, node, rows))
-    for node in ALL_NODES:
-        rows = [row for row in jobs if row["node"] == node]
-        pbs_targets.append(("m3_vina_{0}".format(node), node_chunks.get(node, "empty_{0}_{1}".format(profile, node)), node, rows))
+    for node in hpc_values["nodes"]:
+        pbs_targets.append(("m3_vina_{0}".format(node), "empty_{0}_{1}".format(profile, node), node, []))
 
     for pbs_job_name, chunk_id, node, assigned_rows in pbs_targets:
         worker_count = worker_by_chunk.get(chunk_id, max(1, min(max_workers, len(assigned_rows) or 1)))
@@ -1052,7 +1062,7 @@ def run_m3_vina_jobs(
             row["pbs_job_name"] = pbs_job_name
             row["submission_status"] = "SUBMIT_READY" if mode == "generate" and not allow_independent else "NOT_SUBMITTED"
             row["allowed_for_execution"] = _bool_text(mode == "generate" and not allow_independent)
-            row["allowed_for_collection"] = "false"
+            row["allowed_for_collection"] = _bool_text(mode == "generate" and not allow_independent)
         pbs_rows.append(
             {
                 "pbs_job_name": pbs_job_name,
