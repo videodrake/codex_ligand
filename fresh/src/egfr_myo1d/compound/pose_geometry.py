@@ -139,13 +139,13 @@ def box_from_row(row: dict[str, Any]) -> BoxProxy | None:
 
 
 def reference_point_from_row(row: dict[str, Any], prefix: str, index: int) -> ReferencePoint | None:
-    x = _float(_field(row, [f"{prefix}_center_x", f"{prefix}_centroid_x", f"{prefix}_x", "center_x", "centroid_x", "egfr_contact_centroid_x", "x", "box_center_x"]))
-    y = _float(_field(row, [f"{prefix}_center_y", f"{prefix}_centroid_y", f"{prefix}_y", "center_y", "centroid_y", "egfr_contact_centroid_y", "y", "box_center_y"]))
-    z = _float(_field(row, [f"{prefix}_center_z", f"{prefix}_centroid_z", f"{prefix}_z", "center_z", "centroid_z", "egfr_contact_centroid_z", "z", "box_center_z"]))
+    x = _float(_field(row, [f"{prefix}_center_x", f"{prefix}_centroid_x", f"{prefix}_x", "center_x", "centroid_x", "egfr_contact_centroid_x", "ca_x", "x", "box_center_x"]))
+    y = _float(_field(row, [f"{prefix}_center_y", f"{prefix}_centroid_y", f"{prefix}_y", "center_y", "centroid_y", "egfr_contact_centroid_y", "ca_y", "y", "box_center_y"]))
+    z = _float(_field(row, [f"{prefix}_center_z", f"{prefix}_centroid_z", f"{prefix}_z", "center_z", "centroid_z", "egfr_contact_centroid_z", "ca_z", "z", "box_center_z"]))
     if None in {x, y, z}:
         return None
-    point_id = _field(row, [f"{prefix}_id", f"{prefix}_patch_id", "hotspot_id", "residue_public", "egfr_residue_number", "residue_id", "site_id", "id"]) or f"{prefix}_{index}"
-    residue_public = _field(row, ["residue_public", "residue_label", "hotspot_label", "egfr_residue_number", "residue_id"])
+    point_id = _field(row, [f"{prefix}_id", f"{prefix}_patch_id", "hotspot_id", "residue_public", "uniprot_residue_number", "egfr_residue_number", "residue_id", "site_id", "id"]) or f"{prefix}_{index}"
+    residue_public = _field(row, ["residue_public", "residue_label", "hotspot_label", "uniprot_residue_number", "egfr_residue_number", "residue_id"])
     return ReferencePoint(
         point_id=point_id,
         xyz=(x, y, z),
