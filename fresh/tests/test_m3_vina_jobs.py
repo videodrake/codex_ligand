@@ -341,9 +341,14 @@ def test_pbs_scripts_are_concrete_and_hpc_safe(tmp_path, monkeypatch):
     assert result.status == "PASS"
     assert "#PBS -o " in text and "$PBS_JOBID" not in text and "$RUN_ID" not in text
     assert 'PYTHONPATH="$REPO_ROOT/fresh/src:${PYTHONPATH:-}"' in text
+    assert "~/.conda" not in text
+    assert "set +u\nsource " in text
+    assert "conda activate pyrosetta\nset -u" in text
     for key in ["OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"]:
         assert f"export {key}=1" in text
     assert "conda activate pyrosetta" in text
+    pbs = read_csv(result.pbs_manifest_csv)
+    assert all(not row["python_executable"].startswith("~") for row in pbs)
     assert max(result.hpc["worker_count_by_chunk"].values()) <= 16
 
 

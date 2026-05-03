@@ -397,6 +397,13 @@ def _load_hpc_defaults(ctx: RunContext) -> dict[str, Any]:
     }
 
 
+def _expand_shell_path(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith("~"):
+        return str(Path(text).expanduser())
+    return text
+
+
 def _default_profile_values(ctx: RunContext, profile: str, args: dict[str, Any]) -> dict[str, Any]:
     hpc = _load_hpc_defaults(ctx)
     defaults = {
@@ -421,6 +428,8 @@ def _default_profile_values(ctx: RunContext, profile: str, args: dict[str, Any])
     values["cpu_per_vina"] = int(args.get("cpu_per_vina") or 1)
     values["base_seed"] = int(args.get("base_seed") or 20260427)
     values["thread_limits"] = {key: 1 for key in THREAD_ENV_KEYS}
+    values["conda_sh"] = _expand_shell_path(values["conda_sh"])
+    values["python_executable"] = _expand_shell_path(values["python_executable"]) or "python"
     return values
 
 
