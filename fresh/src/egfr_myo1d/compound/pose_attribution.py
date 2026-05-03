@@ -1078,7 +1078,7 @@ def run_m3_pose_attribution(
     if mode == "dry-run":
         warnings.append("dry-run mode")
 
-    status = "FAIL" if blockers else ("WARN" if warnings or mode == "dry-run" or counts["poses_rejected"] else "PASS")
+    status = "FAIL" if blockers else ("WARN" if warnings or mode == "dry-run" else "PASS")
     m3_t8_ready = status == "PASS" and mode == "attribute" and counts["poses_pass"] > 0
     collection_context = {
         "raw_pose_rows": len(selected_rows),

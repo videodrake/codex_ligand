@@ -206,6 +206,27 @@ def test_attribute_synthetic_pose_writes_all_qc_tables(tmp_path):
     assert len(read_csv(result.membrane_qc_csv)) == 1
 
 
+def test_rejected_pose_rows_do_not_block_clustering_when_pass_rows_exist(tmp_path):
+    ctx = make_ctx(tmp_path)
+    write_refs(ctx)
+    pose = write_pose(ctx, text=POSE_MULTI)
+    raw = write_raw(
+        ctx,
+        [
+            raw_row(ctx, pose, job_id="job_pass", pose_rank="1", model="1"),
+            raw_row(ctx, pose, job_id="job_reject", pose_rank="2", model="2"),
+        ],
+    )
+
+    result = run_m3_pose_attribution(ctx, m2_run_id="m2_run", pose_raw_table=raw, profile="mini")
+    attribution = read_csv(result.attribution_csv)
+
+    assert result.status == "PASS"
+    assert result.m3_t8_clustering_ready is True
+    assert sum(1 for row in attribution if row["pose_hard_gate_pass"] == "true") == 1
+    assert sum(1 for row in attribution if row["attribution_status"] == "REJECT") == 1
+
+
 def test_actual_m2_export_paths_and_centroid_columns_resolve(tmp_path):
     ctx = make_ctx(tmp_path)
     m2 = ctx.fresh_root / "runs" / "m2_run"
