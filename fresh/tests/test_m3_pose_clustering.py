@@ -176,6 +176,21 @@ def test_cluster_synthetic_nearby_poses_converges_and_writes_membership(tmp_path
     assert all(row["cluster_id"] for row in membership)
 
 
+def test_empty_downstream_tables_and_prior_smiles_diagnostics_do_not_block(tmp_path):
+    ctx = make_ctx(tmp_path)
+    write_refs(ctx)
+    pose = write_pose(ctx)
+    attr = write_attr(ctx, [attr_row(ctx, pose, job_id="job_1", rank="1", model="1"), attr_row(ctx, pose, job_id="job_2", rank="2", model="2")])
+    write_csv(ctx.run_dir / "phase3_compounds" / "tables" / "compound_anchor_convergence.csv", ["anchor_id"], [])
+    (ctx.errors_dir / "error_summary.txt").write_text("previous blocker: SMILES-like fields printed in public outputs\n", encoding="utf-8")
+
+    result = run_m3_pose_clustering(ctx, m2_run_id="m2_run", pose_attribution_table=attr, profile="mini")
+
+    assert result.status == "PASS"
+    assert not any("forbidden downstream" in item for item in result.blockers)
+    assert not any("SMILES-like fields" in item for item in result.blockers)
+
+
 def test_schema_duplicate_nonpublic_and_path_validation_fail(tmp_path):
     ctx = make_ctx(tmp_path / "schema")
     bad = ctx.run_dir / "phase3_compounds" / "tables" / "compound_pose_attribution.csv"
