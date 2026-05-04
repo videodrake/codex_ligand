@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -202,8 +203,11 @@ def test_external_path_only_tool_reports_available_when_path_exists(tmp_path, mo
 
 
 def test_binary_field_is_used_as_command_probe(tmp_path, monkeypatch):
-    binary = tmp_path / "fpocket"
-    binary.write_text("#!/bin/sh\necho fpocket mock\n", encoding="utf-8")
+    binary = tmp_path / ("fpocket.bat" if os.name == "nt" else "fpocket")
+    if os.name == "nt":
+        binary.write_text("@echo off\necho fpocket mock\n", encoding="utf-8")
+    else:
+        binary.write_text("#!/bin/sh\necho fpocket mock\n", encoding="utf-8")
     binary.chmod(0o755)
     registry = tmp_path / "tool_registry.yaml"
     registry.write_text(
