@@ -112,8 +112,8 @@ def _run_command_smoke(command_path: str, args: list[str], timeout: int) -> tupl
 
 
 def _resolve_command(command: str) -> str | None:
-    if "/" in command:
-        path = Path(command)
+    path = Path(command)
+    if path.is_absolute() or "/" in command or "\\" in command:
         return str(path) if path.exists() else None
     return shutil.which(command)
 

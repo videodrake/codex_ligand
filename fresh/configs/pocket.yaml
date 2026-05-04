@@ -16,9 +16,17 @@
 # Threshold changes here are scientific decisions and require reviewer approval
 # per CLAUDE.md absolute rule #8.
 
+schema_version: m2_6_pocket_config_v1
+primary_pocket_tool: fpocket
+optional_later_tools:
+  p2rank:
+    enabled: false
+    notes: Optional later only; M2.6 does not implement or run P2Rank.
+
 fpocket:
   # External binary name; resolved via shutil.which on the active conda env.
   binary: fpocket
+  execution_policy: production mode runs fpocket only on run-local staged receptor PDBs
 
 merge:
   # Centroid distance below which two raw fpocket cavities collapse into one
@@ -26,6 +34,7 @@ merge:
   centroid_merge_threshold_angstrom: 6.0
   # Residue-set Jaccard above which two raw cavities collapse into one family.
   residue_jaccard_merge_threshold: 0.30
+  rule: centroid_distance <= threshold OR residue_jaccard >= threshold
 
 gates:
   # ---- ATP-site exclusion (CLAUDE.md absolute rule #2) ----
@@ -58,6 +67,7 @@ gates:
   # MYO1D-facing surface) are rejected.
   interface_heavy_atom_cutoff_angstrom: 5.0
   interface_overlap_fraction_reject_threshold: 0.25
+  sasa_ratio_reject_threshold: 0.40
 
   # ---- State-coverage gating ----
   # Number of primary membrane-validated states a pocket family must appear in
@@ -66,3 +76,4 @@ gates:
   # If a family appears in only this many primary states, it can still be a
   # secondary candidate (not primary).
   allow_secondary_if_primary_state_count: 1
+  hard_gate_rule: hard-gate-failed pockets cannot be rescued by soft score

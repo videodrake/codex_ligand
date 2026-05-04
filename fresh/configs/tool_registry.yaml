@@ -37,6 +37,10 @@ tools:
     required_level: core_addition
     env: pyrosetta
     python_import: pandas
+  biopython:
+    required_level: core_addition
+    env: pyrosetta
+    python_import: Bio
   rdkit:
     required_level: core_addition
     env: pyrosetta
@@ -73,6 +77,27 @@ tools:
     env: msmd_or_pyrosetta
     commands: [gmx, gmx_mpi]
     smoke_args: ['--version']
+  qsub:
+    required_level: core_addition
+    env: system
+    commands: [qsub]
+    smoke_args: ['--version']
+  qstat:
+    required_level: core_addition
+    env: system
+    commands: [qstat]
+    smoke_args: ['--version']
+  qdel:
+    required_level: core_addition
+    env: system
+    commands: [qdel]
+    smoke_args: ['--version']
+  p2rank:
+    required_level: optional
+    env: p2rank_java11
+    commands: [prank, p2rank, P2Rank]
+    smoke_args: ['--help']
+    install_candidate: Use isolated Java 11 P2Rank runtime; keep as optional evidence.
   pyKVFinder:
     required_level: core_addition
     env: ppi_surface_or_pyrosetta
@@ -93,11 +118,13 @@ tools:
     required_level: optional_ai
     env: pesto
     external_path: /work4/eunae/external_tools/PeSTo
+    commands: [pesto]
     install_candidate: Clone/install PeSTo in an isolated pesto env and run the repository example first.
   masif:
     required_level: optional_heavy
     env: masif_or_container
     external_path: /work4/eunae/external_tools/masif
+    commands: [masif_site, masif]
     install_candidate: Prefer container execution if available; otherwise follow MaSIF README in an isolated env.
   msmd:
     required_level: optional_heavy
@@ -108,6 +135,7 @@ tools:
     required_level: optional_heavy
     env: pocketminer
     external_path: /work4/eunae/external_tools/HOTPocket_or_PocketMiner
+    commands: [pocketminer, hotpocket]
     install_candidate: Treat as optional cryptic-pocket support only after confirming an installable implementation.
   passer:
     required_level: external_server_only
