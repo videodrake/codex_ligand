@@ -1,0 +1,308 @@
+version: 1
+verified_date: "2026-04-30"
+verified_hpc_node: node04
+source_docs:
+  - fresh/docs/hpc_tool_environment_status.md
+  - fresh/docs/AGENT_DOC_ROUTING.md
+
+policy:
+  default_orchestrator_env: pyrosetta
+  run_outputs_root: fresh/runs
+  external_tools_root: /work4/eunae/external_tools
+  do_not_modify_system_java: true
+  no_silent_fallback: true
+  adapters_must_log:
+    - activated_env
+    - executable_or_module
+    - command_line
+    - stdout_path
+    - stderr_path
+    - return_code
+    - output_manifest_path
+
+envs:
+  pyrosetta:
+    kind: conda
+    role: Core workflow environment.
+    python: /home/eunae/.conda/envs/pyrosetta/bin/python
+    activate:
+      - source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
+      - conda activate pyrosetta
+    verified_modules:
+      pyrosetta: null
+      rdkit: "2025.09.2"
+      Bio: "1.79"
+      numpy: "1.23.5"
+      pandas: "2.3.3"
+    verified_commands:
+      vina:
+        path: /usr/local/anaconda/3/2023.09/bin/vina
+        version: AutoDock Vina 52ec525-mod
+      fpocket:
+        path: /home/eunae/.conda/envs/pyrosetta/bin/fpocket
+        version: "4.0"
+      mdpocket:
+        path: /home/eunae/.conda/envs/pyrosetta/bin/mdpocket
+        version: "4.0"
+      obabel:
+        path: /usr/local/anaconda/3/2023.09/bin/obabel
+        version: "3.1.0"
+      qsub:
+        path: /opt/pbs/bin/qsub
+        version: "22.05.11"
+      qstat:
+        path: /opt/pbs/bin/qstat
+        version: "22.05.11"
+      qdel:
+        path: /opt/pbs/bin/qdel
+        version: "22.05.11"
+      gmx:
+        path: /home/eunae/.conda/envs/pyrosetta/bin.AVX2_256/gmx
+        version: 2025.4-conda_forge
+    use_for:
+      - workflow_cli
+      - manifest_generation
+      - PyRosetta PPI adapters
+      - Vina adapters
+      - fpocket adapters
+      - mdpocket adapters
+      - Open Babel conversion
+      - PBS submission helpers
+      - lightweight GROMACS checks
+    do_not_assume:
+      - pyKVFinder
+      - Java 11
+      - InDeep
+      - PeSTo
+      - MaSIF
+      - PocketMiner
+
+  ppi_surface:
+    kind: conda
+    role: Isolated pyKVFinder environment.
+    python: /home/eunae/.conda/envs/ppi_surface/bin/python
+    activate:
+      - source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
+      - conda activate ppi_surface
+    verified_modules:
+      pyKVFinder: "0.6.16"
+      yaml: "6.0.3"
+    use_for:
+      - pyKVFinder cavity detection
+    do_not_assume:
+      - pyrosetta
+      - rdkit
+      - vina
+      - fpocket
+      - mdpocket
+
+  p2rank_java11:
+    kind: conda
+    role: Isolated P2Rank Java runtime.
+    python: /home/eunae/.conda/envs/p2rank_java11/bin/python
+    activate:
+      - source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
+      - conda activate p2rank_java11
+      - export PATH="$HOME/tools/p2rank_2.4.2:$PATH"
+    verified_commands:
+      java:
+        version: OpenJDK 11.0.27
+      prank:
+        path: $HOME/tools/p2rank_2.4.2/prank
+        version: "2.4.2"
+    system_java_failure:
+      path: /bin/java
+      version: "1.8.0_352"
+      reason: P2Rank 2.4.2 needs Java 11 class file support.
+    use_for:
+      - optional P2Rank pocket prediction
+    do_not_assume:
+      - system Java compatibility
+
+  pesto:
+    kind: conda
+    role: Isolated PeSTo interface-prediction runtime.
+    python: /home/eunae/.conda/envs/pesto/bin/python
+    repo_path: /home/eunae/tools/PeSTo
+    activate:
+      - source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
+      - conda activate pesto
+      - cd /home/eunae/tools/PeSTo
+    verified_modules:
+      torch: "2.5.1"
+      gemmi: "0.7.5"
+      h5py: installed
+      numpy: installed
+      scipy: installed
+      pandas: installed
+      sklearn: installed
+      Bio: installed
+    verified_model:
+      name: i_v4_1_2021-09-07_11-21
+      checkpoint: /home/eunae/tools/PeSTo/model/save/i_v4_1_2021-09-07_11-21/model_ckpt.pt
+    verified_smoke:
+      dependency_import: passed
+      one_pdb_prediction: passed
+      device: CPU
+      output_dir: fresh/runs/optional_ai_tool_discovery/pesto_prediction_smoke/output
+      output_pattern: "*_i*.pdb"
+    use_for:
+      - optional residue-level protein-interface likelihood
+      - soft PPI-surface evidence
+    output_interpretation:
+      score_location: PDB B-factor field
+      model_outputs: five interface-type PDB files per input PDB
+    do_not_assume:
+      - GPU availability
+      - command-line pesto executable
+
+  pocketminer:
+    kind: conda
+    role: Isolated PocketMiner cryptic-pocket runtime.
+    python: /home/eunae/.conda/envs/pocketminer/bin/python
+    repo_path: /home/eunae/tools/gvp_pocketminer
+    branch: pocket_pred
+    commit: 187062d
+    activate:
+      - source /usr/local/anaconda/3/2023.09/etc/profile.d/conda.sh
+      - conda activate pocketminer
+      - export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+      - export CUDA_VISIBLE_DEVICES=""
+      - export TF_CPP_MIN_LOG_LEVEL=2
+      - cd /home/eunae/tools/gvp_pocketminer
+    required_env:
+      LD_LIBRARY_PATH_prefix: $CONDA_PREFIX/lib
+      CUDA_VISIBLE_DEVICES: ""
+      TF_CPP_MIN_LOG_LEVEL: "2"
+    verified_modules:
+      tensorflow: "2.9.1"
+      mdtraj: installed
+      numpy: installed
+      scipy: installed
+      pandas: installed
+      sklearn: installed
+      Bio: installed
+      gvp: import_ok
+      models: import_ok
+      util: import_ok
+    verified_model:
+      checkpoint_basename: /home/eunae/tools/gvp_pocketminer/models/pocketminer
+      index: /home/eunae/tools/gvp_pocketminer/models/pocketminer.index
+      data: /home/eunae/tools/gvp_pocketminer/models/pocketminer.data-00000-of-00001
+    verified_entrypoint:
+      script: /home/eunae/tools/gvp_pocketminer/src/xtal_predict.py
+      function: make_predictions
+    verified_smoke:
+      source_import: passed
+      checkpoint_restore: passed
+      one_pdb_prediction: passed
+      device: CPU
+      pred_shape: [1, 292]
+      pred_min: 0.025487031787633896
+      pred_max: 0.930513858795166
+      output_dir: fresh/runs/optional_ai_tool_discovery/pocketminer_prediction_smoke/output
+      output_files:
+        - pocketminer_smoke_preds.npy
+        - pocketminer_smoke_predictions.txt
+    use_for:
+      - optional residue-level cryptic-pocket likelihood
+      - soft openable-pocket evidence
+    output_interpretation:
+      score_location: per-residue prediction array
+      adapter_must_emit: residue-index-to-receptor-residue mapping
+    do_not_assume:
+      - GPU availability
+      - command-line pocketminer executable
+
+  masif_container:
+    kind: podman_image
+    role: Optional MaSIF surface/interface-pattern runtime.
+    runtime: podman
+    runtime_version: "4.2.0"
+    rootless: true
+    image: docker.io/pablogainza/masif:latest
+    image_id: 6b3c808b7bf7fabdadfee4c6dc2a48c4761b4a118d94983131f34e5a76754a12
+    container_repo_path: /masif
+    container_commit: dde04c8
+    container_python: "3.6.6"
+    verified_files:
+      - /masif/data/masif_site/data_prepare_one.sh
+      - /masif/data/masif_site/predict_site.sh
+    verified_smoke:
+      podman_hello_world: passed
+      image_pull: passed
+      basic_container_smoke: passed
+      one_pdb_prediction: pending
+      gpu_passthrough: not_verified
+      cdi_gpu_device: not_configured
+    use_for:
+      - optional MaSIF-site PPI surface evidence
+    do_not_assume:
+      - GPU passthrough
+      - writable container filesystem outside mounted run directory
+
+tool_to_env:
+  pyrosetta: pyrosetta
+  rdkit: pyrosetta
+  biopython: pyrosetta
+  numpy: pyrosetta
+  pandas: pyrosetta
+  vina: pyrosetta
+  fpocket: pyrosetta
+  mdpocket: pyrosetta
+  obabel: pyrosetta
+  qsub: system
+  qstat: system
+  qdel: system
+  gromacs: pyrosetta
+  pyKVFinder: ppi_surface
+  p2rank: p2rank_java11
+  pesto: pesto
+  pocketminer: pocketminer
+  masif: masif_container
+
+optional_tools:
+  indeep:
+    status: not_installed
+    env: indeep
+    required_for_core: false
+  pesto:
+    status: installed_and_prediction_smoke_passed
+    env: pesto
+    repo_path: /home/eunae/tools/PeSTo
+    required_for_core: false
+  masif:
+    status: container_basic_smoke_passed_prediction_pending
+    env: masif_container
+    image: docker.io/pablogainza/masif:latest
+    required_for_core: false
+  pocketminer:
+    status: installed_and_prediction_smoke_passed
+    env: pocketminer
+    repo_path: /home/eunae/tools/gvp_pocketminer
+    required_for_core: false
+  passer:
+    status: external_server_only
+    env: external_server
+    required_for_core: false
+
+pbs:
+  scheduler: PBS
+  verified_commands:
+    - qsub
+    - qstat
+    - qdel
+  known_nodes:
+    - node04
+    - node05
+    - node06
+  gromacs_gmxrc_note: >
+    qsub smoke stderr showed a GMXRC set -u interaction. Wrap GMXRC sourcing
+    with set +u / set -u or avoid sourcing GMXRC when conda gmx is already on
+    PATH.
+
+preflight_interpretation:
+  hpc_strict_qsub_smoke: FAIL
+  reason: pyKVFinder is intentionally isolated outside pyrosetta.
+  core_runtime_status: OK
+  adapter_requirement: Run env-specific tool smoke tests from their assigned env.

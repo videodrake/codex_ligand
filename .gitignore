@@ -72,3 +72,11 @@ fresh/**/*.vina.tmp
 fresh/**/*.silent
 fresh/**/scratch/
 fresh/**/tmp/
+
+# Local analysis/data packages - do not commit
+analysis_v0_5/
+analysis_v0_4_folder1_4/
+analysis_v0_5.zip
+analysis_v0_4_folder1_4.zip
+node_modules/
+codex_ligand*/
