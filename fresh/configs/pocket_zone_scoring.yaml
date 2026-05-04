@@ -1,0 +1,58 @@
+# PPI-compatible surface zone scoring and evidence integration policy.
+#
+# This config records the M2 surface-zone filter stack used before M3 fresh
+# virtual screening. External/AI tool evidence is confidence support only and
+# cannot override hard-gate failures.
+
+schema_version: pocket_zone_scoring_v1
+
+hard_gates:
+  non_atp_pass:
+    gate_id: G1
+    required: true
+    description: ATP-overlapping pockets are rejected for PPI-modulator candidates.
+  ppi_relationship_pass:
+    gate_id: G2
+    required: true
+    description: Pocket or groove must be related to the MYO1D PPI surface.
+  lower_lateral_pass:
+    gate_id: G3
+    required: true
+    description: Zone must be lower/lateral and membrane-compatible.
+  dimer_accessibility_pass:
+    gate_id: G4
+    required: true
+    description: Zone must not be buried in the central dimer interface.
+  mapping_qc_pass:
+    gate_id: G5
+    required: true
+    description: Residue/protomer/state mapping must remain traceable.
+  primary_state_support_or_review_flag:
+    gate_id: G6
+    required: true
+    description: Primary-state support or explicit review flag is required.
+
+soft_support:
+  surface_interface_support:
+    tools: [indeep, pesto, masif]
+    role: confidence_support_only
+  cavity_geometry_support:
+    tools: [pyKVFinder, fpocket]
+    role: confidence_support_only
+  dynamic_persistence_support:
+    tools: [mdpocket]
+    role: confidence_support_only
+  probe_hotspot_support:
+    tools: [mini_ftmap]
+    role: confidence_support_only
+  cryptic_support:
+    tools: [pocketminer]
+    role: confidence_support_only
+  allosteric_support:
+    tools: [passer]
+    role: confidence_support_only
+
+outputs:
+  zone_evidence: phase2_pockets/tables/ppi_surface_zone_evidence.csv
+  accepted_zones_for_m3: phase2_pockets/tables/accepted_ppi_surface_zones_for_m3.csv
+  zone_composite_boxes: phase2_pockets/export_for_m3/zone_composite_boxes.csv

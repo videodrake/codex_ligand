@@ -380,6 +380,7 @@ def _m2_inputs(ctx: RunContext, m2_run_id: str) -> dict[str, Path | None]:
             ctx,
             m2_run_id,
             [
+                "phase2_pockets/export_for_m3/zone_composite_boxes.csv",
                 "phase2_pockets/final/accepted_pocket_boxes.csv",
                 "phase2_pockets/export_for_m3/accepted_pocket_boxes.csv",
                 "phase2_pockets/tables/accepted_pocket_boxes.csv",

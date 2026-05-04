@@ -773,6 +773,17 @@ def build_parser():
     )
     m2_export_parser.set_defaults(func=_cmd_export_m2_results)
 
+    surface_zone_parser = subparsers.add_parser(
+        "integrate-surface-zones",
+        help="Integrate optional PPI-surface tool evidence into M2 zone targets for M3 fresh VS.",
+    )
+    surface_zone_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run identifier under fresh/runs/. M2 accepted pocket exports should already exist.",
+    )
+    surface_zone_parser.set_defaults(func=_cmd_integrate_surface_zones)
+
     m3_readiness_parser = subparsers.add_parser(
         "m3-readiness",
         help="Run M3-T0 readiness audit and create the safe phase3 directory skeleton without docking.",
@@ -2196,6 +2207,31 @@ def _cmd_export_m2_results(args):
     print("m2_8_status={0}".format(report.final_status_json))
     print("accepted_pockets_for_m3={0}".format(report.export_accepted_csv))
     print("m2_final_report={0}".format(report.export_report_md))
+    if report.status == "FAIL":
+        return 1
+    return 0
+
+
+def _cmd_integrate_surface_zones(args):
+    from egfr_myo1d.core.logging_utils import initialize_logs
+    from egfr_myo1d.core.run_context import RunContext
+    from egfr_myo1d.pocket.zone_evidence import build_ppi_surface_zone_evidence
+
+    ctx = RunContext.for_existing(args.run_id)
+    initialize_logs(ctx)
+    report = build_ppi_surface_zone_evidence(ctx)
+    print(
+        "integrate-surface-zones {0}: zones={1} accepted={2} warnings={3} blockers={4}".format(
+            report.status,
+            report.zone_count,
+            report.accepted_zone_count,
+            len(report.warnings),
+            len(report.blockers),
+        )
+    )
+    print("ppi_surface_zone_evidence={0}".format(report.zone_evidence_csv))
+    print("accepted_ppi_surface_zones_for_m3={0}".format(report.accepted_zones_csv))
+    print("zone_composite_boxes={0}".format(report.zone_boxes_csv))
     if report.status == "FAIL":
         return 1
     return 0
